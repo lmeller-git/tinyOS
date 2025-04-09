@@ -1,6 +1,6 @@
-# Limine Rust Template
+# TinyOS
 
-This repository will demonstrate how to set up a basic kernel in Rust using Limine.
+a tiny OS
 
 ## How to use this?
 
