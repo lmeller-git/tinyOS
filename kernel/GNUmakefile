@@ -11,6 +11,7 @@ override USER_VARIABLE = $(if $(filter $(origin $(1)),default undefined),$(eval 
 
 # Target architecture to build for. Default to x86_64.
 $(call USER_VARIABLE,KARCH,x86_64)
+$(call USER_VARIABLE,CARGO_FLAGS,)
 
 ifeq ($(RUST_TARGET),)
     override RUST_TARGET := $(KARCH)-unknown-none
@@ -31,7 +32,7 @@ endif
 # Default target.
 .PHONY: all
 all:
-	RUSTFLAGS="-C relocation-model=static" cargo build --target $(RUST_TARGET) --profile $(RUST_PROFILE)
+	RUSTFLAGS="-C relocation-model=static" cargo build --target $(RUST_TARGET) --profile $(RUST_PROFILE) $(CARGO_FLAGS)
 	cp target/$(RUST_TARGET)/$(RUST_PROFILE_SUBDIR)/$$(cd target/$(RUST_TARGET)/$(RUST_PROFILE_SUBDIR) && find -maxdepth 1 -perm -111 -type f) kernel
 
 # Remove object files and the final executable.
@@ -42,3 +43,7 @@ clean:
 
 .PHONY: distclean
 distclean: clean
+
+.PHONY: test
+test:
+	RUSTFLAGS="-C relocation-model=static" cargo test --no-run --target $(RUST_TARGET) $(CARGO_FLAGS)
