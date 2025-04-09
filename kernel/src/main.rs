@@ -1,10 +1,5 @@
 #![no_std]
 #![no_main]
-// #![feature(custom_test_frameworks)]
-// #![test_runner(tiny_os::test_runner)]
-// #![reexport_test_harness_main = "test_main"]
-
-use tiny_os::add;
 
 use core::arch::asm;
 use limine::BaseRevision;
@@ -34,11 +29,8 @@ static _END_MARKER: RequestsEndMarker = RequestsEndMarker::new();
 unsafe extern "C" fn kmain() -> ! {
     // All limine requests must also be referenced in a called function, otherwise they may be
     // removed by the linker.
-    // tiny_os::exit_qemu(tiny_os::QemuExitCode::Success);
 
-    use tiny_os::{QemuExitCode, exit_qemu};
     assert!(BASE_REVISION.is_supported());
-    // tiny_os::exit_qemu(tiny_os::QemuExitCode::Success);
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
 
@@ -60,19 +52,13 @@ unsafe extern "C" fn kmain() -> ! {
             }
         }
     }
-    // exit_qemu(QemuExitCode::Failed);
     hcf();
 }
 
-// #[cfg(test)]
-// #[unsafe(no_mangle)]
-// pub extern "C" fn _start() -> ! {
-//     test_main();
-//     loop {}
-// }
-
 #[panic_handler]
 fn rust_panic(_info: &core::panic::PanicInfo) -> ! {
+    #[cfg(feature = "test_run")]
+    tiny_os::test_panic_handler(_info);
     hcf();
 }
 
@@ -88,23 +74,3 @@ fn hcf() -> ! {
         }
     }
 }
-
-// #[cfg(test)]
-// #[panic_handler]
-// fn rust_panic(_info: &core::panic::PanicInfo) -> ! {
-//     // hcf();
-//     tiny_os::test_panic_handler(_info)
-// }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     #[test_case]
-//     fn sanity() {
-//         assert_eq!(2 + 2, 4);
-//     }
-//     #[test_case]
-//     fn t2() {
-//         assert_eq!(add(1, 2), 3);
-//     }
-// }

@@ -266,5 +266,5 @@ distclean: clean
 
 .PHONY: test
 test:
-	$(MAKE) run-$(KARCH) IMAGE_NAME=tiny_os-test-$(KARCH) CARGO_TARGET_DIR=target/test KERNEL_BIN=kernel CARGO_FLAGS="--features test_run"
-# this needs to be kernel, as limine needs to know how its called in limine.conf
+	$(MAKE) run-$(KARCH) IMAGE_NAME=tiny_os-test-$(KARCH) CARGO_TARGET_DIR=target/test KERNEL_BIN=kernel CARGO_FLAGS="--features test_run" QEMUFLAGS="-serial stdio -display none"
+# KERNEL_BIN needs to be kernel, as limine needs to know how its called in limine.conf
