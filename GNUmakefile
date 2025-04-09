@@ -11,7 +11,11 @@ $(call USER_VARIABLE,KARCH,x86_64)
 # Default user QEMU flags. These are appended to the QEMU command calls.
 $(call USER_VARIABLE,QEMUFLAGS,-m 2G)
 
-override IMAGE_NAME := template-$(KARCH)
+IMAGE_NAME ?= tiny_os-$(KARCH)
+CARGO_TARGET_DIR ?= target/
+CARGO_FLAGS ?=
+RUST_PROFILE ?= dev
+KERNEL_BIN ?= kernel
 
 .PHONY: all
 all: $(IMAGE_NAME).iso
@@ -20,7 +24,8 @@ all: $(IMAGE_NAME).iso
 all-hdd: $(IMAGE_NAME).hdd
 
 .PHONY: run
-run: run-$(KARCH)
+run:
+	$(MAKE) run-$(KARCH) IMAGE_NAME=$(IMAGE_NAME) CARGO_TARGET_DIR=$(CARGO_TARGET_DIR) CARGO_FLAGS=$(CARGO_FLAGS) RUST_PROFILE=$(RUST_PROFILE) KERNEL_BIN=$(KERNEL_BIN)
 
 .PHONY: run-hdd
 run-hdd: run-hdd-$(KARCH)
@@ -182,7 +187,7 @@ kernel:
 $(IMAGE_NAME).iso: limine/limine kernel
 	rm -rf iso_root
 	mkdir -p iso_root/boot
-	cp -v kernel/kernel iso_root/boot/
+	cp -v kernel/$(KERNEL_BIN) iso_root/boot/
 	mkdir -p iso_root/boot/limine
 	cp -v limine.conf iso_root/boot/limine/
 	mkdir -p iso_root/EFI/BOOT
@@ -261,5 +266,5 @@ distclean: clean
 
 .PHONY: test
 test:
-	$(MAKE) -C kernel test
-	$(MAKE) run-$(KARCH) #QEMUFLAGS="-serial stdio -display none"
+	$(MAKE) run-$(KARCH) IMAGE_NAME=tiny_os-test-$(KARCH) CARGO_TARGET_DIR=target/test KERNEL_BIN=kernel CARGO_FLAGS="--features test_run"
+# this needs to be kernel, as limine needs to know how its called in limine.conf

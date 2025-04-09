@@ -12,6 +12,8 @@ override USER_VARIABLE = $(if $(filter $(origin $(1)),default undefined),$(eval 
 # Target architecture to build for. Default to x86_64.
 $(call USER_VARIABLE,KARCH,x86_64)
 $(call USER_VARIABLE,CARGO_FLAGS,)
+$(call USER_VARIABLE,CARGO_TARGET_DIR,)
+$(call USER_VARIABLE,KERNEL_BIN,)
 
 ifeq ($(RUST_TARGET),)
     override RUST_TARGET := $(KARCH)-unknown-none
@@ -32,8 +34,8 @@ endif
 # Default target.
 .PHONY: all
 all:
-	RUSTFLAGS="-C relocation-model=static" cargo build --target $(RUST_TARGET) --profile $(RUST_PROFILE) $(CARGO_FLAGS)
-	cp target/$(RUST_TARGET)/$(RUST_PROFILE_SUBDIR)/$$(cd target/$(RUST_TARGET)/$(RUST_PROFILE_SUBDIR) && find -maxdepth 1 -perm -111 -type f) kernel
+	RUSTFLAGS="-C relocation-model=static" cargo build --target $(RUST_TARGET) --profile $(RUST_PROFILE) $(CARGO_FLAGS) --target-dir $(CARGO_TARGET_DIR)
+	cp $(CARGO_TARGET_DIR)/$(RUST_TARGET)/$(RUST_PROFILE_SUBDIR)/$$(cd $(CARGO_TARGET_DIR)/$(RUST_TARGET)/$(RUST_PROFILE_SUBDIR) && find -maxdepth 1 -perm -111 -type f) $(KERNEL_BIN)
 
 # Remove object files and the final executable.
 .PHONY: clean
@@ -43,7 +45,3 @@ clean:
 
 .PHONY: distclean
 distclean: clean
-
-.PHONY: test
-test:
-	RUSTFLAGS="-C relocation-model=static" cargo test --no-run --target $(RUST_TARGET) $(CARGO_FLAGS)

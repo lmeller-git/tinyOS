@@ -1,9 +1,14 @@
 cargo-features = ["edition2024"]
+
 [package]
 name = "tiny_os"
 version = "0.1.0"
 edition = "2024"
 build = "build.rs"
+
+[features]
+default = []
+test_run = []
 
 [dependencies]
 limine = "0.4"

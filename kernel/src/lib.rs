@@ -1,20 +1,32 @@
 #![no_std]
-#![cfg_attr(test, no_main)]
-#![feature(custom_test_frameworks)]
-#![test_runner(crate::test_runner)]
-#![reexport_test_harness_main = "test_main"]
+// #![cfg_attr(feature = "test_run", no_main)]
+// #![feature(custom_test_frameworks)]
+// #![test_runner(crate::test_runner)]
+// #![reexport_test_harness_main = "test_main"]
 
 use core::panic::PanicInfo;
+
+#[cfg(feature = "test_run")]
+const TESTS: &[&dyn Fn()] = &[&test_add];
 
 pub fn add(a: u8, b: u8) -> u8 {
     a + b
 }
 
+#[cfg(feature = "test_run")]
+pub fn test_main() {
+    test_runner(&TESTS);
+    exit_qemu(QemuExitCode::Success);
+}
+
+#[cfg(feature = "test_run")]
 pub fn test_runner(tests: &[&dyn Fn()]) {
     for test in tests {
         test();
     }
 }
+
+#[cfg(feature = "test_run")]
 pub fn test_panic_handler(info: &PanicInfo) -> ! {
     exit_qemu(QemuExitCode::Failed);
     loop {}
@@ -36,21 +48,26 @@ pub fn exit_qemu(exit_code: QemuExitCode) {
     }
 }
 
-#[cfg(test)]
-#[unsafe(no_mangle)]
-pub extern "C" fn _start() -> ! {
-    exit_qemu(QemuExitCode::Success);
-    test_main();
-    loop {}
+#[cfg(feature = "test_run")]
+fn test_add() {
+    assert_eq!(add(1, 41), 42);
 }
 
-#[cfg(test)]
-#[panic_handler]
-fn panic(info: &PanicInfo) -> ! {
-    test_panic_handler(info)
-}
+// #[cfg(test)]
+// #[unsafe(no_mangle)]
+// pub extern "C" fn _start() -> ! {
+//     exit_qemu(QemuExitCode::Success);
+//     test_main();
+//     loop {}
+// }
 
-#[test_case]
-fn add_() {
-    assert_eq!(add(2, 1), 4);
-}
+// #[cfg(test)]
+// #[panic_handler]
+// fn panic(info: &PanicInfo) -> ! {
+//     test_panic_handler(info)
+// }
+
+// #[test_case]
+// fn add_() {
+//     assert_eq!(add(2, 1), 4);
+// }
