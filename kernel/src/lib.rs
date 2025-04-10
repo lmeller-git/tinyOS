@@ -1,6 +1,7 @@
 #![no_std]
 
 use core::panic::PanicInfo;
+use os_macros;
 
 #[cfg(feature = "test_run")]
 mod testing;
