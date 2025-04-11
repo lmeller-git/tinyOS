@@ -1,5 +1,3 @@
-//TODO
-
 pub trait TestCase {
     fn run(&self) {}
     fn name(&self) {}
@@ -21,4 +19,18 @@ impl TestCase for FileTestRunner {
             test.run()
         }
     }
+}
+
+impl<T> TestCase for T
+where
+    T: Fn(),
+{
+    fn run(&self) {
+        self()
+    }
+}
+
+#[cfg(feature = "test_run")]
+pub mod tests {
+    use super::*;
 }

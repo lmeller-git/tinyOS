@@ -1,0 +1,13 @@
+[package]
+name = "macro-tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+os_macros = { path = "../macros" }
+tiny_os_common = {path = "../tiny-os-common", features = ["test_run", "std"]}
+
+[features]
+test_feature = []
+unused_feature = []
+test_run = []

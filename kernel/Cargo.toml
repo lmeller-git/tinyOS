@@ -8,7 +8,9 @@ build = "build.rs"
 
 [workspace]
 members = [
-  "macros"
+  "macro-tests",
+  "macros",
+  "tiny-os-common"
 ]
 
 [features]
@@ -19,6 +21,7 @@ test_run = []
 limine = "0.4"
 x86_64 = "0.15.2"
 os_macros = {path = "macros"}
+tiny_os_common = { path = "./tiny-os-common", features = ["test_run"] }
 
 [profile.dev]
 panic = "abort"

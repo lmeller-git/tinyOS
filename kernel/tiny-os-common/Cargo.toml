@@ -1,0 +1,15 @@
+[package]
+name = "tiny_os_common"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+test_run = []
+std = []
+
+[dependencies]
+# core = { package = "core", optional = true }
+
+# [dependencies.std]
+# optional = true
