@@ -1,12 +1,16 @@
 #![no_std]
 
+#[cfg(feature = "test_run")]
 use core::panic::PanicInfo;
-use os_macros;
+
+// #[cfg(feature = "test_run")]
+use os_macros::tests;
 
 #[cfg(feature = "test_run")]
-use os_macros::tests;
-#[cfg(feature = "test_run")]
 use tiny_os_common::testing::TestCase;
+
+mod locks;
+mod structures;
 
 #[cfg(feature = "test_run")]
 pub fn test_main() {
@@ -41,7 +45,7 @@ pub fn exit_qemu(exit_code: QemuExitCode) {
     }
 }
 
-#[cfg(feature = "test_run")]
+// #[cfg(feature = "test_run")]
 tests! {
     #[test_case]
     fn trivial() {
@@ -52,5 +56,9 @@ tests! {
     fn trivial_fail() {
         let a = 1;
         assert_eq!(a, 0);
+    }
+    #[test_case]
+    fn test_locks() {
+        locks::tests::test_runner.run();
     }
 }

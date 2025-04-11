@@ -32,12 +32,14 @@ impl ToTokens for TestParser {
         }
         let funcs = &self.funcs;
         tokens.extend(quote! {
+            // TODO: restrict visibility
             #[cfg(any(feature = "test_run", test))]
-            mod tests {
+            pub mod tests {
                 use super::*;
+                use tiny_os_common::testing::TestCase;
                 #(#funcs)*
-
-                pub(super) fn test_runner() {
+                // TODO: restrict visibility
+                pub fn test_runner() {
                     #(#test_funcs)*
                 }
             }
