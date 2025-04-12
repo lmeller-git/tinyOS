@@ -28,7 +28,7 @@ impl<T> Mutex<T> {
         }
     }
     fn unlock(&self) {
-        self.lock.store(false, Ordering::Relaxed)
+        self.lock.store(false, Ordering::Release)
     }
     pub fn new(value: T) -> Self {
         Self {

@@ -6,6 +6,7 @@ use core::panic::PanicInfo;
 // #[cfg(feature = "test_run")]
 use os_macros::tests;
 
+use thiserror::Error;
 #[cfg(feature = "test_run")]
 use tiny_os_common::testing::TestCase;
 
@@ -44,6 +45,9 @@ pub fn exit_qemu(exit_code: QemuExitCode) {
         port.write(exit_code as u32);
     }
 }
+
+#[derive(Error, Debug)]
+pub enum KrnelError {}
 
 // #[cfg(feature = "test_run")]
 tests! {

@@ -1,17 +1,20 @@
 #![no_std]
 #![no_main]
+#![feature(abi_x86_interrupt)]
 
+mod arch;
+mod bootinfo;
 mod requests;
 
-use core::arch::asm;
-use requests::{BASE_REVISION, FRAMEBUFFER_REQUEST};
+use requests::FRAMEBUFFER_REQUEST;
 
 #[unsafe(no_mangle)]
 unsafe extern "C" fn kmain() -> ! {
     // All limine requests must also be referenced in a called function, otherwise they may be
     // removed by the linker.
-
-    assert!(BASE_REVISION.is_supported());
+    // bootinfo::get();
+    arch::init();
+    arch::hcf();
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
 
@@ -33,25 +36,12 @@ unsafe extern "C" fn kmain() -> ! {
             }
         }
     }
-    hcf();
+    arch::hcf();
 }
 
 #[panic_handler]
 fn rust_panic(_info: &core::panic::PanicInfo) -> ! {
     #[cfg(feature = "test_run")]
     tiny_os::test_panic_handler(_info);
-    hcf();
-}
-
-fn hcf() -> ! {
-    loop {
-        unsafe {
-            #[cfg(target_arch = "x86_64")]
-            asm!("hlt");
-            #[cfg(any(target_arch = "aarch64", target_arch = "riscv64"))]
-            asm!("wfi");
-            #[cfg(target_arch = "loongarch64")]
-            asm!("idle 0");
-        }
-    }
+    arch::hcf();
 }
