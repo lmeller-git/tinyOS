@@ -1,5 +1,6 @@
 use limine::BaseRevision;
 use limine::paging;
+use limine::request::HhdmRequest;
 use limine::request::{
     FramebufferRequest, MemoryMapRequest, PagingModeRequest, RequestsEndMarker,
     RequestsStartMarker, StackSizeRequest,
@@ -26,13 +27,21 @@ pub static STACK_SIZE_REQUEST: StackSizeRequest = StackSizeRequest::new().with_s
 pub static MMAP_REQUEST: MemoryMapRequest = MemoryMapRequest::new();
 
 // Request a paging mode
+#[used]
+#[unsafe(link_section = ".requests")]
 #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))] // x86_64 and AArch64 share the same modes
 pub static PAGING_MODE_REQUEST: PagingModeRequest =
     PagingModeRequest::new().with_mode(paging::Mode::FOUR_LEVEL);
 
+#[used]
+#[unsafe(link_section = ".requests")]
 #[cfg(target_arch = "riscv64")] // RISC-V has different modes
 pub static PAGING_MODE_REQUEST: PagingModeRequest =
     PagingModeRequest::new().with_mode(paging::Mode::SV48);
+
+#[used]
+#[unsafe(link_section = ".requests")]
+pub static HHDM_REQUEST: HhdmRequest = HhdmRequest::new();
 
 /// Define the stand and end markers for Limine requests.
 #[used]

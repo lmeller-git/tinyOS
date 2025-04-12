@@ -14,7 +14,7 @@ unsafe extern "C" fn kmain() -> ! {
     // removed by the linker.
     // bootinfo::get();
     arch::init();
-    arch::hcf();
+    // arch::hcf();
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
 

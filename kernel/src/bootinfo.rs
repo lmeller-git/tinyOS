@@ -1,10 +1,12 @@
-use limine::memory_map::EntryType;
-
 use crate::requests::*;
+use lazy_static::lazy_static;
+use limine::memory_map::{Entry, EntryType};
 
 pub fn get() {
     assert!(BASE_REVISION.is_supported());
 }
+
+// pub const HHDM_OFFSET: u64 = HHDM_REQUEST.get_response().unwrap().offset();
 
 pub fn stack_size() -> u64 {
     if STACK_SIZE_REQUEST.get_response().is_some() {
@@ -24,7 +26,7 @@ pub fn mmap_entries() {
     // MMAP_REQUEST
 }
 
-pub fn usbale_mmap_entries() -> impl Iterator<Item = UsableMRegion> {
+pub fn usable_mmap_entries() -> impl Iterator<Item = UsableMRegion> {
     MMAP_REQUEST
         .get_response()
         .expect("failed to get mmap")
@@ -32,9 +34,25 @@ pub fn usbale_mmap_entries() -> impl Iterator<Item = UsableMRegion> {
         .iter()
         .filter_map(|e| match e.entry_type {
             EntryType::USABLE => Some(UsableMRegion {
-                start: e.base,
+                start: if e.base >= 0x100000000 {
+                    e.base + get_phys_offset()
+                } else {
+                    e.base
+                },
                 length: e.length,
             }),
             _ => None,
         })
+}
+
+pub fn get_phys_offset() -> u64 {
+    HHDM_REQUEST
+        .get_response()
+        .expect("could not get physical offset")
+        .offset()
+}
+
+lazy_static! {
+    pub static ref MMAP_ENTRIES: &'static [&'static Entry] =
+        MMAP_REQUEST.get_response().unwrap().entries();
 }

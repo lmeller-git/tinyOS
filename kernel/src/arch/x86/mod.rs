@@ -7,10 +7,9 @@ mod paging;
 
 pub fn init() {
     interrupt::init();
+    paging::init();
     // vga::WRITER
     // .lock()
     // .write_str("Initializing...\n")
     // .expect("could not initialize vga buffer");
-    // SAFETY: this is safe if the provided mmap is safe
-    // unsafe { paging::init() };
 }
