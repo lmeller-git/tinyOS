@@ -1,12 +1,11 @@
 #![no_std]
 #![no_main]
-#![feature(abi_x86_interrupt)]
 
-mod arch;
-mod bootinfo;
-mod requests;
+extern crate tiny_os;
 
-use requests::FRAMEBUFFER_REQUEST;
+use tiny_os::arch;
+use tiny_os::kernel;
+use tiny_os::requests;
 
 #[unsafe(no_mangle)]
 unsafe extern "C" fn kmain() -> ! {
@@ -14,11 +13,12 @@ unsafe extern "C" fn kmain() -> ! {
     // removed by the linker.
     // bootinfo::get();
     arch::init();
+    kernel::init_mem();
     // arch::hcf();
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
 
-    if let Some(framebuffer_response) = FRAMEBUFFER_REQUEST.get_response() {
+    if let Some(framebuffer_response) = requests::FRAMEBUFFER_REQUEST.get_response() {
         if let Some(framebuffer) = framebuffer_response.framebuffers().next() {
             for i in 0..100_u64 {
                 // Calculate the pixel offset using the framebuffer information we obtained above.
@@ -36,12 +36,12 @@ unsafe extern "C" fn kmain() -> ! {
             }
         }
     }
-    arch::hcf();
+    arch::hcf()
 }
 
 #[panic_handler]
 fn rust_panic(_info: &core::panic::PanicInfo) -> ! {
     #[cfg(feature = "test_run")]
     tiny_os::test_panic_handler(_info);
-    arch::hcf();
+    arch::hcf()
 }

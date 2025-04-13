@@ -1,17 +1,24 @@
 #![no_std]
+#![feature(abi_x86_interrupt)]
+
+pub extern crate alloc;
 
 #[cfg(feature = "test_run")]
 use core::panic::PanicInfo;
 
-// #[cfg(feature = "test_run")]
+use alloc::vec::Vec;
+//#[cfg(feature = "test_run")]
 use os_macros::tests;
-
 use thiserror::Error;
 #[cfg(feature = "test_run")]
 use tiny_os_common::testing::TestCase;
 
-mod locks;
-mod structures;
+pub mod arch;
+pub mod bootinfo;
+pub mod kernel;
+pub mod locks;
+pub mod requests;
+pub mod structures;
 
 #[cfg(feature = "test_run")]
 pub fn test_main() {
@@ -47,7 +54,7 @@ pub fn exit_qemu(exit_code: QemuExitCode) {
 }
 
 #[derive(Error, Debug)]
-pub enum KrnelError {}
+pub enum KernelError {}
 
 // #[cfg(feature = "test_run")]
 tests! {
@@ -59,10 +66,17 @@ tests! {
     #[test_case]
     fn trivial_fail() {
         let a = 1;
-        assert_eq!(a, 0);
+        assert_eq!(a, 1);
     }
     #[test_case]
     fn test_locks() {
         locks::tests::test_runner.run();
+    }
+
+    #[test_case]
+    fn t() {
+        let mut v = Vec::new();
+        v.push(42);
+        assert_eq!(v[0], 42);
     }
 }

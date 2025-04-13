@@ -55,5 +55,5 @@ unsafe impl FrameAllocator<Size4KiB> for SimpleFrameAllocator {
 
 lazy_static! {
     // pub static ref GlobalFrameAllocator: Mutex<SimpleFrameAllocator> = Mutex::new(init_allocator());
-    pub static ref GlogalFrameAllocator: Mutex<SimpleFrameAllocator> = Mutex::new(SimpleFrameAllocator::new());
+    pub static ref  GLOBAL_FRAME_ALLOCATOR: Mutex<SimpleFrameAllocator> = Mutex::new(SimpleFrameAllocator::new());
 }

@@ -9,7 +9,7 @@ pub(super) extern "x86-interrupt" fn double_fault_handler(
     stack_frame: InterruptStackFrame,
     _error_code: u64,
 ) -> ! {
-    tiny_os::exit_qemu(tiny_os::QemuExitCode::Failed);
+    crate::exit_qemu(crate::QemuExitCode::Failed);
     panic!("EXCEPTION: DOUBLE FAULT\n{:#?}", stack_frame);
 }
 
@@ -42,7 +42,7 @@ pub(super) extern "x86-interrupt" fn page_fault_handler(
     // println!("Accessed Address: {:?}", Cr2::read());
     // println!("Error Code: {:?}", error_code);
     // println!("{:#?}", stack_frame);
-    tiny_os::exit_qemu(tiny_os::QemuExitCode::Failed);
+    crate::exit_qemu(crate::QemuExitCode::Failed);
     crate::arch::hcf()
 }
 
