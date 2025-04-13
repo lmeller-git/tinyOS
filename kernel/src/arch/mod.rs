@@ -1,12 +1,12 @@
 #[cfg(target_arch = "x86_64")]
-mod x86;
+pub mod x86;
 
 use core::arch::asm;
 
 pub fn init() {
     #[cfg(target_arch = "x86_64")]
     x86::init();
-    #[cfg(not(target_arch = "x86_64"))]
+    #[cfg(not(any(target_arch = "x86_64")))]
     panic!("arch not supported")
 }
 
@@ -21,4 +21,12 @@ pub fn hcf() -> ! {
             asm!("idle 0");
         }
     }
+}
+
+#[doc(hidden)]
+pub fn _serial_print(args: ::core::fmt::Arguments) {
+    #[cfg(target_arch = "x86_64")]
+    x86::serial::_print(args);
+    #[cfg(not(any(target_arch = "x86_64")))]
+    panic!("arch not supported")
 }

@@ -1,8 +1,9 @@
-// use core::fmt::Write;
+use core::fmt::Write;
 
 mod interrupt;
 //TODO init paging first
-// mod vga;
+pub mod serial;
+pub mod vga;
 
 pub fn init() {
     interrupt::init();

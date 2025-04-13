@@ -26,7 +26,17 @@ where
     T: Fn(),
 {
     fn run(&self) {
-        self()
+        #[cfg(feature = "std")]
+        ::std::print!("{}...", ::std::any::type_name::<Self>());
+        #[cfg(not(feature = "std"))]
+        crate::log!("{}...", ::core::any::type_name::<Self>());
+
+        self();
+
+        #[cfg(feature = "std")]
+        ::std::println!("\t[OK]");
+        #[cfg(not(feature = "std"))]
+        crate::log!("\t[OK]\n");
     }
 }
 

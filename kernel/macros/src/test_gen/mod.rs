@@ -1,7 +1,7 @@
 use quote::{quote, ToTokens};
 use syn::{parse::Parse, ItemFn};
 
-// TODO: add async?
+// TODO: add async?, run tests in separate QUEMU instances to catch error with out aborting operation/ run in threads
 
 pub struct TestParser {
     funcs: Vec<Func>,
@@ -9,7 +9,9 @@ pub struct TestParser {
 
 impl ToTokens for TestParser {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        //TODO this is ugly as fuck
         let mut test_funcs = Vec::new();
+        let mut test_runners = Vec::new();
         for f in &self.funcs {
             let ident = &f.inner.sig.ident;
             if f.inner
@@ -29,6 +31,23 @@ impl ToTokens for TestParser {
                     #ident.run();
                 });
             }
+            if f.inner
+                .attrs
+                .iter()
+                .any(|attr| attr.path().is_ident("runner"))
+            {
+                let cfg_attrs: Vec<_> = f
+                    .inner
+                    .attrs
+                    .iter()
+                    .filter(|attr| attr.path().is_ident("cfg"))
+                    .collect();
+
+                test_runners.push(quote! {
+                    #(#cfg_attrs)*
+                    #ident();
+                });
+            }
         }
         let funcs = &self.funcs;
         tokens.extend(quote! {
@@ -37,10 +56,12 @@ impl ToTokens for TestParser {
             pub mod tests {
                 use super::*;
                 use tiny_os_common::testing::TestCase;
+                use os_macros::runner;
                 #(#funcs)*
                 // TODO: restrict visibility
                 pub fn test_runner() {
                     #(#test_funcs)*
+                    #(#test_runners)*
                 }
             }
         });

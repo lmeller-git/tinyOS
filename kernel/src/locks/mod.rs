@@ -1,8 +1,8 @@
 pub mod mutex;
 
 crate::tests! {
-    #[test_case]
+    #[runner]
     fn test_mutex() {
-        mutex::tests::test_runner.run();
+        mutex::tests::test_runner();
     }
 }

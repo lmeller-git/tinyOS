@@ -15,13 +15,24 @@ use tiny_os_common::testing::TestCase;
 
 pub mod arch;
 pub mod bootinfo;
+pub mod common;
 pub mod kernel;
 pub mod locks;
 pub mod requests;
 pub mod structures;
 
 #[cfg(feature = "test_run")]
+struct TestLogger {}
+#[cfg(feature = "test_run")]
+impl tiny_os_common::logging::Logger for TestLogger {
+    fn log(&self, msg: ::core::fmt::Arguments) {
+        serial_print!("{}", msg);
+    }
+}
+
+#[cfg(feature = "test_run")]
 pub fn test_main() {
+    tiny_os_common::logging::set_logger(&TestLogger {});
     test_runner();
     exit_qemu(QemuExitCode::Success);
 }
@@ -33,6 +44,7 @@ pub fn test_runner() {
 
 #[cfg(feature = "test_run")]
 pub fn test_panic_handler(info: &PanicInfo) -> ! {
+    serial_print!("\t[Err] {}\n", info);
     exit_qemu(QemuExitCode::Failed);
     loop {}
 }
@@ -68,9 +80,9 @@ tests! {
         let a = 1;
         assert_eq!(a, 1);
     }
-    #[test_case]
+    #[runner]
     fn test_locks() {
-        locks::tests::test_runner.run();
+        locks::tests::test_runner();
     }
 
     #[test_case]

@@ -3,45 +3,35 @@
 
 extern crate tiny_os;
 
+use core::fmt::Write;
+
 use tiny_os::arch;
+use tiny_os::bootinfo;
 use tiny_os::kernel;
-use tiny_os::requests;
+use tiny_os::serial_println;
 
 #[unsafe(no_mangle)]
 unsafe extern "C" fn kmain() -> ! {
-    // All limine requests must also be referenced in a called function, otherwise they may be
-    // removed by the linker.
-    // bootinfo::get();
+    bootinfo::get();
     arch::init();
     kernel::init_mem();
-    // arch::hcf();
+    arch::x86::vga::WRITER
+        .lock()
+        .write_str("Hello world")
+        .unwrap();
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
 
-    if let Some(framebuffer_response) = requests::FRAMEBUFFER_REQUEST.get_response() {
-        if let Some(framebuffer) = framebuffer_response.framebuffers().next() {
-            for i in 0..100_u64 {
-                // Calculate the pixel offset using the framebuffer information we obtained above.
-                // We skip `i` scanlines (pitch is provided in bytes) and add `i * 4` to skip `i` pixels forward.
-                let pixel_offset = i * framebuffer.pitch() + i * 4;
+    serial_println!("OS booted succesfully");
 
-                // Write 0xFFFFFFFF to the provided pixel offset to fill it white.
-                unsafe {
-                    framebuffer
-                        .addr()
-                        .add(pixel_offset as usize)
-                        .cast::<u32>()
-                        .write(0xFFFFFFFF)
-                };
-            }
-        }
-    }
     arch::hcf()
 }
 
 #[panic_handler]
-fn rust_panic(_info: &core::panic::PanicInfo) -> ! {
+fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     #[cfg(feature = "test_run")]
-    tiny_os::test_panic_handler(_info);
+    tiny_os::test_panic_handler(info);
+
+    serial_println!("{}", info);
     arch::hcf()
 }

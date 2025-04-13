@@ -138,7 +138,7 @@ struct VGABuffer {
 
 impl VGABuffer {
     fn new() -> *mut Self {
-        0xb8000 as *mut Self
+        (0xb8000 + crate::bootinfo::get_phys_offset()) as *mut Self
     }
 
     fn is_valid_row(&self, row: usize) -> bool {

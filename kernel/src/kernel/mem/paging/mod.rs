@@ -4,11 +4,31 @@ use crate::bootinfo;
 pub use alloc::GLOBAL_FRAME_ALLOCATOR;
 use lazy_static::lazy_static;
 use spin::Mutex;
+use x86_64::PhysAddr;
 use x86_64::registers::control::Cr3;
+use x86_64::structures::paging::{Mapper, Size4KiB};
+use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::{
     VirtAddr,
     structures::paging::{OffsetPageTable, PageTable},
 };
+
+fn map_vga() {
+    let vga_phys = PhysAddr::new(0xb8000);
+    let vga_virt = VirtAddr::new(bootinfo::get_phys_offset() + 0xb8000);
+
+    let page: x86_64::structures::paging::Page<Size4KiB> = Page::containing_address(vga_virt);
+    let frame = PhysFrame::containing_address(vga_phys);
+    let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
+    let mut allocator = GLOBAL_FRAME_ALLOCATOR.lock();
+    unsafe {
+        PAGETABLE
+            .lock()
+            .map_to(page, frame, flags, &mut *allocator)
+            .unwrap()
+            .flush();
+    }
+}
 
 unsafe fn active_level_4_table() -> &'static mut PageTable {
     let (level_4_table_frame, _) = Cr3::read();
@@ -33,4 +53,6 @@ lazy_static! {
     };
 }
 
-pub(super) fn init() {}
+pub(super) fn init() {
+    map_vga();
+}

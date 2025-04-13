@@ -36,6 +36,7 @@ run-x86_64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).
 		-M q35 \
 		-cdrom $(IMAGE_NAME).iso \
 		-device isa-debug-exit,iobase=0xf4,iosize=0x04 \
+		-serial stdio \
 		$(QEMUFLAGS)
 		
 # TODO: original command. Get this to work by doing correct requests to limine (need access to some hardware)
@@ -266,5 +267,5 @@ distclean: clean
 
 .PHONY: test
 test:
-	$(MAKE) run-$(KARCH) IMAGE_NAME=tiny_os-test-$(KARCH) CARGO_TARGET_DIR=target/test KERNEL_BIN=kernel CARGO_FLAGS="--features test_run" QEMUFLAGS="-serial stdio -display none"
+	$(MAKE) run-$(KARCH) IMAGE_NAME=tiny_os-test-$(KARCH) CARGO_TARGET_DIR=target/test KERNEL_BIN=kernel CARGO_FLAGS="--features test_run" QEMUFLAGS="-display none"
 # KERNEL_BIN needs to be kernel, as limine needs to know how its called in limine.conf
