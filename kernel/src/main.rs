@@ -13,6 +13,7 @@ use tiny_os::serial_println;
 use tiny_os::services::graphics::Glyph;
 use tiny_os::services::graphics::Simplegraphics;
 use tiny_os::services::graphics::shapes::Line;
+use tiny_os::services::graphics::shapes::Rect;
 
 #[unsafe(no_mangle)]
 unsafe extern "C" fn kmain() -> ! {
@@ -33,9 +34,39 @@ unsafe extern "C" fn kmain() -> ! {
         let gfx = Simplegraphics::new(&fb);
         Line {
             start: tiny_os::services::graphics::shapes::Point { x: 0, y: 0 },
-            end: tiny_os::services::graphics::shapes::Point { x: 20, y: 20 },
+            end: tiny_os::services::graphics::shapes::Point { x: 200, y: 200 },
         }
         .render_colorized(&tiny_os::drivers::graphics::colors::ColorCode::White, &gfx);
+        Line {
+            start: tiny_os::services::graphics::shapes::Point { x: 400, y: 200 },
+            end: tiny_os::services::graphics::shapes::Point { x: 600, y: 0 },
+        }
+        .render_colorized(&tiny_os::drivers::graphics::colors::ColorCode::White, &gfx);
+        Line {
+            start: tiny_os::services::graphics::shapes::Point { x: 400, y: 400 },
+            end: tiny_os::services::graphics::shapes::Point { x: 600, y: 600 },
+        }
+        .render_colorized(&tiny_os::drivers::graphics::colors::ColorCode::White, &gfx);
+        Line {
+            start: tiny_os::services::graphics::shapes::Point { x: 200, y: 400 },
+            end: tiny_os::services::graphics::shapes::Point { x: 0, y: 600 },
+        }
+        .render_colorized(&tiny_os::drivers::graphics::colors::ColorCode::White, &gfx);
+        Rect {
+            top_left: tiny_os::services::graphics::shapes::Point { x: 200, y: 200 },
+            bottom_right: tiny_os::services::graphics::shapes::Point { x: 400, y: 400 },
+        }
+        .render_colorized(&tiny_os::drivers::graphics::colors::ColorCode::Red, &gfx);
+        Rect {
+            top_left: tiny_os::services::graphics::shapes::Point { x: 0, y: 0 },
+            bottom_right: tiny_os::services::graphics::shapes::Point { x: 600, y: 600 },
+        }
+        .render_colorized(&tiny_os::drivers::graphics::colors::ColorCode::Green, &gfx);
+        Rect {
+            top_left: tiny_os::services::graphics::shapes::Point { x: 250, y: 250 },
+            bottom_right: tiny_os::services::graphics::shapes::Point { x: 350, y: 350 },
+        }
+        .render_colorized(&tiny_os::drivers::graphics::colors::ColorCode::Blue, &gfx);
     }
 
     arch::hcf()

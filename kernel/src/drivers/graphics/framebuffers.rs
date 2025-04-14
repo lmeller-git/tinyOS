@@ -36,8 +36,9 @@ impl<'a> LimineFrameBuffer<'a> {
 impl FrameBuffer for LimineFrameBuffer<'_> {
     fn set_pixel(&self, value: &RGBColor, x: usize, y: usize) {
         // TODO verify
-        let pixel_offset = y * self.inner.pitch() as usize * self.inner.bpp() as usize
-            + x * self.inner.bpp() as usize;
+        // should be correct:
+        // pitch is bytes per row(ie pixels), bpp is bits per pixel, since one byte == 8 bit bpp / 8 byte
+        let pixel_offset = y * self.inner.pitch() as usize + x * (self.inner.bpp() / 8) as usize;
         unsafe {
             self.inner
                 .addr()
