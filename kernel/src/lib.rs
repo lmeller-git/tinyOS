@@ -16,9 +16,11 @@ use tiny_os_common::testing::TestCase;
 pub mod arch;
 pub mod bootinfo;
 pub mod common;
+pub mod drivers;
 pub mod kernel;
 pub mod locks;
 pub mod requests;
+pub mod services;
 pub mod structures;
 
 #[cfg(feature = "test_run")]

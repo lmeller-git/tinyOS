@@ -1,6 +1,9 @@
 use crate::requests::*;
 use lazy_static::lazy_static;
-use limine::memory_map::{Entry, EntryType};
+use limine::{
+    framebuffer::Framebuffer,
+    memory_map::{Entry, EntryType},
+};
 
 pub fn get() {
     assert!(BASE_REVISION.is_supported());
@@ -37,7 +40,8 @@ pub fn usable_mmap_entries() -> impl Iterator<Item = UsableMRegion> {
                 start: if e.base >= 0x100000000 {
                     e.base + get_phys_offset()
                 } else {
-                    e.base
+                    // ??
+                    e.base //+ get_phys_offset()
                 },
                 length: e.length,
             }),
@@ -50,6 +54,10 @@ pub fn get_phys_offset() -> u64 {
         .get_response()
         .expect("could not get physical offset")
         .offset()
+}
+
+pub fn get_framebuffers() -> Option<impl Iterator<Item = Framebuffer<'static>>> {
+    FRAMEBUFFER_REQUEST.get_response().map(|r| r.framebuffers())
 }
 
 lazy_static! {
