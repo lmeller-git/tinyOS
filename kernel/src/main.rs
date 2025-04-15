@@ -12,7 +12,9 @@ use tiny_os::kernel;
 use tiny_os::serial_println;
 use tiny_os::services::graphics::Glyph;
 use tiny_os::services::graphics::Simplegraphics;
+use tiny_os::services::graphics::shapes::Circle;
 use tiny_os::services::graphics::shapes::Line;
+use tiny_os::services::graphics::shapes::Point;
 use tiny_os::services::graphics::shapes::Rect;
 
 #[unsafe(no_mangle)]
@@ -67,6 +69,11 @@ unsafe extern "C" fn kmain() -> ! {
             bottom_right: tiny_os::services::graphics::shapes::Point { x: 350, y: 350 },
         }
         .render_colorized(&tiny_os::drivers::graphics::colors::ColorCode::Blue, &gfx);
+        Circle {
+            center: Point { x: 300, y: 300 },
+            rad: 50,
+        }
+        .render_colorized(&tiny_os::drivers::graphics::colors::ColorCode::Yellow, &gfx);
     }
 
     arch::hcf()

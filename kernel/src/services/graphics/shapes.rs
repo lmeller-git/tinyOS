@@ -43,10 +43,52 @@ impl Glyph for Rect {
     }
 }
 
+pub struct Circle {
+    pub center: Point,
+    pub rad: usize,
+}
+
+impl Glyph for Circle {
+    fn render_colorized(&self, color: &ColorCode, gfx: &dyn super::GraphicsBackend) {
+        let mut x: isize = self.rad as isize;
+        let mut y: isize = 0;
+        let mut err: isize = 0;
+        let cx = self.center.x as isize;
+        let cy = self.center.y as isize;
+
+        while x >= y {
+            gfx.draw_pixel(&Point::saturated_add_from_components(cx, x, cy, y), color);
+            gfx.draw_pixel(&Point::saturated_add_from_components(cx, y, cy, x), color);
+            gfx.draw_pixel(&Point::saturated_add_from_components(cx, -y, cy, x), color);
+            gfx.draw_pixel(&Point::saturated_add_from_components(cx, -x, cy, y), color);
+            gfx.draw_pixel(&Point::saturated_add_from_components(cx, -x, cy, -y), color);
+            gfx.draw_pixel(&Point::saturated_add_from_components(cx, -y, cy, -x), color);
+            gfx.draw_pixel(&Point::saturated_add_from_components(cx, y, cy, -x), color);
+            gfx.draw_pixel(&Point::saturated_add_from_components(cx, x, cy, -y), color);
+            y += 1;
+            if err <= 0 {
+                err += 2 * y + 1;
+            } else {
+                x -= 1;
+                err += 2 * (y - x) + 1;
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Point {
     pub x: usize,
     pub y: usize,
+}
+
+impl Point {
+    fn saturated_add_from_components(x0: isize, x1: isize, y0: isize, y1: isize) -> Self {
+        Self {
+            x: x0.saturating_add(x1).max(0) as usize,
+            y: y0.saturating_add(y1).max(0) as usize,
+        }
+    }
 }
 
 impl Glyph for Point {
@@ -69,6 +111,16 @@ impl Add for Point {
     type Output = Self;
     fn add(self, rhs: Self) -> Self::Output {
         Self {
+            x: self.x + rhs.x,
+            y: self.y + rhs.y,
+        }
+    }
+}
+
+impl Add for &Point {
+    type Output = Point;
+    fn add(self, rhs: Self) -> Self::Output {
+        Point {
             x: self.x + rhs.x,
             y: self.y + rhs.y,
         }

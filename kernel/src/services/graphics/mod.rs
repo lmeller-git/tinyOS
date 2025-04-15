@@ -1,6 +1,11 @@
+use embedded_graphics::prelude::{DrawTarget, OriginDimensions};
 use shapes::{Line, Point};
+use thiserror::Error;
 
-use crate::drivers::graphics::{colors::ColorCode, framebuffers::FrameBuffer};
+use crate::drivers::graphics::{
+    colors::{ColorCode, RGBColor},
+    framebuffers::FrameBuffer,
+};
 
 pub mod shapes;
 pub mod text;
@@ -10,6 +15,7 @@ pub trait GraphicsBackend {
     fn draw_line(&self, start: &Point, end: &Point, color: &ColorCode);
     fn width(&self) -> usize;
     fn height(&self) -> usize;
+    fn flush(&self) {}
 }
 
 pub struct Simplegraphics<'a> {
@@ -19,6 +25,26 @@ pub struct Simplegraphics<'a> {
 impl<'a> Simplegraphics<'a> {
     pub fn new(fb: &'a dyn FrameBuffer) -> Self {
         Self { fb }
+    }
+}
+
+impl DrawTarget for Simplegraphics<'_> {
+    type Color = RGBColor;
+    type Error = GraphicsError;
+    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
+    where
+        I: IntoIterator<Item = embedded_graphics::Pixel<Self::Color>>,
+    {
+        Err(GraphicsError::NotImplemented)
+    }
+}
+
+impl OriginDimensions for Simplegraphics<'_> {
+    fn size(&self) -> embedded_graphics::prelude::Size {
+        embedded_graphics::prelude::Size {
+            width: self.width() as u32,
+            height: self.height() as u32,
+        }
     }
 }
 
@@ -91,4 +117,10 @@ pub trait Glyph {
         self.render_colorized(&ColorCode::default(), gfx);
     }
     fn render_colorized(&self, color: &ColorCode, gfx: &dyn GraphicsBackend);
+}
+
+#[derive(Error, Debug)]
+pub enum GraphicsError {
+    #[error("not implemented")]
+    NotImplemented,
 }
