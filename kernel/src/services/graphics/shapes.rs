@@ -76,6 +76,37 @@ impl Glyph for Circle {
     }
 }
 
+impl From<embedded_graphics::primitives::Circle> for Circle {
+    fn from(value: embedded_graphics::primitives::Circle) -> Self {
+        Self {
+            center: value.center().into(),
+            rad: value.diameter as usize / 2,
+        }
+    }
+}
+
+impl From<&embedded_graphics::primitives::Circle> for Circle {
+    fn from(value: &embedded_graphics::primitives::Circle) -> Self {
+        Self {
+            center: value.center().into(),
+            rad: value.diameter as usize / 2,
+        }
+    }
+}
+
+impl From<Circle> for embedded_graphics::primitives::Circle {
+    fn from(value: Circle) -> Self {
+        let p: embedded_graphics::prelude::Point = value.center.into();
+        Self {
+            top_left: p - embedded_graphics::prelude::Point {
+                x: value.rad as i32,
+                y: value.rad as i32,
+            },
+            diameter: value.rad as u32 * 2,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Point {
     pub x: usize,
@@ -123,6 +154,32 @@ impl Add for &Point {
         Point {
             x: self.x + rhs.x,
             y: self.y + rhs.y,
+        }
+    }
+}
+
+impl From<embedded_graphics::prelude::Point> for Point {
+    fn from(value: embedded_graphics::prelude::Point) -> Self {
+        Self {
+            x: value.x.max(0) as usize,
+            y: value.y.max(0) as usize,
+        }
+    }
+}
+impl From<&embedded_graphics::prelude::Point> for Point {
+    fn from(value: &embedded_graphics::prelude::Point) -> Self {
+        Self {
+            x: value.x.max(0) as usize,
+            y: value.y.max(0) as usize,
+        }
+    }
+}
+
+impl From<Point> for embedded_graphics::prelude::Point {
+    fn from(value: Point) -> Self {
+        Self {
+            x: value.x as i32,
+            y: value.y as i32,
         }
     }
 }

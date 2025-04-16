@@ -5,9 +5,19 @@ extern crate tiny_os;
 
 use core::fmt::Write;
 
+use crossbeam::epoch::Pointable;
+use embedded_graphics::mono_font;
+use embedded_graphics::pixelcolor::Gray8;
+use embedded_graphics::prelude::GrayColor;
+use embedded_graphics::prelude::Primitive;
+use embedded_graphics::primitives::PrimitiveStyle;
+use embedded_graphics::primitives::StyledDrawable;
+use embedded_graphics::text::renderer::TextRenderer;
 use tiny_os::arch;
 use tiny_os::bootinfo;
+use tiny_os::drivers::graphics::colors::ColorCode;
 use tiny_os::drivers::graphics::framebuffers::LimineFrameBuffer;
+use tiny_os::drivers::graphics::text::draw_str;
 use tiny_os::kernel;
 use tiny_os::serial_println;
 use tiny_os::services::graphics::Glyph;
@@ -33,7 +43,7 @@ unsafe extern "C" fn kmain() -> ! {
     let mut fbs = bootinfo::get_framebuffers().unwrap();
     let fb = LimineFrameBuffer::try_new(&mut fbs);
     if let Some(fb) = fb {
-        let gfx = Simplegraphics::new(&fb);
+        let mut gfx = Simplegraphics::new(&fb);
         Line {
             start: tiny_os::services::graphics::shapes::Point { x: 0, y: 0 },
             end: tiny_os::services::graphics::shapes::Point { x: 200, y: 200 },
@@ -74,6 +84,36 @@ unsafe extern "C" fn kmain() -> ! {
             rad: 50,
         }
         .render_colorized(&tiny_os::drivers::graphics::colors::ColorCode::Yellow, &gfx);
+
+        let circle = embedded_graphics::primitives::Circle::new(
+            embedded_graphics::prelude::Point::new(275, 275),
+            50,
+        );
+        circle
+            .draw_styled(
+                &PrimitiveStyle::with_stroke(ColorCode::Magenta.into(), 1),
+                &mut gfx,
+            )
+            .unwrap();
+        let builder = embedded_graphics::mono_font::MonoTextStyleBuilder::new()
+            .text_color(ColorCode::White.into())
+            .background_color(ColorCode::Red.into())
+            .font(&mono_font::ascii::FONT_10X20)
+            .build();
+        builder
+            .draw_string(
+                "Hello World",
+                embedded_graphics::prelude::Point { x: 300, y: 300 },
+                embedded_graphics::text::Baseline::Top,
+                &mut gfx,
+            )
+            .unwrap();
+        draw_str(
+            "helloooeoeoeoe",
+            embedded_graphics::prelude::Point { x: 300, y: 350 },
+            &mut gfx,
+        )
+        .unwrap();
     }
 
     arch::hcf()

@@ -35,7 +35,10 @@ impl DrawTarget for Simplegraphics<'_> {
     where
         I: IntoIterator<Item = embedded_graphics::Pixel<Self::Color>>,
     {
-        Err(GraphicsError::NotImplemented)
+        for p in pixels {
+            self.fb.set_pixel(&p.1, p.0.x as usize, p.0.y as usize);
+        }
+        Ok(())
     }
 }
 
@@ -53,24 +56,7 @@ impl GraphicsBackend for Simplegraphics<'_> {
         self.fb.set_pixel(&color.into(), p.x, p.y);
     }
     fn draw_line(&self, start: &Point, end: &Point, color: &ColorCode) {
-        // TODO optimizei
-        //
-        // naive:
-
-        // let mut delta = end.clone() - start.clone();
-        // let l = Line {
-        //     start: start.clone(),
-        //     end: end.clone(),
-        // }
-        // .len();
-        // delta.x /= l;
-        // delta.y /= l;
-        // let c = color.into();
-        // for i in 0..l {
-        //     self.fb
-        //         .set_pixel(&c, start.x + i * delta.x, start.y + i * delta.y);
-        // }
-
+        // TODO optimize
         // bresenham:
 
         let color = color.into();
