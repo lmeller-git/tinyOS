@@ -32,6 +32,8 @@ crossbeam = { version = "0.8.4", features = ["alloc"], default-features = false 
 linked_list_allocator = "0.10.5"
 uart_16550 = "0.3.2"
 embedded-graphics = "0.8.1"
+conquer-once = { version = "0.4.0", default-features = false }
+once_cell = { version = "1.21.3", default-features = false }
 
 [profile.dev]
 panic = "abort"

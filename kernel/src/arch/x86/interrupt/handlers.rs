@@ -21,10 +21,10 @@ pub(super) extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: Inter
 }
 
 pub(super) extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {
-    // use x86_64::instructions::port::Port;
+    use x86_64::instructions::port::Port;
 
-    // let scancode = unsafe { Port::new(0x60).read() };
-    // add_scancode(scancode);
+    let scancode = unsafe { Port::new(0x60).read() };
+    _ = crate::drivers::keyboard::put_scancode(scancode);
 
     unsafe {
         PICS.lock()

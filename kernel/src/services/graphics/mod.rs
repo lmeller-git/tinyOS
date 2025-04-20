@@ -18,17 +18,26 @@ pub trait GraphicsBackend {
     fn flush(&self) {}
 }
 
-pub struct Simplegraphics<'a> {
-    fb: &'a dyn FrameBuffer,
+pub struct Simplegraphics<'a, B>
+where
+    B: FrameBuffer,
+{
+    fb: &'a B,
 }
 
-impl<'a> Simplegraphics<'a> {
-    pub fn new(fb: &'a dyn FrameBuffer) -> Self {
+impl<'a, B> Simplegraphics<'a, B>
+where
+    B: FrameBuffer,
+{
+    pub fn new(fb: &'a B) -> Self {
         Self { fb }
     }
 }
 
-impl DrawTarget for Simplegraphics<'_> {
+impl<B> DrawTarget for Simplegraphics<'_, B>
+where
+    B: FrameBuffer,
+{
     type Color = RGBColor;
     type Error = GraphicsError;
     fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
@@ -42,7 +51,10 @@ impl DrawTarget for Simplegraphics<'_> {
     }
 }
 
-impl OriginDimensions for Simplegraphics<'_> {
+impl<B> OriginDimensions for Simplegraphics<'_, B>
+where
+    B: FrameBuffer,
+{
     fn size(&self) -> embedded_graphics::prelude::Size {
         embedded_graphics::prelude::Size {
             width: self.width() as u32,
@@ -51,7 +63,10 @@ impl OriginDimensions for Simplegraphics<'_> {
     }
 }
 
-impl GraphicsBackend for Simplegraphics<'_> {
+impl<B> GraphicsBackend for Simplegraphics<'_, B>
+where
+    B: FrameBuffer,
+{
     fn draw_pixel(&self, p: &Point, color: &ColorCode) {
         self.fb.set_pixel(&color.into(), p.x, p.y);
     }

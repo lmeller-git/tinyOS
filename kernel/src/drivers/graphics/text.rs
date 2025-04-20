@@ -1,6 +1,10 @@
+use alloc::format;
 use embedded_graphics::{
-    prelude::{DrawTarget, Point},
-    text::renderer::TextRenderer,
+    Drawable,
+    image::Image,
+    mono_font::MonoTextStyle,
+    prelude::{DrawTarget, PixelColor, Point},
+    text::{Baseline, renderer::TextRenderer},
 };
 
 use crate::services::graphics::GraphicsError;
@@ -17,4 +21,41 @@ pub fn draw_str<T: DrawTarget<Color = RGBColor, Error = GraphicsError>>(
         ColorCode::White.into(),
     )
     .draw_string(s, pos, embedded_graphics::text::Baseline::Alphabetic, gfx)
+}
+
+pub trait CharRenderer<C>
+where
+    C: PixelColor,
+{
+    fn draw_char<D>(
+        &self,
+        char: char,
+        position: Point,
+        baseline: Baseline,
+        target: &mut D,
+    ) -> Result<Point, GraphicsError>
+    where
+        D: DrawTarget<Color = C, Error = GraphicsError>;
+}
+
+impl<C> CharRenderer<C> for MonoTextStyle<'_, C>
+where
+    C: PixelColor,
+{
+    fn draw_char<D>(
+        &self,
+        char: char,
+        position: Point,
+        baseline: Baseline,
+        target: &mut D,
+    ) -> Result<Point, GraphicsError>
+    where
+        D: DrawTarget<Color = C, Error = GraphicsError>,
+    {
+        // TODO
+        // let position = position - Point::new(0, self.baseline_offset(baseline));
+        // let glyph = self.font.glyph(char);
+        // Image::new(&glyph, position).draw(target);
+        self.draw_string(&format!("{}", char), position, baseline, target)
+    }
 }

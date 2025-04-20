@@ -5,14 +5,11 @@ extern crate tiny_os;
 
 use core::fmt::Write;
 
-use crossbeam::epoch::Pointable;
 use embedded_graphics::mono_font;
-use embedded_graphics::pixelcolor::Gray8;
-use embedded_graphics::prelude::GrayColor;
-use embedded_graphics::prelude::Primitive;
 use embedded_graphics::primitives::PrimitiveStyle;
 use embedded_graphics::primitives::StyledDrawable;
 use embedded_graphics::text::renderer::TextRenderer;
+use spin::Mutex;
 use tiny_os::arch;
 use tiny_os::bootinfo;
 use tiny_os::drivers::graphics::colors::ColorCode;
@@ -20,16 +17,26 @@ use tiny_os::drivers::graphics::framebuffers::LimineFrameBuffer;
 use tiny_os::drivers::graphics::text::draw_str;
 use tiny_os::kernel;
 use tiny_os::serial_println;
+use tiny_os::services::graphics;
 use tiny_os::services::graphics::Glyph;
+use tiny_os::services::graphics::GraphicsBackend;
 use tiny_os::services::graphics::Simplegraphics;
 use tiny_os::services::graphics::shapes::Circle;
 use tiny_os::services::graphics::shapes::Line;
 use tiny_os::services::graphics::shapes::Point;
 use tiny_os::services::graphics::shapes::Rect;
+use tiny_os::term;
 
 #[unsafe(no_mangle)]
 unsafe extern "C" fn kmain() -> ! {
     bootinfo::get();
+    term::init_term();
+
+    _ = term::FOOBAR
+        .try_get()
+        .unwrap()
+        .lock()
+        .write_str("hello world");
     arch::init();
     kernel::init_mem();
     arch::x86::vga::WRITER

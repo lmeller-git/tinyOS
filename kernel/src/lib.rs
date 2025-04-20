@@ -22,6 +22,7 @@ pub mod locks;
 pub mod requests;
 pub mod services;
 pub mod structures;
+pub mod term;
 
 #[cfg(feature = "test_run")]
 struct TestLogger {}

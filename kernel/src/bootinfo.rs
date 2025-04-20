@@ -61,6 +61,13 @@ pub fn get_framebuffers() -> Option<impl Iterator<Item = Framebuffer<'static>>> 
 }
 
 lazy_static! {
+    pub static ref FIRST_FRAMEBUFFER: Framebuffer<'static> = FRAMEBUFFER_REQUEST
+        .get_response()
+        .and_then(|f| f.framebuffers().next())
+        .unwrap();
+}
+
+lazy_static! {
     pub static ref MMAP_ENTRIES: &'static [&'static Entry] =
         MMAP_REQUEST.get_response().unwrap().entries();
 }
