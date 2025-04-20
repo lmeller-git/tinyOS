@@ -56,6 +56,8 @@ where
         // let position = position - Point::new(0, self.baseline_offset(baseline));
         // let glyph = self.font.glyph(char);
         // Image::new(&glyph, position).draw(target);
-        self.draw_string(&format!("{}", char), position, baseline, target)
+        let mut buf = [0u8; 4];
+        let s: &str = char.encode_utf8(&mut buf);
+        self.draw_string(s, position, baseline, target)
     }
 }

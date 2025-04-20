@@ -36,7 +36,8 @@ unsafe extern "C" fn kmain() -> ! {
         .try_get()
         .unwrap()
         .lock()
-        .write_str("hello world");
+        .write_str("hello world\thuhu\n\tohwell");
+    // arch::hcf();
     arch::init();
     kernel::init_mem();
     arch::x86::vga::WRITER

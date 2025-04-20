@@ -113,8 +113,8 @@ impl TermPosition {
 impl From<TermPosition> for Point {
     fn from(value: TermPosition) -> Self {
         Self {
-            x: value.row.as_ipixel(CHAR_HEIGHT),
-            y: value.col.as_ipixel(CHAR_WIDTH),
+            x: value.col.as_ipixel(CHAR_WIDTH),
+            y: value.row.as_ipixel(CHAR_HEIGHT),
         }
     }
 }
@@ -201,11 +201,66 @@ impl<const X: usize, const Y: usize> TermCharBuffer<X, Y> {
         todo!()
     }
 
-    fn redraw<B>(&self, cursor: &mut TermPosition, gfx: &mut B)
+    fn redraw<B>(&self, cursor: &mut TermPosition, gfx: &mut B, style: &MonoTextStyle<'_, RGBColor>)
     where
         B: DrawTarget<Color = RGBColor, Error = GraphicsError>,
     {
-        todo!()
+        let current = *cursor;
+        cursor.row.inner = 0;
+        for y in 0..Y {
+            cursor.row.inner = y;
+            for x in 0..X {
+                cursor.col.inner = x;
+                match self.inner[y][x] {
+                    None => {
+                        // assuming all cols up to the last filled one are filled, ie ch, ch, None, None, None, ...
+                        // this simply optimizes the loop slightly
+                        break;
+                    }
+                    Some(c) => {
+                        _ = style.draw_char(c, (*cursor).into(), Baseline::Top, gfx);
+                    }
+                }
+            }
+        }
+        *cursor = current;
+    }
+
+    fn force_push_smart(
+        &mut self,
+        ch: char,
+        cursor: &mut TermPosition,
+    ) -> Result<(), PositionError> {
+        let mut should_redraw = false;
+        while cursor.row.inner >= Y {
+            self.shift_up();
+            cursor.row.inner -= 1;
+            should_redraw = true;
+        }
+        if cursor.col.inner >= X {
+            self.shift_up();
+            cursor.row.inner = 0;
+            should_redraw = true;
+        }
+
+        self.inner[cursor.row.inner][cursor.col.inner].replace(ch);
+        cursor.col.inner += 1;
+        if should_redraw {
+            Err(PositionError::NewLine)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn push_dumb(&mut self, ch: char, cursor: &TermPosition) -> Result<(), PositionError> {
+        // if cursor.row.inner >= Y || cursor.col.inner >= X {
+        //     return Err(PositionError::OutOfBounds(*cursor));
+        // }
+        // self.inner[cursor.row.inner][cursor.col.inner].replace(ch);
+        // Ok(())
+        self.get_mut(cursor).map(|item| {
+            item.replace(ch);
+        })
     }
 }
 
@@ -251,17 +306,49 @@ where
 
     pub(super) fn clear_one(&mut self) {}
 
+    fn write_tab(&mut self) {
+        // tab == 3 spaces TODO add dynamic tab
+        for _ in 0..3 {
+            self.write_char(' ');
+        }
+    }
+
     fn write_char(&mut self, c: char) {
-        let res = self.str_style.draw_char(
-            c,
-            self.cursor.into(),
-            Baseline::Top,
-            &mut *self.backend.lock(),
-        );
-        self.cleanup(res);
+        match c {
+            '\n' => {
+                _ = self.buffer.push_dumb(c, &self.cursor);
+                self.newline();
+            }
+            '\t' => self.write_tab(),
+            '\r' => self.line_clear(),
+            _ => {
+                let res = self.str_style.draw_char(
+                    c,
+                    self.cursor.into(),
+                    Baseline::Top,
+                    &mut *self.backend.lock(),
+                );
+                // serial_println!("{:#?}", res);
+                // self.cleanup(res);
+                if self.buffer.force_push_smart(c, &mut self.cursor).is_err() {
+                    self.buffer.redraw(
+                        &mut self.cursor,
+                        &mut *self.backend.lock(),
+                        &self.str_style,
+                    );
+                };
+            }
+        }
+    }
+
+    fn write_char_iter(&mut self, chars: impl Iterator<Item = char>) {
+        for c in chars {
+            self.write_char(c);
+        }
     }
 
     fn cleanup(&mut self, draw_res: Result<Point, GraphicsError>) {
+        return;
         match draw_res {
             Ok(p) => match self.cursor.shift_checked(p) {
                 Ok(()) => {}
@@ -277,10 +364,10 @@ where
 
     pub(super) fn newline(&mut self) {
         self.buffer.shift_up();
-        // self.cursor.row = ;
+        self.cursor.row.inner += 1;
         self.cursor.col = 0.into();
         self.buffer
-            .redraw(&mut self.cursor, &mut *self.backend.lock());
+            .redraw(&mut self.cursor, &mut *self.backend.lock(), &self.str_style);
     }
 
     pub(super) fn prevline(&mut self) {
@@ -288,7 +375,7 @@ where
         self.buffer.shift_down();
         // self.cursor.col =
         self.buffer
-            .redraw(&mut self.cursor, &mut *self.backend.lock());
+            .redraw(&mut self.cursor, &mut *self.backend.lock(), &self.str_style);
     }
 }
 
@@ -297,13 +384,7 @@ where
     B: DrawTarget<Color = RGBColor, Error = GraphicsError>,
 {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        let res = self.str_style.draw_string(
-            s,
-            self.cursor.into(),
-            Baseline::Top,
-            &mut *self.backend.lock(),
-        );
-        self.cleanup(res);
+        self.write_char_iter(s.chars());
         Ok(())
     }
 }
