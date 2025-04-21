@@ -85,6 +85,11 @@ tests! {
         locks::tests::test_runner();
     }
 
+    #[runner]
+    fn test_term() {
+        term::tests::test_runner();
+    }
+
     #[test_case]
     fn t() {
         let mut v = Vec::new();

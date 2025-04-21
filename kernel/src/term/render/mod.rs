@@ -1,4 +1,5 @@
 #![allow(dead_code, unused_variables)]
+#![cfg_attr(feature = "test_run", allow(static_mut_refs))]
 
 use core::{
     fmt::Write,
@@ -9,6 +10,7 @@ use embedded_graphics::{
     prelude::{DrawTarget, Point},
     text::Baseline,
 };
+use os_macros::tests;
 use spin::Mutex;
 use thiserror::Error;
 
@@ -172,9 +174,10 @@ impl<const X: usize, const Y: usize> TermCharBuffer<X, Y> {
         B: DrawTarget<Color = RGBColor, Error = GraphicsError>,
     {
         for row in 0..Y - 1 {
-            self.inner[row] = self.inner[row + 1];
             let pixel = TermPixel { inner: row };
-            self.redraw_row_with_range(&pixel, gfx, style, self.get_range_from_row(&pixel));
+            let range = self.get_range_from_row(&pixel);
+            self.inner[row] = self.inner[row + 1];
+            self.redraw_row_with_range(&pixel, gfx, style, range);
         }
         self.clear_line(&TermPixel { inner: Y - 1 });
     }
@@ -303,6 +306,13 @@ impl<const X: usize, const Y: usize> TermCharBuffer<X, Y> {
             item.replace(ch);
         })
     }
+
+    fn is_empty(&self) -> bool {
+        !self
+            .inner
+            .iter()
+            .any(|row| row.iter().any(|item| item.is_some()))
+    }
 }
 
 pub struct BasicTermRender<'a, B, const X: usize, const Y: usize>
@@ -363,7 +373,7 @@ where
         match c {
             '\n' => {
                 // This will try to draw /n, which is ?
-                _ = self.buffer.push_dumb(c, &self.cursor);
+                // _ = self.buffer.push_dumb(c, &self.cursor);
                 self.newline();
             }
             '\t' => self.write_tab(),
@@ -438,5 +448,88 @@ where
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         self.write_char_iter(s.chars());
         Ok(())
+    }
+}
+
+tests! {
+    #[test_case]
+    fn print_to_buffer() {
+        // SAFETY This is safe, as long it is not run parallely to some other functionality accessing FOOBAR / BAR, and init_term() was run in the same execution context
+        use crate::{println, print};
+        unsafe { super::super::BAR.clear() };
+        unsafe { assert!(super::super::BAR.is_empty()) };
+        unsafe {
+            super::super::FOOBAR.get_unchecked().lock().cursor.row.inner = 0;
+            super::super::FOOBAR.get_unchecked().lock().cursor.col.inner = 0;
+        };
+        println!("test");
+        let mut row = [None; super::super::MAX_CHARS_X];
+        row[0].replace('t');
+        row[1].replace('e');
+        row[2].replace('s');
+        row[3].replace('t');
+        unsafe { assert_eq!(row, super::super::BAR.inner[0]) };
+        unsafe { assert_eq!(super::super::FOOBAR.get_unchecked().lock().cursor.row, TermPixel{inner: 1}) };
+        unsafe { assert_eq!(super::super::FOOBAR.get_unchecked().lock().cursor.col, TermPixel{inner: 0}) };
+        print!("test2");
+        unsafe { assert_eq!(row, super::super::BAR.inner[0]) };
+        row[4].replace('2');
+        unsafe { assert_eq!(row, super::super::BAR.inner[1]) };
+        unsafe { assert_eq!(super::super::FOOBAR.get_unchecked().lock().cursor.row, TermPixel{inner: 1}) };
+        unsafe { assert_eq!(super::super::FOOBAR.get_unchecked().lock().cursor.col, TermPixel{inner: 5}) };
+        print!("hey");
+        row[5].replace('h');
+        row[6].replace('e');
+        row[7].replace('y');
+        unsafe { assert_eq!(row, super::super::BAR.inner[1]) };
+        unsafe { assert_eq!(super::super::FOOBAR.get_unchecked().lock().cursor.row, TermPixel{inner: 1}) };
+        unsafe { assert_eq!(super::super::FOOBAR.get_unchecked().lock().cursor.col, TermPixel{inner: 8}) };
+    }
+
+    #[test_case]
+    fn buf_shifts() {
+        // SAFETY This is safe, as long it is not run parallely to some other functionality accessing FOOBAR / BAR, and init_term() was run in the same execution context
+        use crate::println;
+        unsafe { super::super::BAR.clear() };
+        unsafe { assert!(super::super::BAR.is_empty()) };
+        unsafe {
+            super::super::FOOBAR.get_unchecked().lock().cursor.row.inner = 0;
+            super::super::FOOBAR.get_unchecked().lock().cursor.col.inner = 0;
+        };
+
+        println!();
+        println!("test");
+        println!("42");
+        println!("world");
+
+        unsafe { super::super::BAR.shift_up() };
+
+        let mut row = [None; super::super::MAX_CHARS_X];
+        row[0].replace('t');
+        row[1].replace('e');
+        row[2].replace('s');
+        row[3].replace('t');
+
+        unsafe { assert_eq!(row, super::super::BAR.inner[0]) };
+        unsafe { super::super::BAR.shift_up() };
+
+        row[0].replace('4');
+        row[1].replace('2');
+        row[2] = None;
+        row[3] = None;
+
+        unsafe { assert_eq!(row, super::super::BAR.inner[0]) };
+        unsafe { super::super::BAR.shift_up() };
+
+        row[0].replace('w');
+        row[1].replace('o');
+        row[2].replace('r');
+        row[3].replace('l');
+        row[4].replace('d');
+
+        unsafe { assert_eq!(row, super::super::BAR.inner[0]) };
+        unsafe { super::super::BAR.shift_up() };
+        unsafe { assert!(super::super::BAR.is_empty()) };
+        //TODO also test/implement shift_down
     }
 }

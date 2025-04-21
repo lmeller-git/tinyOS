@@ -2,11 +2,11 @@
 
 use crate::{
     drivers::graphics::{GLOBAL_FRAMEBUFFER, framebuffers::GlobalFrameBuffer},
-    serial_println,
     services::graphics,
 };
 use conquer_once::spin::OnceCell;
 use core::fmt::{Arguments, Write};
+use os_macros::tests;
 use render::BasicTermRender;
 use spin::Mutex;
 
@@ -53,8 +53,14 @@ pub fn init_term() {
 #[doc(hidden)]
 pub fn _print(args: Arguments) {
     // SAFETY must make sure that this is not calles prior to init_term()
-    serial_println!("a: {}", args);
     unsafe {
         _ = write!(FOOBAR.get_unchecked().lock(), "{}", args);
+    }
+}
+
+tests! {
+    #[runner]
+    fn test_buffer() {
+        render::tests::test_runner();
     }
 }

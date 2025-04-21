@@ -37,6 +37,10 @@ unsafe extern "C" fn kmain() -> ! {
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
 
+    println!(
+        "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nuhuhuh\n\n\nr\n\nn\nr\nr\nr\nr\nr\nr\n\n\n\nr\n\nr\n\n\nnnr\nr\nr\n\n"
+    );
+
     let mut fbs = bootinfo::get_framebuffers().unwrap();
     let fb = LimineFrameBuffer::try_new(&mut fbs);
     if let Some(fb) = fb {
