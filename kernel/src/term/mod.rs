@@ -1,4 +1,4 @@
-use core::fmt::Write;
+use core::fmt::{Arguments, Write};
 
 use crate::{
     drivers::graphics::{
@@ -20,10 +20,12 @@ mod parse;
 mod render;
 
 // this is the max chars of the current GLOBAL_FRAMBUFFER using the current font in term/render/mod.rs
-const MAX_CHARS: usize = 51;
+// check these
+const MAX_CHARS_X: usize = 102;
+const MAX_CHARS_Y: usize = 38;
 
 pub type EarlyTermBackend<'a> = Mutex<
-    BasicTermRender<'a, graphics::Simplegraphics<'a, GlobalFrameBuffer>, MAX_CHARS, MAX_CHARS>,
+    BasicTermRender<'a, graphics::Simplegraphics<'a, GlobalFrameBuffer>, MAX_CHARS_X, MAX_CHARS_Y>,
 >;
 
 pub struct EarlyBootTerm<'a> {
@@ -47,20 +49,40 @@ impl Write for EarlyBootTerm<'_> {
 static FOO: OnceCell<Mutex<graphics::Simplegraphics<'static, GlobalFrameBuffer>>> =
     OnceCell::uninit();
 
-pub static FOOBAR: OnceCell<
+static mut BAR: render::TermCharBuffer<MAX_CHARS_X, MAX_CHARS_Y> = render::TermCharBuffer::new();
+
+static FOOBAR: OnceCell<
     Mutex<
         BasicTermRender<
             'static,
             graphics::Simplegraphics<'static, GlobalFrameBuffer>,
-            MAX_CHARS,
-            MAX_CHARS,
+            MAX_CHARS_X,
+            MAX_CHARS_Y,
         >,
     >,
 > = OnceCell::uninit();
 
 pub fn init_term() {
     _ = FOO.try_init_once(|| Mutex::new(graphics::Simplegraphics::new(&GLOBAL_FRAMEBUFFER)));
-    _ = FOOBAR.try_init_once(|| Mutex::new(BasicTermRender::new(FOO.try_get().unwrap())));
+    // SAFETY FOO is guaranteed to be initialized at this point. BAR is used ONLY by FOOBAR, which is only initialized once (here). This needs to be enforced here
+    unsafe {
+        _ = FOOBAR.try_init_once(|| {
+            Mutex::new(BasicTermRender::<_, MAX_CHARS_X, MAX_CHARS_Y>::new(
+                FOO.get_unchecked(),
+                #[allow(static_mut_refs)]
+                &mut BAR,
+            ))
+        });
+    }
+}
+
+#[doc(hidden)]
+pub fn _print(args: Arguments) {
+    // SAFETY must make sure that this is not calles prior to init_term()
+    serial_println!("a: {}", args);
+    unsafe {
+        _ = write!(FOOBAR.get_unchecked().lock(), "{}", args);
+    }
 }
 
 // lazy_static! {

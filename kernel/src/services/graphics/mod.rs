@@ -109,7 +109,7 @@ where
         self.fb.width()
     }
     fn height(&self) -> usize {
-        self.fb.width()
+        self.fb.height()
     }
 }
 

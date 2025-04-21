@@ -1,6 +1,6 @@
 use core::{
     fmt::Write,
-    ops::{Add, Index},
+    ops::{Add, Index, Range},
 };
 use embedded_graphics::{
     mono_font::{MonoTextStyle, MonoTextStyleBuilder, ascii},
@@ -23,6 +23,7 @@ mod layout;
 mod text;
 
 const CHAR_WIDTH: usize = 10;
+// TODO this does not fit. Is the bounding box wrong??
 const CHAR_HEIGHT: usize = 20;
 
 #[derive(Default, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
@@ -78,8 +79,8 @@ impl TermPosition {
         Self {
             row: row.into(),
             col: col.into(),
-            max_row: xbounds.into(),
-            max_col: ybounds.into(),
+            max_row: ybounds.into(),
+            max_col: xbounds.into(),
         }
     }
 
@@ -130,12 +131,12 @@ enum PositionError {
 }
 
 #[derive(Debug)]
-struct TermCharBuffer<const X: usize, const Y: usize> {
+pub(super) struct TermCharBuffer<const X: usize, const Y: usize> {
     inner: [[Option<char>; X]; Y],
 }
 
 impl<const X: usize, const Y: usize> TermCharBuffer<X, Y> {
-    fn new() -> Self {
+    pub(super) const fn new() -> Self {
         Self {
             inner: [[None; X]; Y],
         }
@@ -166,11 +167,32 @@ impl<const X: usize, const Y: usize> TermCharBuffer<X, Y> {
         self.clear_line(&TermPixel { inner: Y - 1 });
     }
 
+    fn shift_up_and_redraw<B>(&mut self, gfx: &mut B, style: &MonoTextStyle<'_, RGBColor>)
+    where
+        B: DrawTarget<Color = RGBColor, Error = GraphicsError>,
+    {
+        for row in 0..Y - 1 {
+            self.inner[row] = self.inner[row + 1];
+            let pixel = TermPixel { inner: row };
+            self.redraw_row_with_range(&pixel, gfx, style, self.get_range_from_row(&pixel));
+        }
+        self.clear_line(&TermPixel { inner: Y - 1 });
+    }
+
     fn shift_down(&mut self) {
         for row in (1..Y).rev() {
             self.inner[row] = self.inner[row - 1];
         }
         self.clear_line(&TermPixel { inner: 0 });
+    }
+
+    fn get_range_from_row(&self, row: &TermPixel) -> Range<usize> {
+        for (i, item) in self.inner[row.inner].iter().enumerate() {
+            if item.is_none() {
+                return 0..i;
+            }
+        }
+        0..0
     }
 
     fn clear(&mut self) {
@@ -194,6 +216,28 @@ impl<const X: usize, const Y: usize> TermCharBuffer<X, Y> {
         todo!()
     }
 
+    fn redraw_row_with_range<B>(
+        &mut self,
+        row: &TermPixel,
+        gfx: &mut B,
+        style: &MonoTextStyle<'_, RGBColor>,
+        range: Range<usize>,
+    ) where
+        B: DrawTarget<Color = RGBColor, Error = GraphicsError>,
+    {
+        for col in range {
+            _ = style.draw_char(
+                self.inner[row.inner][col].unwrap_or(' '),
+                Point::new(
+                    TermPixel { inner: col }.as_ipixel(CHAR_WIDTH),
+                    row.as_ipixel(CHAR_HEIGHT),
+                ),
+                Baseline::Top,
+                gfx,
+            );
+        }
+    }
+
     fn redraw_col<B>(&mut self, col: &TermPixel, gfx: &mut B)
     where
         B: DrawTarget<Color = RGBColor, Error = GraphicsError>,
@@ -205,6 +249,8 @@ impl<const X: usize, const Y: usize> TermCharBuffer<X, Y> {
     where
         B: DrawTarget<Color = RGBColor, Error = GraphicsError>,
     {
+        // This method is EXTREMELY inefficient, as it has no assumptions. Use only if no other option
+        _ = gfx.clear(ColorCode::default().into());
         let current = *cursor;
         cursor.row.inner = 0;
         for y in 0..Y {
@@ -216,8 +262,10 @@ impl<const X: usize, const Y: usize> TermCharBuffer<X, Y> {
                         // assuming all cols up to the last filled one are filled, ie ch, ch, None, None, None, ...
                         // this simply optimizes the loop slightly
                         break;
+                        // _ = style.draw_char(' ', (*cursor).into(), Baseline::Top, gfx);
                     }
                     Some(c) => {
+                        // serial_println!("{:#?}", cursor);
                         _ = style.draw_char(c, (*cursor).into(), Baseline::Top, gfx);
                     }
                 }
@@ -239,7 +287,7 @@ impl<const X: usize, const Y: usize> TermCharBuffer<X, Y> {
         }
         if cursor.col.inner >= X {
             self.shift_up();
-            cursor.row.inner = 0;
+            cursor.col.inner = 0;
             should_redraw = true;
         }
 
@@ -271,30 +319,35 @@ where
     backend: &'a Mutex<B>,
     cursor: TermPosition,
     str_style: MonoTextStyle<'a, RGBColor>,
-    buffer: TermCharBuffer<X, Y>,
+    buffer: &'a mut TermCharBuffer<X, Y>,
 }
 
 impl<'a, B, const X: usize, const Y: usize> BasicTermRender<'a, B, X, Y>
 where
     B: DrawTarget<Color = RGBColor, Error = GraphicsError>,
 {
-    pub(super) fn new(gfx: &'a Mutex<B>) -> Self {
+    pub(super) fn new(gfx: &'a Mutex<B>, buffer: &'a mut TermCharBuffer<X, Y>) -> Self {
         let bounds = { gfx.lock().bounding_box() };
-
+        serial_println!("bounds: {:#?}", bounds);
+        serial_println!(
+            "{}, {}",
+            (bounds.size.width as usize) / CHAR_WIDTH,
+            (bounds.size.height as usize) / CHAR_HEIGHT
+        );
         Self {
             backend: gfx,
             cursor: TermPosition::new(
                 0,
                 0,
-                (bounds.size.width as usize) / CHAR_WIDTH,
-                (bounds.size.height as usize) / CHAR_HEIGHT,
+                (bounds.size.width as usize) / CHAR_WIDTH, // x
+                (bounds.size.height as usize) / CHAR_HEIGHT - 1, // y
             ),
             str_style: MonoTextStyleBuilder::new()
                 .font(&ascii::FONT_10X20)
                 .background_color(ColorCode::Black.into())
                 .text_color(ColorCode::White.into())
                 .build(),
-            buffer: TermCharBuffer::new(),
+            buffer,
         }
     }
 
@@ -314,14 +367,17 @@ where
     }
 
     fn write_char(&mut self, c: char) {
+        // serial_println!("c: {}", c);
         match c {
             '\n' => {
+                // This will try to draw /n, which is ?
                 _ = self.buffer.push_dumb(c, &self.cursor);
                 self.newline();
             }
             '\t' => self.write_tab(),
             '\r' => self.line_clear(),
             _ => {
+                // serial_println!("cursor: {:#?}", self.cursor);
                 let res = self.str_style.draw_char(
                     c,
                     self.cursor.into(),
@@ -331,11 +387,17 @@ where
                 // serial_println!("{:#?}", res);
                 // self.cleanup(res);
                 if self.buffer.force_push_smart(c, &mut self.cursor).is_err() {
-                    self.buffer.redraw(
-                        &mut self.cursor,
+                    self.buffer.redraw_row_with_range(
+                        &self.cursor.max_row,
                         &mut *self.backend.lock(),
                         &self.str_style,
+                        self.buffer.get_range_from_row(&self.cursor.max_row),
                     );
+                    // self.buffer.redraw(
+                    //     &mut self.cursor,
+                    //     &mut *self.backend.lock(),
+                    //     &self.str_style,
+                    // );
                 };
             }
         }
@@ -363,11 +425,15 @@ where
     }
 
     pub(super) fn newline(&mut self) {
-        self.buffer.shift_up();
-        self.cursor.row.inner += 1;
+        // serial_println!("gets clalde");
+        if self.cursor.row.inner >= Y - 1 {
+            self.buffer
+                .shift_up_and_redraw(&mut *self.backend.lock(), &self.str_style);
+        } else {
+            self.cursor.row.inner += 1;
+        }
+        // serial_println!("{:#?}", self.cursor);
         self.cursor.col = 0.into();
-        self.buffer
-            .redraw(&mut self.cursor, &mut *self.backend.lock(), &self.str_style);
     }
 
     pub(super) fn prevline(&mut self) {
