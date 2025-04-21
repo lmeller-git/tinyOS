@@ -16,6 +16,7 @@ CARGO_TARGET_DIR ?= target/
 CARGO_FLAGS ?=
 RUST_PROFILE ?= dev
 KERNEL_BIN ?= kernel
+QEMU_WRAPPER = ./run_qemu.sh
 
 .PHONY: all
 all: $(IMAGE_NAME).iso
@@ -32,13 +33,13 @@ run-hdd: run-hdd-$(KARCH)
 
 .PHONY: run-x86_64
 run-x86_64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).iso
-	qemu-system-$(KARCH) \
+	$(QEMU_WRAPPER) qemu-system-$(KARCH) \
 		-M q35 \
 		-cdrom $(IMAGE_NAME).iso \
 		-device isa-debug-exit,iobase=0xf4,iosize=0x04 \
 		-serial stdio \
 		$(QEMUFLAGS)
-		
+	
 # TODO: original command. Get this to work by doing correct requests to limine (need access to some hardware)
 # run-x86_64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).iso
 # 	qemu-system-$(KARCH) \
