@@ -3,13 +3,10 @@
 
 extern crate tiny_os;
 
-use core::fmt::Write;
-
 use embedded_graphics::mono_font;
 use embedded_graphics::primitives::PrimitiveStyle;
 use embedded_graphics::primitives::StyledDrawable;
 use embedded_graphics::text::renderer::TextRenderer;
-use spin::Mutex;
 use tiny_os::arch;
 use tiny_os::bootinfo;
 use tiny_os::cross_println;
@@ -19,9 +16,7 @@ use tiny_os::drivers::graphics::text::draw_str;
 use tiny_os::kernel;
 use tiny_os::println;
 use tiny_os::serial_println;
-use tiny_os::services::graphics;
 use tiny_os::services::graphics::Glyph;
-use tiny_os::services::graphics::GraphicsBackend;
 use tiny_os::services::graphics::Simplegraphics;
 use tiny_os::services::graphics::shapes::Circle;
 use tiny_os::services::graphics::shapes::Line;
@@ -33,21 +28,15 @@ use tiny_os::term;
 unsafe extern "C" fn kmain() -> ! {
     bootinfo::get();
     term::init_term();
-
     println!("terminal started");
-
-    // arch::hcf();
     arch::init();
     kernel::init_mem();
+
+    cross_println!("OS booted succesfullly");
+
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
-    println!("wtf");
-    println!(
-        "h\nk\nl\nl\nh\nu\nh\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\
-        n\n\n\n\n\n\n\n\n\n\n\n\nu\nw\no\nr\nl\nd\n"
-    );
-    // serial_println!("OS booted succesfully");
-    cross_println!("OS booted succesfullly");
+
     let mut fbs = bootinfo::get_framebuffers().unwrap();
     let fb = LimineFrameBuffer::try_new(&mut fbs);
     if let Some(fb) = fb {

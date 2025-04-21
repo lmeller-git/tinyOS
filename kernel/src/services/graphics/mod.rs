@@ -1,5 +1,5 @@
 use embedded_graphics::prelude::{DrawTarget, OriginDimensions};
-use shapes::{Line, Point};
+use shapes::Point;
 use thiserror::Error;
 
 use crate::drivers::graphics::{

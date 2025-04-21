@@ -1,7 +1,4 @@
-use alloc::format;
 use embedded_graphics::{
-    Drawable,
-    image::Image,
     mono_font::MonoTextStyle,
     prelude::{DrawTarget, PixelColor, Point},
     text::{Baseline, renderer::TextRenderer},

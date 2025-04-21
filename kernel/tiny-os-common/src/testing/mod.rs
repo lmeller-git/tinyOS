@@ -40,6 +40,7 @@ where
     }
 }
 
+#[allow(unused_imports)]
 #[cfg(feature = "test_run")]
 pub mod tests {
     use super::*;

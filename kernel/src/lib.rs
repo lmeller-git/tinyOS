@@ -4,14 +4,12 @@
 pub extern crate alloc;
 
 #[cfg(feature = "test_run")]
+use alloc::vec::Vec;
+#[cfg(feature = "test_run")]
 use core::panic::PanicInfo;
 
-use alloc::vec::Vec;
-//#[cfg(feature = "test_run")]
 use os_macros::tests;
 use thiserror::Error;
-#[cfg(feature = "test_run")]
-use tiny_os_common::testing::TestCase;
 
 pub mod arch;
 pub mod bootinfo;
@@ -71,7 +69,6 @@ pub fn exit_qemu(exit_code: QemuExitCode) {
 #[derive(Error, Debug)]
 pub enum KernelError {}
 
-// #[cfg(feature = "test_run")]
 tests! {
     #[test_case]
     fn trivial() {

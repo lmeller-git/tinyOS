@@ -52,7 +52,7 @@ run-x86_64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).
 
 .PHONY: run-hdd-x86_64
 run-hdd-x86_64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).hdd
-	qemu-system-$(KARCH) \
+	$(QEMU_WRAPPER) qemu-system-$(KARCH) \
 		-M q35 \
 		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-$(KARCH).fd,readonly=on \
 		-drive if=pflash,unit=1,format=raw,file=ovmf/ovmf-vars-$(KARCH).fd \
@@ -61,7 +61,7 @@ run-hdd-x86_64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NA
 
 .PHONY: run-aarch64
 run-aarch64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).iso
-	qemu-system-$(KARCH) \
+	$(QEMU_WRAPPER) qemu-system-$(KARCH) \
 		-M virt \
 		-cpu cortex-a72 \
 		-device ramfb \
@@ -75,7 +75,7 @@ run-aarch64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME)
 
 .PHONY: run-hdd-aarch64
 run-hdd-aarch64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).hdd
-	qemu-system-$(KARCH) \
+	$(QEMU_WRAPPER) qemu-system-$(KARCH) \
 		-M virt \
 		-cpu cortex-a72 \
 		-device ramfb \
@@ -89,7 +89,7 @@ run-hdd-aarch64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_N
 
 .PHONY: run-riscv64
 run-riscv64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).iso
-	qemu-system-$(KARCH) \
+	$(QEMU_WRAPPER) qemu-system-$(KARCH) \
 		-M virt \
 		-cpu rv64 \
 		-device ramfb \
@@ -103,7 +103,7 @@ run-riscv64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME)
 
 .PHONY: run-hdd-riscv64
 run-hdd-riscv64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).hdd
-	qemu-system-$(KARCH) \
+	$(QEMU_WRAPPER) qemu-system-$(KARCH) \
 		-M virt \
 		-cpu rv64 \
 		-device ramfb \
@@ -117,7 +117,7 @@ run-hdd-riscv64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_N
 
 .PHONY: run-loongarch64
 run-loongarch64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).iso
-	qemu-system-$(KARCH) \
+	$(QEMU_WRAPPER) qemu-system-$(KARCH) \
 		-M virt \
 		-cpu la464 \
 		-device ramfb \
@@ -131,7 +131,7 @@ run-loongarch64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_N
 
 .PHONY: run-hdd-loongarch64
 run-hdd-loongarch64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).hdd
-	qemu-system-$(KARCH) \
+	$(QEMU_WRAPPER) qemu-system-$(KARCH) \
 		-M virt \
 		-cpu la464 \
 		-device ramfb \
@@ -146,7 +146,7 @@ run-hdd-loongarch64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMA
 
 .PHONY: run-bios
 run-bios: $(IMAGE_NAME).iso
-	qemu-system-$(KARCH) \
+	$(QEMU_WRAPPER) qemu-system-$(KARCH) \
 		-M q35 \
 		-cdrom $(IMAGE_NAME).iso \
 		-boot d \
@@ -154,7 +154,7 @@ run-bios: $(IMAGE_NAME).iso
 
 .PHONY: run-hdd-bios
 run-hdd-bios: $(IMAGE_NAME).hdd
-	qemu-system-$(KARCH) \
+	$(QEMU_WRAPPER) qemu-system-$(KARCH) \
 		-M q35 \
 		-hda $(IMAGE_NAME).hdd \
 		$(QEMUFLAGS)

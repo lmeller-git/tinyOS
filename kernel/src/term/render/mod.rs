@@ -1,11 +1,13 @@
+#![allow(dead_code, unused_variables)]
+
 use core::{
     fmt::Write,
-    ops::{Add, Index, Range},
+    ops::{Add, Range},
 };
 use embedded_graphics::{
     mono_font::{MonoTextStyle, MonoTextStyleBuilder, ascii},
-    prelude::{DrawTarget, DrawTargetExt, Point},
-    text::{Baseline, renderer::TextRenderer},
+    prelude::{DrawTarget, Point},
+    text::Baseline,
 };
 use spin::Mutex;
 use thiserror::Error;
@@ -13,17 +15,15 @@ use thiserror::Error;
 use crate::{
     drivers::graphics::{
         colors::{ColorCode, RGBColor},
-        text::{CharRenderer, draw_str},
+        text::CharRenderer,
     },
-    serial_println,
-    services::graphics::{GraphicsBackend, GraphicsError},
+    services::graphics::GraphicsError,
 };
 
 mod layout;
 mod text;
 
 const CHAR_WIDTH: usize = 10;
-// TODO this does not fit. Is the bounding box wrong??
 const CHAR_HEIGHT: usize = 20;
 
 #[derive(Default, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
@@ -262,10 +262,8 @@ impl<const X: usize, const Y: usize> TermCharBuffer<X, Y> {
                         // assuming all cols up to the last filled one are filled, ie ch, ch, None, None, None, ...
                         // this simply optimizes the loop slightly
                         break;
-                        // _ = style.draw_char(' ', (*cursor).into(), Baseline::Top, gfx);
                     }
                     Some(c) => {
-                        // serial_println!("{:#?}", cursor);
                         _ = style.draw_char(c, (*cursor).into(), Baseline::Top, gfx);
                     }
                 }
@@ -301,11 +299,6 @@ impl<const X: usize, const Y: usize> TermCharBuffer<X, Y> {
     }
 
     fn push_dumb(&mut self, ch: char, cursor: &TermPosition) -> Result<(), PositionError> {
-        // if cursor.row.inner >= Y || cursor.col.inner >= X {
-        //     return Err(PositionError::OutOfBounds(*cursor));
-        // }
-        // self.inner[cursor.row.inner][cursor.col.inner].replace(ch);
-        // Ok(())
         self.get_mut(cursor).map(|item| {
             item.replace(ch);
         })
@@ -328,12 +321,12 @@ where
 {
     pub(super) fn new(gfx: &'a Mutex<B>, buffer: &'a mut TermCharBuffer<X, Y>) -> Self {
         let bounds = { gfx.lock().bounding_box() };
-        serial_println!("bounds: {:#?}", bounds);
-        serial_println!(
-            "{}, {}",
-            (bounds.size.width as usize) / CHAR_WIDTH,
-            (bounds.size.height as usize) / CHAR_HEIGHT
-        );
+        // MAX_CHARS_X and MAX_CHARS_Y :
+        // serial_println!(
+        //     "{}, {}",
+        //     (bounds.size.width as usize) / CHAR_WIDTH,
+        //     (bounds.size.height as usize) / CHAR_HEIGHT
+        // );
         Self {
             backend: gfx,
             cursor: TermPosition::new(
@@ -367,7 +360,6 @@ where
     }
 
     fn write_char(&mut self, c: char) {
-        // serial_println!("c: {}", c);
         match c {
             '\n' => {
                 // This will try to draw /n, which is ?
@@ -377,14 +369,12 @@ where
             '\t' => self.write_tab(),
             '\r' => self.line_clear(),
             _ => {
-                // serial_println!("cursor: {:#?}", self.cursor);
                 let res = self.str_style.draw_char(
                     c,
                     self.cursor.into(),
                     Baseline::Top,
                     &mut *self.backend.lock(),
                 );
-                // serial_println!("{:#?}", res);
                 // self.cleanup(res);
                 if self.buffer.force_push_smart(c, &mut self.cursor).is_err() {
                     self.buffer.redraw_row_with_range(
@@ -393,11 +383,6 @@ where
                         &self.str_style,
                         self.buffer.get_range_from_row(&self.cursor.max_row),
                     );
-                    // self.buffer.redraw(
-                    //     &mut self.cursor,
-                    //     &mut *self.backend.lock(),
-                    //     &self.str_style,
-                    // );
                 };
             }
         }
@@ -409,7 +394,10 @@ where
         }
     }
 
+    #[allow(unreachable_code)]
     fn cleanup(&mut self, draw_res: Result<Point, GraphicsError>) {
+        // TODO
+        todo!();
         return;
         match draw_res {
             Ok(p) => match self.cursor.shift_checked(p) {
@@ -425,21 +413,19 @@ where
     }
 
     pub(super) fn newline(&mut self) {
-        // serial_println!("gets clalde");
         if self.cursor.row.inner >= Y - 1 {
             self.buffer
                 .shift_up_and_redraw(&mut *self.backend.lock(), &self.str_style);
         } else {
             self.cursor.row.inner += 1;
         }
-        // serial_println!("{:#?}", self.cursor);
         self.cursor.col = 0.into();
     }
 
     pub(super) fn prevline(&mut self) {
+        // TODO
         // shifts all content down by one line
         self.buffer.shift_down();
-        // self.cursor.col =
         self.buffer
             .redraw(&mut self.cursor, &mut *self.backend.lock(), &self.str_style);
     }
