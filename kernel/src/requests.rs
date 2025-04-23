@@ -1,6 +1,7 @@
 use limine::BaseRevision;
 use limine::paging;
 use limine::request::HhdmRequest;
+use limine::request::RsdpRequest;
 use limine::request::{
     FramebufferRequest, MemoryMapRequest, PagingModeRequest, RequestsEndMarker,
     RequestsStartMarker, StackSizeRequest,
@@ -42,6 +43,10 @@ pub static PAGING_MODE_REQUEST: PagingModeRequest =
 #[used]
 #[unsafe(link_section = ".requests")]
 pub static HHDM_REQUEST: HhdmRequest = HhdmRequest::new();
+
+#[used]
+#[unsafe(link_section = ".requests")]
+pub static RSDP_REQUEST: RsdpRequest = RsdpRequest::new();
 
 /// Define the stand and end markers for Limine requests.
 #[used]

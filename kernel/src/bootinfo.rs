@@ -25,6 +25,10 @@ pub struct UsableMRegion {
     pub length: u64,
 }
 
+pub fn rdsp_addr() -> usize {
+    RSDP_REQUEST.get_response().unwrap().address()
+}
+
 pub fn mmap_entries() {
     // MMAP_REQUEST
 }

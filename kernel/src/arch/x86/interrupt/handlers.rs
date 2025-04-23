@@ -1,6 +1,8 @@
 use pic8259::ChainedPics;
 use x86_64::structures::idt::{InterruptStackFrame, PageFaultErrorCode};
 
+use crate::serial_println;
+
 pub(super) extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
     // println!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
     panic!("breakpoint hit, but not supported: {:?}", stack_frame);
@@ -14,6 +16,7 @@ pub(super) extern "x86-interrupt" fn double_fault_handler(
 }
 
 pub(super) extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
+    serial_println!("timer");
     unsafe {
         PICS.lock()
             .notify_end_of_interrupt(InterruptIndex::Timer as u8);
@@ -24,6 +27,7 @@ pub(super) extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: In
     use x86_64::instructions::port::Port;
 
     let scancode = unsafe { Port::new(0x60).read() };
+    serial_println!("code: {:#?}", scancode);
     _ = crate::drivers::keyboard::put_scancode(scancode);
 
     unsafe {

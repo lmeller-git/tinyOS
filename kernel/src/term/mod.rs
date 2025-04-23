@@ -1,7 +1,11 @@
 #![allow(dead_code)]
 
 use crate::{
-    drivers::graphics::{GLOBAL_FRAMEBUFFER, framebuffers::GlobalFrameBuffer},
+    drivers::{
+        graphics::{GLOBAL_FRAMEBUFFER, framebuffers::GlobalFrameBuffer},
+        keyboard::{KEYBOARD_BUFFER, parse_scancode},
+    },
+    print, serial_println,
     services::graphics,
 };
 use conquer_once::spin::OnceCell;
@@ -47,6 +51,27 @@ pub fn init_term() {
                 &mut BAR,
             ))
         });
+    }
+}
+
+pub fn synced_keyboard_listener() {
+    loop {
+        // serial_println!("w");
+        if let Ok(v) = KEYBOARD_BUFFER.pop() {
+            if let Ok(res) = parse_scancode(v) {
+                serial_println!("{:#?}", res);
+                match res {
+                    pc_keyboard::DecodedKey::RawKey(_k) => {}
+                    pc_keyboard::DecodedKey::Unicode(c) => match c {
+                        '\u{08}' => unsafe {
+                            FOOBAR.get_unchecked().lock().clear_one();
+                        },
+                        _ => print!("{}", c),
+                    },
+                }
+            }
+        }
+        crate::arch::hlt();
     }
 }
 
