@@ -1,8 +1,12 @@
-mod alloc;
-mod heap;
-mod paging;
+pub mod addr;
+pub mod alloc;
+pub mod heap;
+pub mod paging;
+
+pub fn init_paging() {
+    paging::init();
+}
 
 pub fn init() {
-    paging::init();
     heap::init();
 }

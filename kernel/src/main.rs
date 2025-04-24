@@ -27,16 +27,21 @@ use tiny_os::term;
 #[unsafe(no_mangle)]
 unsafe extern "C" fn kmain() -> ! {
     bootinfo::get();
+    kernel::mem::init_paging();
     term::init_term();
     println!("terminal started");
     arch::init();
     kernel::init_mem();
-
     cross_println!("OS booted succesfullly");
 
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
+    random_stuff();
+    tiny_os::term::synced_keyboard_listener();
+    arch::hcf()
+}
 
+fn random_stuff() {
     let mut fbs = bootinfo::get_framebuffers().unwrap();
     let fb = LimineFrameBuffer::try_new(&mut fbs);
     if let Some(fb) = fb {
@@ -112,8 +117,6 @@ unsafe extern "C" fn kmain() -> ! {
         )
         .unwrap();
     }
-    tiny_os::term::synced_keyboard_listener();
-    arch::hcf()
 }
 
 #[panic_handler]

@@ -9,6 +9,7 @@ use x86_64::{
 };
 
 // Does not free pages
+#[derive(Debug)]
 pub struct SimpleFrameAllocator {
     current: usize,
 }
@@ -18,9 +19,20 @@ impl SimpleFrameAllocator {
         Self { current: 0 }
     }
 
-    // pub fn allocate_frames(&mut self, n: usize) -> &[Option<PhysFrame<Size4KiB>>] {
-    //     let frames = self.usable_frames();
-    //     let mut container: [Option<PhysFrame>; n] = [None];
+    // pub fn allocate_frames(
+    //     &mut self,
+    //     mut n: usize,
+    // ) -> impl Iterator<Item = PhysFrame<Size4KiB>> + use<'_> {
+    //     let mut frames = self.usable_frames();
+    //     frames.take_while(|_| {
+    //         if n > 0 {
+    //             self.current += 1;
+    //             n -= 1;
+    //             true
+    //         } else {
+    //             false
+    //         }
+    //     })
     // }
 
     fn usable_frames(&self) -> impl Iterator<Item = PhysFrame> {
