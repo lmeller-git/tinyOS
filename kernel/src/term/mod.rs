@@ -55,11 +55,12 @@ pub fn init_term() {
 }
 
 pub fn synced_keyboard_listener() {
+    serial_println!("{:#?}", *FOOBAR.get().unwrap().lock());
     loop {
         // serial_println!("w");
         if let Ok(v) = KEYBOARD_BUFFER.pop() {
             if let Ok(res) = parse_scancode(v) {
-                serial_println!("{:#?}", res);
+                // serial_println!("{:#?}", res);
                 match res {
                     pc_keyboard::DecodedKey::RawKey(_k) => {}
                     pc_keyboard::DecodedKey::Unicode(c) => match c {

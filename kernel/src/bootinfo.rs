@@ -16,7 +16,7 @@ pub fn stack_size() -> u64 {
         STACK_SIZE_REQUEST.size()
     } else {
         // TODO default??
-        1024
+        4096 * 5
     }
 }
 

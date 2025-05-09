@@ -12,6 +12,7 @@ pub(super) const DOUBLE_FAULT_IST_INDEX: u16 = 0;
 struct Selectors {
     code_selector: SegmentSelector,
     tss_selector: SegmentSelector,
+    data_selector: SegmentSelector,
 }
 
 lazy_static! {
@@ -29,16 +30,38 @@ lazy_static! {
     };
 }
 
+// fn foo() {
+//     let gdt: (GlobalDescriptorTable, Selectors) = {
+//         let mut gdt = GlobalDescriptorTable::new();
+//         let code_selector = gdt.append(Descriptor::kernel_code_segment());
+//         let tss_selector = gdt.append(Descriptor::tss_segment(&TSS));
+//         let user_data_selector = gdt.append(Descriptor::user_data_segment());
+//         let kernel_data_selector = gdt.append(Descriptor::kernel_data_segment());
+//         let user_code_selector = gdt.append(Descriptor::user_code_segment());
+//         (
+//             gdt,
+//             Selectors {
+//                 code_selector,
+//                 tss_selector,
+//             },
+//         )
+//     };
+// }
+
 lazy_static! {
     static ref GDT: (GlobalDescriptorTable, Selectors) = {
         let mut gdt = GlobalDescriptorTable::new();
         let code_selector = gdt.append(Descriptor::kernel_code_segment());
         let tss_selector = gdt.append(Descriptor::tss_segment(&TSS));
+        // let user_data_selector = gdt.append(Descriptor::user_data_segment());
+        let kernel_data_selector = gdt.append(Descriptor::kernel_data_segment());
+        // let user_code_selector = gdt.append(Descriptor::user_code_segment());
         (
             gdt,
             Selectors {
                 code_selector,
                 tss_selector,
+                data_selector: kernel_data_selector,
             },
         )
     };
@@ -51,6 +74,7 @@ pub(super) fn init() {
     GDT.0.load();
     unsafe {
         CS::set_reg(GDT.1.code_selector);
+        x86_64::instructions::segmentation::SS::set_reg(GDT.1.data_selector);
         load_tss(GDT.1.tss_selector);
     }
 }

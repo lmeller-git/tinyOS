@@ -1,6 +1,7 @@
 use crate::arch::x86::interrupt::handlers::{
-    InterruptIndex, breakpoint_handler, double_fault_handler, keyboard_interrupt_handler,
-    page_fault_handler, timer_interrupt_handler,
+    SPURIOUS_VECTOR, breakpoint_handler, double_fault_handler, gpf_handler,
+    keyboard_interrupt_handler, page_fault_handler, spurious_interrupt_handler,
+    timer_interrupt_handler,
 };
 
 use super::gdt;
@@ -18,12 +19,21 @@ lazy_static! {
                 .set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX);
         }
         idt.page_fault.set_handler_fn(page_fault_handler);
+        idt.general_protection_fault.set_handler_fn(gpf_handler);
         idt[InterruptIndex::Timer as u8].set_handler_fn(timer_interrupt_handler);
         idt[InterruptIndex::Keyboard as u8].set_handler_fn(keyboard_interrupt_handler);
+        idt[SPURIOUS_VECTOR].set_handler_fn(spurious_interrupt_handler);
         idt
     };
 }
 
 pub fn init() {
     IDT.load();
+}
+
+#[repr(u8)]
+pub enum InterruptIndex {
+    Timer = 0x20,
+    Keyboard = 0x21,
+    // ...
 }

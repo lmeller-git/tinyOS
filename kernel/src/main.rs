@@ -30,8 +30,8 @@ unsafe extern "C" fn kmain() -> ! {
     kernel::mem::init_paging();
     term::init_term();
     println!("terminal started");
-    arch::init();
     kernel::init_mem();
+    arch::init();
     cross_println!("OS booted succesfullly");
 
     #[cfg(feature = "test_run")]

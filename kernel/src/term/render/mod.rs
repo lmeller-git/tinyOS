@@ -2,7 +2,7 @@
 #![cfg_attr(feature = "test_run", allow(static_mut_refs))]
 
 use core::{
-    fmt::Write,
+    fmt::{Debug, Write},
     ops::{Add, Range},
 };
 use embedded_graphics::{
@@ -447,6 +447,17 @@ where
 {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         self.write_char_iter(s.chars());
+        Ok(())
+    }
+}
+
+impl<B, const X: usize, const Y: usize> Debug for BasicTermRender<'_, B, X, Y>
+where
+    B: DrawTarget<Color = RGBColor, Error = GraphicsError>,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        writeln!(f, "X: {}, Y: {}", X, Y)?;
+        writeln!(f, "{:#?}", self.cursor)?;
         Ok(())
     }
 }
