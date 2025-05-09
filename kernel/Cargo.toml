@@ -32,7 +32,7 @@ uart_16550 = "0.3.2"
 embedded-graphics = "0.8.1"
 conquer-once = { version = "0.4.0", default-features = false }
 once_cell = { version = "1.21.3", default-features = false }
-acpi = "5.2.0"
+acpi = { version = "5.2.0", features = ["alloc"] }
 
 [profile.dev]
 panic = "abort"
