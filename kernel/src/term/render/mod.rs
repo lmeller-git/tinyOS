@@ -8,6 +8,7 @@ use core::{
 use embedded_graphics::{
     mono_font::{MonoTextStyle, MonoTextStyleBuilder, ascii},
     prelude::{DrawTarget, Point, Size},
+    primitives::Rectangle,
     text::Baseline,
 };
 use os_macros::tests;
@@ -376,7 +377,29 @@ where
             .redraw_empty_row(&self.cursor.row, &mut *self.backend.lock());
     }
 
-    pub(super) fn clear_one(&mut self) {}
+    pub(super) fn clear_one(&mut self) {
+        loop {
+            if self.cursor.col.inner > 0 {
+                self.cursor.col.inner -= 1;
+            } else if self.cursor.row.inner > 0 {
+                self.cursor.row.inner -= 1;
+                self.cursor.col.inner = X - 1;
+            } else {
+                break;
+            }
+            if self.buffer.get(&self.cursor).unwrap().is_some() {
+                break;
+            }
+        }
+
+        self.backend.lock().fill_solid(
+            &Rectangle::new(
+                self.cursor.into(),
+                Size::new(CHAR_WIDTH as u32, CHAR_HEIGHT as u32),
+            ),
+            ColorCode::default().into(),
+        );
+    }
 
     fn write_tab(&mut self) {
         // tab == 3 spaces TODO add dynamic tab
