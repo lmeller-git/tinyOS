@@ -5,7 +5,7 @@ use crate::{
         graphics::{GLOBAL_FRAMEBUFFER, framebuffers::GlobalFrameBuffer},
         keyboard::{KEYBOARD_BUFFER, parse_scancode},
     },
-    print, serial_println,
+    print, serial_print, serial_println,
     services::graphics,
 };
 use conquer_once::spin::OnceCell;
@@ -19,8 +19,8 @@ mod parse;
 mod render;
 
 // this is the max chars of the current GLOBAL_FRAMBUFFER using the current font in term/render/mod.rs
-const MAX_CHARS_X: usize = 102;
-const MAX_CHARS_Y: usize = 38;
+const MAX_CHARS_X: usize = 127;
+const MAX_CHARS_Y: usize = 39;
 
 // TODO clean up the mess and rewrite graphics shit
 
@@ -55,7 +55,7 @@ pub fn init_term() {
 }
 
 pub fn synced_keyboard_listener() {
-    serial_println!("{:#?}", *FOOBAR.get().unwrap().lock());
+    // serial_println!("{:#?}", *FOOBAR.get().unwrap().lock());
     loop {
         // serial_println!("w");
         if let Ok(v) = KEYBOARD_BUFFER.pop() {
