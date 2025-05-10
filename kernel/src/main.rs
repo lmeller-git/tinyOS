@@ -32,6 +32,7 @@ unsafe extern "C" fn kmain() -> ! {
     println!("terminal started");
     kernel::init_mem();
     arch::init();
+    kernel::threading::init();
     cross_println!("OS booted succesfullly");
 
     #[cfg(feature = "test_run")]

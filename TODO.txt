@@ -1,9 +1,9 @@
-1: implement basic in-built terminal, for debuggin during early start-up (DONE)
-2: implemnt scheduler, context-handling, syscals
-3: implement ramfs, virtfs,...
+1: implement basic in-built terminal, for debugging during early start-up (DONE)
+2: implement scheduler, context-handling, syscals
+3: implement ramfs, procfs,...
 4: implement a tty binder
 5: build a separate terminal, which connects to the tty
 6: somehow launch this as (first) task and let it launch other tasks
+7: interrupts (DONE)
 
-
-check out rustdoc for text gen?
+check out rustdoc for test gen?
