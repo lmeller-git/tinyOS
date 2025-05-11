@@ -3,7 +3,14 @@ use lazy_static::lazy_static;
 use limine::{
     framebuffer::Framebuffer,
     memory_map::{Entry, EntryType},
+    response::MemoryMapResponse,
 };
+use spin::Mutex;
+
+// lazy_static! {
+//     static ref MMAP_RESPONSE: Mutex<MemoryMapResponse> =
+//         Mutex::new(MMAP_REQUEST.get_response().expect("could nto get mmap"));
+// }
 
 pub fn get() {
     assert!(BASE_REVISION.is_supported());
@@ -29,14 +36,15 @@ pub fn rdsp_addr() -> usize {
     RSDP_REQUEST.get_response().unwrap().address()
 }
 
-pub fn mmap_entries() {
-    // MMAP_REQUEST
-}
+// pub fn mmap_entries<'a>() -> &'a mut [&'a mut Entry] {
+//     // MMAP_REQUEST
+//     MMAP_RESPONSE.lock().entries_mut()
+// }
 
 pub fn usable_mmap_entries() -> impl Iterator<Item = UsableMRegion> {
     MMAP_REQUEST
         .get_response()
-        .expect("failed to get mmap")
+        .expect("could not get response")
         .entries()
         .iter()
         .filter_map(|e| match e.entry_type {

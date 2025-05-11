@@ -1,7 +1,7 @@
 //TODO
 
 use crate::{
-    arch::mem::{FrameAllocator, PhysAddr, PhysFrame, Size4KiB},
+    arch::mem::{FrameAllocator, FrameDeallocator, PhysAddr, PhysFrame, Size4KiB},
     bootinfo::usable_mmap_entries,
 };
 use lazy_static::lazy_static;
@@ -48,6 +48,12 @@ unsafe impl FrameAllocator<Size4KiB> for SimpleFrameAllocator {
         let r = self.usable_frames().nth(self.current);
         self.current += 1;
         r
+    }
+}
+
+impl FrameDeallocator<Size4KiB> for SimpleFrameAllocator {
+    unsafe fn deallocate_frame(&mut self, frame: PhysFrame<Size4KiB>) {
+        //TODO
     }
 }
 

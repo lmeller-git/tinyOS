@@ -136,30 +136,30 @@ impl acpi::AcpiHandler for Foo {
 
         let start_page: Page<Size4KiB> = Page::containing_address(virt_start);
         let end_page: Page<Size4KiB> = Page::containing_address(virt_start + size as u64 - 1);
+        {
+            let mut mapper = crate::kernel::mem::paging::PAGETABLE.lock();
+            let mut frame_allocator = crate::kernel::mem::paging::GLOBAL_FRAME_ALLOCATOR.lock();
 
-        let mut mapper = crate::kernel::mem::paging::PAGETABLE.lock();
-        let mut frame_allocator = crate::kernel::mem::paging::GLOBAL_FRAME_ALLOCATOR.lock();
+            for page in Page::range_inclusive(start_page, end_page) {
+                let frame = PhysFrame::containing_address(PhysAddr::new(
+                    page.start_address().as_u64() - crate::bootinfo::get_phys_offset(),
+                ));
+                let flags =
+                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE;
 
-        for page in Page::range_inclusive(start_page, end_page) {
-            let frame = PhysFrame::containing_address(PhysAddr::new(
-                page.start_address().as_u64() - crate::bootinfo::get_phys_offset(),
-            ));
-            let flags =
-                PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE;
+                // if mapper.translate_page(page).is_ok() {
+                //     continue;
+                // }
 
-            // if mapper.translate_page(page).is_ok() {
-            //     continue;
-            // }
-
-            unsafe {
-                match mapper.map_to(page, frame, flags, &mut *frame_allocator) {
-                    Ok(f) => f.flush(),
-                    Err(mapper::MapToError::PageAlreadyMapped(_)) => {}
-                    Err(e) => panic!("{:#?}", e),
+                unsafe {
+                    match mapper.map_to(page, frame, flags, &mut *frame_allocator) {
+                        Ok(f) => f.flush(),
+                        Err(mapper::MapToError::PageAlreadyMapped(_)) => {}
+                        Err(e) => panic!("{:#?}", e),
+                    }
                 }
             }
         }
-
         unsafe {
             acpi::PhysicalMapping::new(
                 physical_address,
