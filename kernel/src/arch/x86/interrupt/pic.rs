@@ -1,18 +1,10 @@
-use acpi::{AcpiHandler, AcpiTables, PhysicalMapping, madt::Madt};
+use super::idt::InterruptIndex;
+use crate::{arch::x86::mem::*, bootinfo, println};
+use acpi::AcpiTables;
 use core::ptr::NonNull;
 use lazy_static::lazy_static;
 use spin::Mutex;
-use x86_64::{
-    PhysAddr, VirtAddr,
-    instructions::port::Port,
-    structures::paging::{
-        FrameAllocator, Mapper, Page, PageSize, PageTableFlags, PhysFrame, Size4KiB,
-    },
-};
-
-use crate::{bootinfo, cross_println, println};
-
-use super::{handlers::SPURIOUS_VECTOR, idt::InterruptIndex};
+use x86_64::instructions::port::Port;
 
 lazy_static! {
     pub static ref LAPIC_ADDR: Mutex<LAPICAddress> = Mutex::new(LAPICAddress::new()); // Needs to be initialized
@@ -162,7 +154,7 @@ impl acpi::AcpiHandler for Foo {
             unsafe {
                 match mapper.map_to(page, frame, flags, &mut *frame_allocator) {
                     Ok(f) => f.flush(),
-                    Err(x86_64::structures::paging::mapper::MapToError::PageAlreadyMapped(_)) => {}
+                    Err(mapper::MapToError::PageAlreadyMapped(_)) => {}
                     Err(e) => panic!("{:#?}", e),
                 }
             }
@@ -200,16 +192,13 @@ fn map_no_cache(
     mapper: &mut impl Mapper<Size4KiB>,
     frame_allocator: &mut impl FrameAllocator<Size4KiB>,
 ) -> VirtAddr {
-    use x86_64::structures::paging::Page;
-    use x86_64::structures::paging::PageTableFlags as Flags;
-
     let physical_address = PhysAddr::new(physical_address);
     let page = Page::containing_address(VirtAddr::new(
         physical_address.as_u64() + bootinfo::get_phys_offset(),
     ));
     let frame = PhysFrame::containing_address(physical_address);
 
-    let flags = Flags::PRESENT | Flags::WRITABLE | Flags::NO_CACHE;
+    let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE;
 
     unsafe {
         mapper
@@ -242,17 +231,6 @@ unsafe fn init_timer(lapic_pointer: *mut u32) {
     let svr = lapic_pointer.offset(APICOffset::Svr as isize / 4);
     svr.write_volatile(svr.read_volatile() | 0x100);
 
-    // let svr = lapic_pointer.offset(APICOffset::Svr as isize / 4);
-    // let svr_value = svr.read_volatile();
-    // svr.write_volatile((svr_value & !0xFF) | SPURIOUS_VECTOR as u32 | 0x100);
-    // let svr_reg = lapic_pointer.offset(APICOffset::Svr as isize / 4);
-    // let mut svr = svr_reg.read_volatile();
-    // clear out any old vector in bits 0–7:
-    // svr &= !0xFF;
-    // install ours and set the enable‐bit (bit 8):
-    // svr |= (SPURIOUS_VECTOR as u32) | 0x100;
-    // svr_reg.write_volatile(svr);
-
     // Configure timer
     // Vector 0x20, Periodic Mode (bit 17), Not masked (bit 16 = 0)
     let lvt_timer = lapic_pointer.offset(APICOffset::LvtT as isize / 4);
@@ -284,13 +262,7 @@ unsafe fn init_local_apic(
     frame_allocator: &mut impl FrameAllocator<Size4KiB>,
 ) {
     let virtual_address = map_no_cache(local_apic_addr as u64, mapper, frame_allocator);
-
-    // let base = virtual_address.align_up(Size4KiB::SIZE);
-    // let offset = local_apic_addr as u64 % Size4KiB::SIZE;
-    // let lapic_pointer1 = (base.as_u64() + offset) as *mut u32;
-
     let lapic_pointer = virtual_address.as_mut_ptr::<u32>();
-    // assert_eq!(lapic_pointer, lapic_pointer1);
 
     LAPIC_ADDR.lock().address = lapic_pointer;
     init_timer(lapic_pointer);

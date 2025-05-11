@@ -18,11 +18,13 @@ impl Task {
     }
 }
 
-pub enum TaskState {}
+pub enum TaskState {
+    Alive,
+}
 
 impl TaskState {
     pub fn new() -> Self {
-        Self
+        Self::Alive
     }
 }
 

@@ -1,6 +1,7 @@
 // use core::fmt::Write;
 
 mod interrupt;
+pub mod mem;
 pub mod serial;
 pub mod vga;
 

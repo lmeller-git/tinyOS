@@ -1,5 +1,7 @@
 #[cfg(target_arch = "x86_64")]
 pub mod x86;
+#[cfg(target_arch = "x86_64")]
+pub use x86::mem;
 
 use core::arch::asm;
 
@@ -7,7 +9,7 @@ pub fn init() {
     #[cfg(target_arch = "x86_64")]
     x86::init();
     #[cfg(not(any(target_arch = "x86_64")))]
-    panic!("arch not supported")
+    compile_error!("arch not supported")
 }
 
 pub fn hcf() -> ! {
@@ -27,10 +29,17 @@ pub fn hlt() {
     }
 }
 
+pub fn current_page_tbl() -> (x86::mem::PhysFrame<x86::mem::Size4KiB>, x86::mem::Cr3Flags) {
+    #[cfg(target_arch = "x86_64")]
+    return x86::mem::Cr3::read();
+    #[cfg(not(any(target_arch = "x86_64")))]
+    compile_error!("arch not supported")
+}
+
 #[doc(hidden)]
 pub fn _serial_print(args: ::core::fmt::Arguments) {
     #[cfg(target_arch = "x86_64")]
     x86::serial::_print(args);
     #[cfg(not(any(target_arch = "x86_64")))]
-    panic!("arch not supported")
+    compile_error!("arch not supported")
 }

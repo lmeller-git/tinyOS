@@ -1,12 +1,11 @@
 //TODO
 
-use crate::bootinfo::usable_mmap_entries;
+use crate::{
+    arch::mem::{FrameAllocator, PhysAddr, PhysFrame, Size4KiB},
+    bootinfo::usable_mmap_entries,
+};
 use lazy_static::lazy_static;
 use spin::Mutex;
-use x86_64::{
-    PhysAddr,
-    structures::paging::{FrameAllocator, PhysFrame, Size4KiB},
-};
 
 // Does not free pages
 #[derive(Debug)]

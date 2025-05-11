@@ -1,5 +1,5 @@
 // use super::idt::InterruptIndex;
-use crate::{arch::x86::interrupt::pic::end_interrupt, cross_println, serial_println};
+use crate::arch::x86::interrupt::pic::end_interrupt;
 // use pic8259::ChainedPics;
 use x86_64::{
     instructions::port::Port,

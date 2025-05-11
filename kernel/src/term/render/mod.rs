@@ -20,7 +20,6 @@ use crate::{
         colors::{ColorCode, RGBColor},
         text::CharRenderer,
     },
-    serial_println,
     services::graphics::GraphicsError,
 };
 

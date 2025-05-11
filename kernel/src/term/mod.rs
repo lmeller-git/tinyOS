@@ -5,7 +5,7 @@ use crate::{
         graphics::{GLOBAL_FRAMEBUFFER, framebuffers::GlobalFrameBuffer},
         keyboard::{KEYBOARD_BUFFER, parse_scancode},
     },
-    print, serial_print, serial_println,
+    print,
     services::graphics,
 };
 use conquer_once::spin::OnceCell;
