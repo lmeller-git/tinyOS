@@ -9,8 +9,10 @@ pub(super) const DOUBLE_FAULT_IST_INDEX: u16 = 0;
 
 struct Selectors {
     code_selector: SegmentSelector,
-    tss_selector: SegmentSelector,
     data_selector: SegmentSelector,
+    tss_selector: SegmentSelector,
+    user_code_selector: SegmentSelector,
+    user_data_selector: SegmentSelector,
 }
 
 lazy_static! {
@@ -42,6 +44,8 @@ lazy_static! {
                 code_selector,
                 tss_selector,
                 data_selector: kernel_data_selector,
+                user_code_selector,
+                user_data_selector,
             },
         )
     };
@@ -57,4 +61,11 @@ pub(super) fn init() {
         x86_64::instructions::segmentation::SS::set_reg(GDT.1.data_selector);
         load_tss(GDT.1.tss_selector);
     }
+}
+
+pub fn get_user_selectors() -> (SegmentSelector, SegmentSelector) {
+    (GDT.1.user_code_selector, GDT.1.user_data_selector)
+}
+pub fn get_kernel_selectors() -> (SegmentSelector, SegmentSelector) {
+    (GDT.1.code_selector, GDT.1.data_selector)
 }

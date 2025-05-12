@@ -1,6 +1,6 @@
 use crate::println;
 
-mod gdt;
+pub mod gdt;
 mod handlers;
 mod idt;
 mod pic;

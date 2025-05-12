@@ -1,20 +1,24 @@
 use super::Scheduler;
 use crate::kernel::threading::task::Task;
-use alloc::collections::vec_deque::VecDeque;
+use alloc::{collections::vec_deque::VecDeque, vec::Vec};
 
 pub struct RoundRobin {
-    tasks: VecDeque<Task>,
+    ready: VecDeque<Task>,
+    blocking: Vec<Task>,
+    running: Option<Task>,
 }
 
 impl Scheduler for RoundRobin {
     fn new() -> Self {
         Self {
-            tasks: VecDeque::new(),
+            ready: VecDeque::new(),
+            blocking: Vec::new(),
+            running: None,
         }
     }
 
     fn add_task(&mut self, task: Task) {
-        self.tasks.push_back(task);
+        self.ready.push_back(task);
     }
 
     fn yield_now(&mut self) {
@@ -30,6 +34,9 @@ impl Scheduler for RoundRobin {
     }
 
     fn switch(&mut self) {
+        if let Some(ref mut current) = self.running {
+            // save context, push task to ready
+        }
         todo!()
     }
 
@@ -42,7 +49,7 @@ impl Scheduler for RoundRobin {
     }
 
     fn num_tasks(&self) -> usize {
-        self.tasks.len()
+        self.ready.len() + self.blocking.len() + if self.running.is_some() { 1 } else { 0 }
     }
 
     fn reschedule(&mut self, order: super::ScheduleOrder) {

@@ -1,32 +1,54 @@
-use crate::arch::{
-    context::{TaskCtx, allocate_kstack},
-    current_page_tbl,
-    mem::{Cr3Flags, PhysFrame, Size4KiB, VirtAddr},
+use crate::{
+    arch::{
+        context::{TaskCtx, allocate_kstack, allocate_userkstack, allocate_userstack},
+        current_page_tbl,
+        mem::{Cr3Flags, PhysFrame, Size4KiB, VirtAddr},
+    },
+    kernel::mem::paging::create_new_pagedir,
 };
 use core::sync::atomic::{AtomicU64, Ordering};
 
 use super::ThreadingError;
 
 pub struct Task {
-    pid: TaskID,
-    ctx: TaskCtx,
-    state: TaskState,
-    parent: Option<TaskID>,
-    root_frame: PhysFrame<Size4KiB>,
-    frame_flags: Cr3Flags,
+    pub(super) pid: TaskID,
+    pub(super) ctx: TaskCtx,
+    pub(super) state: TaskState,
+    pub(super) parent: Option<TaskID>,
+    pub(super) root_frame: PhysFrame<Size4KiB>,
+    pub(super) frame_flags: Cr3Flags,
+    pub(super) kstack_top: Option<VirtAddr>,
 }
 
 impl Task {
-    fn new_kernel(entry: extern "C" fn()) -> Result<Self, ThreadingError> {
+    pub fn new_kernel(entry: extern "C" fn()) -> Result<Self, ThreadingError> {
         let stack_top = allocate_kstack()?;
         let (tbl, flags) = current_page_tbl();
         Ok(Self {
             pid: get_pid(),
-            ctx: TaskCtx::new(entry as usize, 0, stack_top),
+            ctx: TaskCtx::new_kernel(entry as usize, stack_top),
             state: TaskState::new(),
             parent: None,
             root_frame: tbl,
             frame_flags: flags,
+            kstack_top: None,
+        })
+    }
+
+    pub fn new_user(entry: extern "C" fn()) -> Result<Self, ThreadingError> {
+        let (tbl, flags) = current_page_tbl();
+        let mut new_tbl = create_new_pagedir().map_err(|_| ThreadingError::PageDirNotBuilt)?;
+        let kstack_top = allocate_userkstack(&mut new_tbl)?;
+        let stack_top = allocate_userstack(&mut new_tbl)?;
+
+        Ok(Self {
+            pid: get_pid(),
+            ctx: TaskCtx::new_user(entry as usize, stack_top),
+            state: TaskState::new(),
+            parent: None,
+            root_frame: new_tbl.root,
+            frame_flags: flags, // ?
+            kstack_top: Some(kstack_top),
         })
     }
 }

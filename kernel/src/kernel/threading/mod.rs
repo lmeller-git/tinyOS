@@ -9,4 +9,5 @@ pub fn init() {
 pub enum ThreadingError {
     StackNotBuilt,
     StackNotFreed,
+    PageDirNotBuilt,
 }
