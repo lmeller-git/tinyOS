@@ -1,6 +1,8 @@
 use conquer_once::spin::OnceCell;
 use spin::Mutex;
 
+use crate::arch;
+
 use super::task::{Task, TaskID};
 
 mod round_robin;
@@ -11,7 +13,7 @@ pub trait Scheduler {
     fn yield_now(&mut self);
     fn cleanup(&mut self);
     fn kill(&mut self, id: TaskID);
-    fn switch(&mut self);
+    fn switch(&mut self, frame: &mut arch::interrupt::handlers::InterruptStackFrame);
     fn init(&mut self);
     fn current(&self) -> Option<&Task>;
     fn num_tasks(&self) -> usize;
@@ -27,3 +29,9 @@ pub static GLOBAL_SCHEDULER: OnceCell<Mutex<GlobalScheduler>> = OnceCell::uninit
 pub fn init() {
     _ = GLOBAL_SCHEDULER.try_init_once(|| Mutex::new(GlobalScheduler::new()));
 }
+
+// TODO: make this a naked/asm function, which saves teh current context first thing and then calls scheduler.switch(), ...
+pub fn switch(frame: &mut arch::interrupt::handlers::InterruptStackFrame) {}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn context_switch(frame: arch::interrupt::handlers::InterruptStackFrame) {}

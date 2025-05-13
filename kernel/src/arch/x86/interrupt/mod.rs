@@ -1,7 +1,7 @@
 use crate::println;
 
 pub mod gdt;
-mod handlers;
+pub mod handlers;
 mod idt;
 mod pic;
 

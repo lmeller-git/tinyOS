@@ -1,7 +1,7 @@
 // use super::idt::InterruptIndex;
 use crate::arch::x86::interrupt::pic::end_interrupt;
 // use pic8259::ChainedPics;
-use x86_64::{
+pub use x86_64::{
     instructions::port::Port,
     structures::idt::{InterruptStackFrame, PageFaultErrorCode},
 };
@@ -18,9 +18,10 @@ pub(super) extern "x86-interrupt" fn double_fault_handler(
     panic!("EXCEPTION: DOUBLE FAULT\n{:#?}", stack_frame);
 }
 
-pub(super) extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
+pub(super) extern "x86-interrupt" fn timer_interrupt_handler(mut stack_frame: InterruptStackFrame) {
     // cross_println!("timer");
     // cross_println!("{:#?}", _stack_frame);
+    crate::kernel::threading::schedule::switch(&mut stack_frame);
     end_interrupt();
 }
 

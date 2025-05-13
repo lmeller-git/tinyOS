@@ -1,5 +1,8 @@
 use super::Scheduler;
-use crate::kernel::threading::task::Task;
+use crate::{
+    arch::{self, context::TaskCtx},
+    kernel::threading::task::Task,
+};
 use alloc::{collections::vec_deque::VecDeque, vec::Vec};
 
 pub struct RoundRobin {
@@ -33,10 +36,20 @@ impl Scheduler for RoundRobin {
         todo!()
     }
 
-    fn switch(&mut self) {
-        if let Some(ref mut current) = self.running {
+    fn switch(&mut self, frame: &mut arch::interrupt::handlers::InterruptStackFrame) {
+        if let Some(mut current) = self.running.take() {
             // save context, push task to ready
+            let ctx: &mut TaskCtx = &mut current.ctx;
+            ctx.rsp = frame.stack_pointer.as_u64();
+            ctx.rip = frame.instruction_pointer.as_u64();
+            ctx.rflags = frame.cpu_flags.bits();
+            ctx.cs = frame.code_segment.0 as u64;
+            ctx.ss = frame.stack_segment.0 as u64;
+            ctx.store_current();
+            self.ready.push_back(current);
         }
+        // load next task, context switch and return
+        if let Some(mut next) = self.ready.pop_front() {}
         todo!()
     }
 

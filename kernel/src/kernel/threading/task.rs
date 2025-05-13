@@ -11,7 +11,7 @@ use core::sync::atomic::{AtomicU64, Ordering};
 use super::ThreadingError;
 
 pub struct Task {
-    pub(super) pid: TaskID,
+    pid: TaskID,
     pub(super) ctx: TaskCtx,
     pub(super) state: TaskState,
     pub(super) parent: Option<TaskID>,
@@ -50,6 +50,10 @@ impl Task {
             frame_flags: flags, // ?
             kstack_top: Some(kstack_top),
         })
+    }
+
+    pub fn pid(&self) -> &TaskID {
+        &self.pid
     }
 }
 

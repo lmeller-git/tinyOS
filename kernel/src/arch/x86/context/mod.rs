@@ -1,4 +1,4 @@
-use core::arch::global_asm;
+use core::arch::{asm, global_asm};
 
 use lazy_static::lazy_static;
 use x86_64::{registers::rflags::RFlags, structures::paging::FrameDeallocator};
@@ -41,31 +41,29 @@ lazy_static! {
 #[derive(Default)]
 #[repr(C)]
 pub struct TaskCtx {
-    rsp: u64,
-    rflags: u64,
-    ss: u64,
-    cs: u64,
+    pub rsp: u64,
+    pub rflags: u64,
+    pub ss: u64,
+    pub cs: u64,
+    pub rip: u64,
 
-    rip: u64,
+    pub r15: u64,
+    pub r14: u64,
+    pub r13: u64,
+    pub r12: u64,
+    pub r11: u64,
+    pub r10: u64,
+    pub r9: u64,
+    pub r8: u64,
 
-    r15: u64,
-    r14: u64,
-    r13: u64,
-    r12: u64,
-    r11: u64,
-    r10: u64,
-    r9: u64,
-    r8: u64,
-
-    rbp: u64,
-    rdi: u64,
-    rsi: u64,
-
-    rdx: u64,
-    rcx: u64,
-    rbx: u64,
-    cr3: u64,
-    rax: u64,
+    pub rsi: u64,
+    pub rbp: u64,
+    pub rdi: u64,
+    pub rdx: u64,
+    pub rcx: u64,
+    pub rbx: u64,
+    pub cr3: u64,
+    pub rax: u64,
 }
 
 impl TaskCtx {
@@ -95,12 +93,73 @@ impl TaskCtx {
             ..Default::default()
         }
     }
+    // this does not work, as these will be changed by the time we get here.
+    #[inline(always)]
+    pub fn store_current(&mut self) {
+        // unsafe {
+        //     asm!(
+        //         "mov {0}, r15",
+        //         "mov {1}, r14",
+        //         "mov {2}, r13",
+        //         "mov {3}, r12",
+        //         "mov {4}, r11",
+        //         "mov {5}, r10",
+        //         "mov {6}, r9",
+        //         "mov {7}, r8",
+        //         "mov {8}, rbp",
+        //         "mov {9}, rdi",
+        //         "mov {10}, rdx",
+        //         "mov {11}, rcx",
+        //         "mov {12}, rbx",
+        //         "mov {13}, cr3",
+        //         "mov {14}, rax",
+        //         "mov {15}, rsi",
+        //         out(reg) self.r15,
+        //         out(reg) self.r14,
+        //         out(reg) self.r13,
+        //         out(reg) self.r12,
+        //         out(reg) self.r11,
+        //         out(reg) self.r10,
+        //         out(reg) self.r9,
+        //         out(reg) self.r8,
+        //         out(reg) self.rbp,
+        //         out(reg) self.rdi,
+        //         out(reg) self.rdx,
+        //         out(reg) self.rcx,
+        //         out(reg) self.rbx,
+        //         out(reg) self.cr3,
+        //         out(reg) self.rax,
+        //         out(reg) self.rsi
+        //     )
+        // }
+    }
 }
 
-#[inline(always)]
-fn context_switch(ctx: &TaskCtx) -> ! {
-    loop {}
-}
+//TODO pass interrupt frame and possbily current_state correctly to context_switch
+global_asm!(
+    "
+    .global context_switch_stub
+    context_switch_stub:
+        push rax
+        mov rax, cr3
+        push rbx
+        push rcx
+        push rdx
+        push rsi
+        push rdi
+        push r8
+        push r9
+        push r10
+        push r11
+        push r12
+        push r13
+        push r14
+        push r15
+        // rsp, rip, rflags, cs, ss in interruptframe
+        call {0}
+    ",
+    sym crate::kernel::threading::schedule::context_switch
+);
 
 pub fn allocate_kstack() -> Result<VirtAddr, ThreadingError> {
     // let (current_table, current_flags) = current_page_tbl();
@@ -295,7 +354,3 @@ pub fn free_user_stack(top: VirtAddr, tbl: &mut TaskPageTable) -> Result<(), Thr
     }
     Ok(())
 }
-
-// global_asm!(
-
-// )
