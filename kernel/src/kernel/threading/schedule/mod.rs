@@ -1,7 +1,7 @@
 use conquer_once::spin::OnceCell;
 use spin::Mutex;
 
-use crate::arch;
+use crate::{arch, serial_println};
 
 use super::task::{Task, TaskID};
 
@@ -34,4 +34,11 @@ pub fn init() {
 pub fn switch(frame: &mut arch::interrupt::handlers::InterruptStackFrame) {}
 
 #[unsafe(no_mangle)]
-pub extern "C" fn context_switch(frame: arch::interrupt::handlers::InterruptStackFrame) {}
+pub unsafe extern "C" fn context_switch(
+    state: *const arch::context::ReducedCpuInfo,
+    frame: *const *const arch::interrupt::handlers::InterruptStackFrame,
+) {
+    serial_println!("state: {:#?}", *state);
+    serial_println!("ptr2: {:#?}, ptr1: {:#?}", frame, *frame);
+    serial_println!("frame: {:#?}", **frame);
+}

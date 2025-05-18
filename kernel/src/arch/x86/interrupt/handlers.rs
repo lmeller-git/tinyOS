@@ -1,6 +1,14 @@
 // use super::idt::InterruptIndex;
-use crate::arch::x86::interrupt::pic::end_interrupt;
+use crate::{
+    arch::{
+        context::{ReducedCpuInfo, save_cpu_state},
+        x86::interrupt::pic::end_interrupt,
+    },
+    serial_println,
+};
 // use pic8259::ChainedPics;
+use core::arch::asm;
+use x86_64::instructions::interrupts::without_interrupts;
 pub use x86_64::{
     instructions::port::Port,
     structures::idt::{InterruptStackFrame, PageFaultErrorCode},
@@ -30,6 +38,48 @@ pub(super) extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: In
     let mut port = Port::<u8>::new(0x60);
     let scancode: u8 = unsafe { port.read() };
     _ = crate::drivers::keyboard::put_scancode(scancode);
+    let state: *const ReducedCpuInfo;
+    // unsafe { asm!("call save_cpu_state ", out("rax") state) };
+    // state = unsafe { save_cpu_state() };
+    // let state: *const ReducedCpuInfo;
+    // unsafe {
+    //     asm!(
+    //         "push r15",
+    //         "push r14",
+    //         "push r13",
+    //         "push r12",
+    //         "push r11",
+    //         "push r10",
+    //         "push r9",
+    //         "push r8",
+    //         "push rdi",
+    //         "push rsi",
+    //         "push rdx",
+    //         "push rcx",
+    //         "push rbx",
+    //         "push rax",
+    //         "mov rax, cr3",
+    //         "push rax",
+    //         "mov {0}, rsp",
+    //         out(reg) state,
+    //         options(nostack, preserves_flags)
+    //     )
+    // };
+    // serial_println!("calling switch");
+    // serial_println!("state_prt: {:#?}, state: {:#?}", state, unsafe {
+    //     &(*state)
+    // });
+    // serial_println!("true frame: {:#?}", _stack_frame);
+    // // unsafe { serial_println!("state: {:#?}", *state) };
+    // let ptr: *const InterruptStackFrame = &_stack_frame as *const InterruptStackFrame;
+    // serial_println!("ptr: {:#?}", ptr);
+    // without_interrupts(|| unsafe {
+    //     asm!(
+    //         "push {0}",
+    //         // "mov rdi, {0}",
+    //         // "call context_switch_stub",
+    //         in(reg) ptr)
+    // });
 
     end_interrupt();
 }

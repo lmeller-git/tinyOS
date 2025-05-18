@@ -135,31 +135,91 @@ impl TaskCtx {
     }
 }
 
+#[derive(Default, Debug)]
+#[repr(C)]
+pub struct ReducedCpuInfo {
+    /// Cpu state not passed via Interrupt frame\
+    cr3: u64,
+    rax: u64,
+    rbx: u64,
+    rcx: u64,
+    rdx: u64,
+    rsi: u64,
+    rdi: u64,
+
+    r8: u64,
+    r9: u64,
+    r10: u64,
+    r11: u64,
+    r12: u64,
+    r13: u64,
+    r14: u64,
+    r15: u64,
+}
+
 //TODO pass interrupt frame and possbily current_state correctly to context_switch
 global_asm!(
     "
     .global context_switch_stub
     context_switch_stub:
+        push r15
+        push r14
+        push r13
+        push r12
+        push r11
+        push r10
+        push r9
+        push r8
+
+        push rdi
+        push rsi
+        push rdx
+        push rcx
+        push rbx
         push rax
         mov rax, cr3
-        push rbx
-        push rcx
-        push rdx
-        push rsi
-        push rdi
-        push r8
-        push r9
-        push r10
-        push r11
-        push r12
-        push r13
-        push r14
-        push r15
+        push rax
         // rsp, rip, rflags, cs, ss in interruptframe
+        // sub rsp, 8
+        mov rdi, rsp 
+        lea rsi, [rsp - 15 * 8]
         call {0}
+        // add rsp, 8
     ",
     sym crate::kernel::threading::schedule::context_switch
 );
+
+global_asm!(
+    "
+        .global save_cpu_state
+        save_cpu_state:
+            /// pushes all relevant registers to the stack and returns a pointer to a ReducedCPUState
+            push r15
+            push r14
+            push r13
+            push r12
+            push r11
+            push r10
+            push r9
+            push r8
+
+            push rdi
+            push rsi
+            push rdx
+            push rcx
+            push rbx
+            push rax
+            mov rax, cr3
+            push rax
+            
+            mov rax, rsp
+            ret
+    "
+);
+
+unsafe extern "C" {
+    pub fn save_cpu_state() -> *const ReducedCpuInfo;
+}
 
 pub fn allocate_kstack() -> Result<VirtAddr, ThreadingError> {
     // let (current_table, current_flags) = current_page_tbl();
