@@ -1,13 +1,14 @@
 // use super::idt::InterruptIndex;
 use crate::{
     arch::{
-        context::{ReducedCpuInfo, save_cpu_state},
+        context::{ReducedCpuInfo, save_reduced_cpu_context},
+        hcf,
         x86::interrupt::pic::end_interrupt,
     },
     serial_println,
 };
 // use pic8259::ChainedPics;
-use core::arch::asm;
+use core::arch::{asm, global_asm};
 use x86_64::instructions::interrupts::without_interrupts;
 pub use x86_64::{
     instructions::port::Port,
@@ -29,8 +30,69 @@ pub(super) extern "x86-interrupt" fn double_fault_handler(
 pub(super) extern "x86-interrupt" fn timer_interrupt_handler(mut stack_frame: InterruptStackFrame) {
     // cross_println!("timer");
     // cross_println!("{:#?}", _stack_frame);
-    crate::kernel::threading::schedule::switch(&mut stack_frame);
+    // crate::kernel::threading::schedule::switch(&mut stack_frame);
     end_interrupt();
+}
+
+pub fn timer_interrupt_handler__(frame: InterruptStackFrame, data: ReducedCpuInfo) {
+    // serial_println!("hello");
+    // serial_println!("{:#?}\n{:#?}", frame, data);
+    // hcf();
+    end_interrupt();
+}
+
+global_asm!(
+    "
+        .global timer_interrupt_stub
+        timer_interrupt_stub:
+            /// on entry, the InterruptStackFrame will sit in the stack at rsp
+            //TODO call the save func, instead of doing it manually (currently page faults)
+            // call {0} // interrupt frame in rax, cpu state in rdx
+            // mov rdi, rax
+            // mov rsi, rdx
+            push rax
+            lea rax, [rsp + 8]
+            push rdi
+            push rsi
+            push rdx
+            push rcx
+            push rbx
+            mov rdi, rax
+            mov rax, cr3
+            push rax
+            push r15
+            push r14
+            push r13
+            push r12
+            push r11
+            push r10
+            push r9
+            push r8
+            mov rsi, rsp 
+            call {1}
+            pop r8
+            pop r9
+            pop r10
+            pop r11
+            pop r12
+            pop r13
+            pop r14
+            pop r15
+            pop rax
+            pop rbx
+            pop rcx
+            pop rdx
+            pop rsi
+            pop rdi
+            pop rax
+            iretq
+    ",
+    sym save_reduced_cpu_context,
+    sym timer_interrupt_handler__
+);
+
+unsafe extern "C" {
+    pub(super) fn timer_interrupt_stub();
 }
 
 pub(super) extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {
@@ -102,7 +164,7 @@ pub(super) extern "x86-interrupt" fn gpf_handler(
     error_code: u64,
 ) {
     panic!(
-        "EXCEPTION: GENERAL PROTECTION FAULT\n{:#?}\nError Code: {}",
+        "EXCEPTION: GENERAL PROTECTION FAULT\n{:#?}\nError Code: {:b}",
         stack_frame, error_code
     );
 }

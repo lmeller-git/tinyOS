@@ -1,7 +1,10 @@
 use core::arch::{asm, global_asm};
 
 use lazy_static::lazy_static;
-use x86_64::{registers::rflags::RFlags, structures::paging::FrameDeallocator};
+use x86_64::{
+    registers::rflags::RFlags,
+    structures::{idt::InterruptStackFrame, paging::FrameDeallocator},
+};
 
 use crate::{
     arch::{
@@ -17,7 +20,7 @@ use spin::Mutex;
 
 use super::interrupt::gdt::get_user_selectors;
 
-const KSTACK_AREA_START: VirtAddr = VirtAddr::new(0xffff_8000_1000_0000); // random locations
+const KSTACK_AREA_START: VirtAddr = VirtAddr::new(0xffff_8000_1000_0000); // random location
 const KSTACK_USER_AREA_START: VirtAddr = VirtAddr::new(0xffff_8000_2000_0000);
 
 const KSTACK_SIZE: usize = 16 * 1024; // 16 KiB
@@ -135,18 +138,32 @@ impl TaskCtx {
     }
 }
 
+// #[derive(Default, Debug)]
+// #[repr(C)]
+// pub struct ReducedCpuInfo {
+//     /// Cpu state not passed via Interrupt frame\
+//     cr3: u64,
+//     rax: u64,
+//     rbx: u64,
+//     rcx: u64,
+//     rdx: u64,
+//     rsi: u64,
+//     rdi: u64,
+
+//     r8: u64,
+//     r9: u64,
+//     r10: u64,
+//     r11: u64,
+//     r12: u64,
+//     r13: u64,
+//     r14: u64,
+//     r15: u64,
+// }
+
 #[derive(Default, Debug)]
 #[repr(C)]
 pub struct ReducedCpuInfo {
     /// Cpu state not passed via Interrupt frame\
-    cr3: u64,
-    rax: u64,
-    rbx: u64,
-    rcx: u64,
-    rdx: u64,
-    rsi: u64,
-    rdi: u64,
-
     r8: u64,
     r9: u64,
     r10: u64,
@@ -155,45 +172,100 @@ pub struct ReducedCpuInfo {
     r13: u64,
     r14: u64,
     r15: u64,
+    cr3: u64,
+    rbx: u64,
+    rcx: u64,
+    rdx: u64,
+    rsi: u64,
+    rdi: u64,
+    rax: u64,
 }
-
 //TODO pass interrupt frame and possbily current_state correctly to context_switch
+// global_asm!(
+//     "
+//     .global context_switch_stub
+//     context_switch_stub:
+//         push r15
+//         push r14
+//         push r13
+//         push r12
+//         push r11
+//         push r10
+//         push r9
+//         push r8
+
+//         push rdi
+//         push rsi
+//         push rdx
+//         push rcx
+//         push rbx
+//         push rax
+//         mov rax, cr3
+//         push rax
+//         // rsp, rip, rflags, cs, ss in interruptframe
+//         // sub rsp, 8
+//         mov rdi, rsp
+//         lea rsi, [rsp - 15 * 8]
+//         call {0}
+//         // add rsp, 8
+//     ",
+//     sym crate::kernel::threading::schedule::context_switch
+// );
+
+// global_asm!(
+//     "
+//         .global save_cpu_state
+//         .global context_switch_handler
+//         save_cpu_state:
+//             /// pushes all relevant registers to the stack and returns a pointer to a ReducedCPUState
+//             push r15
+//             push r14
+//             push r13
+//             push r12
+//             push r11
+//             push r10
+//             push r9
+//             push r8
+
+//             push rdi
+//             push rsi
+//             push rdx
+//             push rcx
+//             push rbx
+//             push rax
+//             mov rax, cr3
+//             push rax
+
+//             mov rax, rsp
+//             ret
+
+//         context_switch_handler:
+//             /// calls save cpu state and puts the resulting ReducedCpuState in rsi and the InterruptStackFrame into rdi
+//             /// then calls context_switch
+//             /// stack layout at entry:
+//             nop
+//     "
+// );
+
+// unsafe extern "C" {
+//     pub fn save_cpu_state() -> *const ReducedCpuInfo;
+// }
+//
+
 global_asm!(
     "
-    .global context_switch_stub
-    context_switch_stub:
-        push r15
-        push r14
-        push r13
-        push r12
-        push r11
-        push r10
-        push r9
-        push r8
-
-        push rdi
-        push rsi
-        push rdx
-        push rcx
-        push rbx
-        push rax
-        mov rax, cr3
-        push rax
-        // rsp, rip, rflags, cs, ss in interruptframe
-        // sub rsp, 8
-        mov rdi, rsp 
-        lea rsi, [rsp - 15 * 8]
-        call {0}
-        // add rsp, 8
-    ",
-    sym crate::kernel::threading::schedule::context_switch
-);
-
-global_asm!(
-    "
-        .global save_cpu_state
-        save_cpu_state:
-            /// pushes all relevant registers to the stack and returns a pointer to a ReducedCPUState
+        .global save_reduced_cpu_context
+        //TODO correct
+        save_reduced_cpu_context:
+            push rax
+            lea rax, [rsp + 8]
+            push rdi
+            push rsi
+            push rdx
+            push rcx
+            push rbx
+            mov rax, cr3
+            push rax
             push r15
             push r14
             push r13
@@ -202,23 +274,13 @@ global_asm!(
             push r10
             push r9
             push r8
-
-            push rdi
-            push rsi
-            push rdx
-            push rcx
-            push rbx
-            push rax
-            mov rax, cr3
-            push rax
-            
-            mov rax, rsp
-            ret
+            mov rdx, rsp
+            ret           
     "
 );
 
 unsafe extern "C" {
-    pub fn save_cpu_state() -> *const ReducedCpuInfo;
+    pub fn save_reduced_cpu_context() -> (*const InterruptStackFrame, *const ReducedCpuInfo);
 }
 
 pub fn allocate_kstack() -> Result<VirtAddr, ThreadingError> {
