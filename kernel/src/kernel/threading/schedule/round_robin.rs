@@ -2,6 +2,7 @@ use super::{OneOneScheduler, Scheduler};
 use crate::{
     arch::{self, context::TaskCtx},
     kernel::threading::task::{SimpleTask, Task},
+    serial_println,
 };
 use alloc::{collections::vec_deque::VecDeque, vec::Vec};
 
@@ -93,9 +94,8 @@ impl OneOneScheduler for OneOneRoundRobin {
             if let Some(current) = self.running.replace(next) {
                 self.ready.push_back(current);
             }
-            return self.current();
         }
-        None
+        self.current()
     }
 
     fn init(&mut self) {

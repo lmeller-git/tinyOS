@@ -10,6 +10,7 @@ use core::sync::atomic::{AtomicU64, Ordering};
 
 use super::ThreadingError;
 
+#[derive(Debug)]
 pub struct SimpleTask {
     pub krsp: VirtAddr,
     pub frame_flags: Cr3Flags,
@@ -88,6 +89,7 @@ pub struct ExitInfo {
     pub signal: Option<u8>,
 }
 
+#[derive(Debug)]
 pub struct TaskID {
     inner: u64,
 }

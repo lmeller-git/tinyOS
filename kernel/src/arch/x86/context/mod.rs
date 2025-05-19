@@ -354,7 +354,7 @@ global_asm!(
             pop rdi
             pop rbp
             pop rax
-            iretq
+            call interrupt_cleanup
     "
 );
 
