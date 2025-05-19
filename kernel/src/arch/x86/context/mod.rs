@@ -1,19 +1,25 @@
 use core::arch::{asm, global_asm};
 
 use lazy_static::lazy_static;
-use x86_64::{
-    registers::rflags::RFlags,
-    structures::{idt::InterruptStackFrame, paging::FrameDeallocator},
-};
+use x86_64::registers::rflags::RFlags;
 
 use crate::{
     arch::{
-        mem::{FrameAllocator, Mapper, Page, PageSize, PageTableFlags, Size4KiB, VirtAddr},
-        x86::interrupt::gdt::get_kernel_selectors,
+        mem::{
+            FrameAllocator, FrameDeallocator, Mapper, Page, PageSize, PageTableFlags, Size4KiB,
+            VirtAddr,
+        },
+        x86::interrupt::{
+            gdt::get_kernel_selectors,
+            handlers::{InterruptStackFrame, interrupt_cleanup},
+        },
     },
     kernel::{
         mem::paging::{GLOBAL_FRAME_ALLOCATOR, PAGETABLE, TaskPageTable},
-        threading::ThreadingError,
+        threading::{
+            ThreadingError,
+            task::{SimpleTask, Task},
+        },
     },
 };
 use spin::Mutex;
@@ -96,6 +102,33 @@ impl TaskCtx {
             ..Default::default()
         }
     }
+
+    pub fn from_trap_ctx(frame: InterruptStackFrame, ctx: ReducedCpuInfo) -> Self {
+        Self {
+            rsp: frame.stack_pointer.as_u64(),
+            rflags: frame.cpu_flags.bits(),
+            ss: frame.stack_segment.0 as u64,
+            cs: frame.code_segment.0 as u64,
+            rip: frame.instruction_pointer.as_u64(),
+            r15: ctx.r15,
+            r14: ctx.r14,
+            r13: ctx.r13,
+            r12: ctx.r12,
+            r11: ctx.r11,
+            r10: ctx.r10,
+            r9: ctx.r9,
+            r8: ctx.r8,
+            rsi: ctx.rsi,
+            rbp: ctx.rbp,
+            rdi: ctx.rdi,
+            rdx: ctx.rdx,
+            rcx: ctx.rcx,
+            rbx: ctx.rbx,
+            cr3: ctx.cr3,
+            rax: ctx.rax,
+        }
+    }
+
     // this does not work, as these will be changed by the time we get here.
     #[inline(always)]
     pub fn store_current(&mut self) {
@@ -178,83 +211,101 @@ pub struct ReducedCpuInfo {
     rdx: u64,
     rsi: u64,
     rdi: u64,
+    rbp: u64,
     rax: u64,
 }
-//TODO pass interrupt frame and possbily current_state correctly to context_switch
-// global_asm!(
-//     "
-//     .global context_switch_stub
-//     context_switch_stub:
-//         push r15
-//         push r14
-//         push r13
-//         push r12
-//         push r11
-//         push r10
-//         push r9
-//         push r8
 
-//         push rdi
-//         push rsi
-//         push rdx
-//         push rcx
-//         push rbx
-//         push rax
-//         mov rax, cr3
-//         push rax
-//         // rsp, rip, rflags, cs, ss in interruptframe
-//         // sub rsp, 8
-//         mov rdi, rsp
-//         lea rsi, [rsp - 15 * 8]
-//         call {0}
-//         // add rsp, 8
-//     ",
-//     sym crate::kernel::threading::schedule::context_switch
-// );
-
-// global_asm!(
-//     "
-//         .global save_cpu_state
-//         .global context_switch_handler
-//         save_cpu_state:
-//             /// pushes all relevant registers to the stack and returns a pointer to a ReducedCPUState
-//             push r15
-//             push r14
-//             push r13
-//             push r12
-//             push r11
-//             push r10
-//             push r9
-//             push r8
-
-//             push rdi
-//             push rsi
-//             push rdx
-//             push rcx
-//             push rbx
-//             push rax
-//             mov rax, cr3
-//             push rax
-
-//             mov rax, rsp
-//             ret
-
-//         context_switch_handler:
-//             /// calls save cpu state and puts the resulting ReducedCpuState in rsi and the InterruptStackFrame into rdi
-//             /// then calls context_switch
-//             /// stack layout at entry:
-//             nop
-//     "
-// );
-
-// unsafe extern "C" {
-//     pub fn save_cpu_state() -> *const ReducedCpuInfo;
-// }
-//
-
+// alternative: push taskctx to its kernel stack -> switch kernel stack -> pop context -> iretq
 global_asm!(
     "
+        .global set_cpu_context    
         .global save_reduced_cpu_context
+        .global save_context_local
+        .global get_context_local
+        .global switch_and_apply
+
+        set_cpu_context:
+            /// TaskCtx ptr in rdi
+            /// installs task, cleans up and returns from trap
+            // goto new kernel stack
+            // mov rsp, [rdi + x]// need Task info 
+            // push interrupt frame
+            // ss | rsp | rflags | cs | rip
+            push [rdi + 16]
+            push rdi
+            push [rdi + 8]
+            push [rdi + 24]
+            push [rdi + 32]
+
+            // set registers
+            mov r15, [rdi + 40]
+            mov r14, [rdi + 48]
+            mov r13, [rdi + 56]
+            mov r12, [rdi + 64]
+            mov r11, [rdi + 72]
+            mov r10, [rdi + 80]
+            mov r9, [rdi + 88]
+            mov r8, [rdi + 96]
+
+            mov rsi, [rdi + 104]
+            mov rbp, [rdi + 112]
+            mov rdx, [rdi + 128]
+            mov rcx, [rdi + 136]
+            mov rbx, [rdi + 144]
+            mov rax, [rdi + 152]
+            mov cr3, rax
+            mov rax, [rdi + 160]
+            mov rdi, [rdi + 120]
+            
+            call interrupt_cleanup
+            // unreachable
+            ud2
+
+        save_context_local:
+            /// stack layout at entry:
+            /// <stuff> Interrupt frame
+            /// at exit:
+            /// <stuff> Interrupt Frame ReducedCpuState
+            push rax
+            push rbp
+            push rdi
+            push rsi
+            push rdx
+            push rcx
+            push rbx
+            mov rax, cr3
+            push rax
+            push r15
+            push r14
+            push r13
+            push r12
+            push r11
+            push r10
+            push r9
+            push r8
+            ret
+
+        get_context_local:
+            /// undoes save_context_local
+            pop r8
+            pop r9
+            pop r10
+            pop r11
+            pop r12
+            pop r13
+            pop r14
+            pop r15
+            pop rax
+            mov cr3, rax
+            pop rbx
+            pop rcx
+            pop rdx
+            pop rsi
+            pop rdi
+            pop rbp
+            pop rax
+            ret
+              
         //TODO correct
         save_reduced_cpu_context:
             push rax
@@ -275,12 +326,44 @@ global_asm!(
             push r9
             push r8
             mov rdx, rsp
-            ret           
+            ret
+
+        switch_and_apply:
+            /// is called from context_switch_local after a trap
+            /// needs to:
+            /// switch to correct kstack (saved in passed SimpleTask)
+            /// apply context saved on this stack
+            /// clean up the interrupt
+            /// iretq
+            mov rsp, rdi
+            // now on tasks kstack, with state on stack
+            pop r8
+            pop r9
+            pop r10
+            pop r11
+            pop r12
+            pop r13
+            pop r14
+            pop r15
+            pop rax
+            mov cr3, rax
+            pop rbx
+            pop rcx
+            pop rdx
+            pop rsi
+            pop rdi
+            pop rbp
+            pop rax
+            iretq
     "
 );
 
 unsafe extern "C" {
     pub fn save_reduced_cpu_context() -> (*const InterruptStackFrame, *const ReducedCpuInfo);
+    pub fn set_cpu_context(ctx: TaskCtx);
+    pub fn save_context_local();
+    pub fn get_context_local();
+    pub fn switch_and_apply(task: &SimpleTask);
 }
 
 pub fn allocate_kstack() -> Result<VirtAddr, ThreadingError> {

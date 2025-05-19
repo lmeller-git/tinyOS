@@ -1,10 +1,13 @@
 // use super::idt::InterruptIndex;
 use crate::{
     arch::{
-        context::{ReducedCpuInfo, save_reduced_cpu_context},
+        context::{
+            ReducedCpuInfo, get_context_local, save_context_local, save_reduced_cpu_context,
+        },
         hcf,
         x86::interrupt::pic::end_interrupt,
     },
+    kernel::threading::schedule::{context_switch, context_switch_local},
     serial_println,
 };
 // use pic8259::ChainedPics;
@@ -27,6 +30,7 @@ pub(super) extern "x86-interrupt" fn double_fault_handler(
     panic!("EXCEPTION: DOUBLE FAULT\n{:#?}", stack_frame);
 }
 
+#[deprecated]
 pub(super) extern "x86-interrupt" fn timer_interrupt_handler(mut stack_frame: InterruptStackFrame) {
     // cross_println!("timer");
     // cross_println!("{:#?}", _stack_frame);
@@ -38,20 +42,78 @@ pub fn timer_interrupt_handler__(frame: InterruptStackFrame, data: ReducedCpuInf
     // serial_println!("hello");
     // serial_println!("{:#?}\n{:#?}", frame, data);
     // hcf();
+    without_interrupts(|| unsafe { context_switch(data, frame) });
     end_interrupt();
 }
 
+pub fn timer_interrupt_handler_local_() {
+    without_interrupts(|| unsafe { context_switch_local() });
+    end_interrupt();
+}
+
+//TODO cleanup
 global_asm!(
     "
+        .global interrupt_cleanup
         .global timer_interrupt_stub
+        .global timer_interrupt_stub_local
+
+        interrupt_cleanup:
+            // reenables interrupts, signals eoi and iretqs
+            sti
+            call {0}
+            iretq
+
+        timer_interrupt_stub_local:
+            // TODO use funcs
+            // call save_context_local
+            push rax
+            push rbp
+            push rdi
+            push rsi
+            push rdx
+            push rcx
+            push rbx
+            mov rax, cr3
+            push rax
+            push r15
+            push r14
+            push r13
+            push r12
+            push r11
+            push r10
+            push r9
+            push r8
+            call {3}
+            // call get_context_local
+            pop r8
+            pop r9
+            pop r10
+            pop r11
+            pop r12
+            pop r13
+            pop r14
+            pop r15
+            pop rax
+            mov cr3, rax
+            pop rbx
+            pop rcx
+            pop rdx
+            pop rsi
+            pop rdi
+            pop rbp
+            pop rax
+            iretq
+        
         timer_interrupt_stub:
             /// on entry, the InterruptStackFrame will sit in the stack at rsp
             //TODO call the save func, instead of doing it manually (currently page faults)
-            // call {0} // interrupt frame in rax, cpu state in rdx
+            // call {1} // interrupt frame in rax, cpu state in rdx
             // mov rdi, rax
             // mov rsi, rdx
             push rax
             lea rax, [rsp + 8]
+            push rbp
             push rdi
             push rsi
             push rdx
@@ -69,7 +131,7 @@ global_asm!(
             push r9
             push r8
             mov rsi, rsp 
-            call {1}
+            call {2}
             pop r8
             pop r9
             pop r10
@@ -84,15 +146,20 @@ global_asm!(
             pop rdx
             pop rsi
             pop rdi
+            pop rbp
             pop rax
             iretq
     ",
+    sym end_interrupt,
     sym save_reduced_cpu_context,
-    sym timer_interrupt_handler__
+    sym timer_interrupt_handler__,
+    sym timer_interrupt_handler_local_
 );
 
 unsafe extern "C" {
     pub(super) fn timer_interrupt_stub();
+    pub fn interrupt_cleanup();
+    pub(super) fn timer_interrupt_stub_local();
 }
 
 pub(super) extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {

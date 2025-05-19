@@ -10,14 +10,26 @@ use core::sync::atomic::{AtomicU64, Ordering};
 
 use super::ThreadingError;
 
+pub struct SimpleTask {
+    pub krsp: VirtAddr,
+    pub frame_flags: Cr3Flags,
+    pub ktop: VirtAddr,
+    pub parent: Option<TaskID>,
+    pub root_frame: PhysFrame<Size4KiB>,
+    pub pid: TaskID,
+}
+
+impl SimpleTask {}
+
 pub struct Task {
-    pid: TaskID,
+    // pub(super) kstack_rsp: Option<VirtAddr>,
     pub(super) ctx: TaskCtx,
     pub(super) state: TaskState,
     pub(super) parent: Option<TaskID>,
     pub(super) root_frame: PhysFrame<Size4KiB>,
     pub(super) frame_flags: Cr3Flags,
     pub(super) kstack_top: Option<VirtAddr>,
+    pid: TaskID,
 }
 
 impl Task {
