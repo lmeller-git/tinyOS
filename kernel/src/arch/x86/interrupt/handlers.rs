@@ -47,6 +47,7 @@ pub fn timer_interrupt_handler__(frame: InterruptStackFrame, data: ReducedCpuInf
 }
 
 pub fn timer_interrupt_handler_local_() {
+    // serial_println!("timer");
     without_interrupts(|| unsafe { context_switch_local() });
     end_interrupt();
 }

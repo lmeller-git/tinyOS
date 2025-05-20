@@ -232,9 +232,9 @@ unsafe fn init_timer(lapic_pointer: *mut u32) {
     svr.write_volatile(svr.read_volatile() | 0x100);
 
     // Configure timer
-    // Vector 0x20, Periodic Mode (bit 17), Not masked (bit 16 = 0)
+    // Vector 0x20, Periodic Mode (bit 17), masked (bit 16 = 1)
     let lvt_timer = lapic_pointer.offset(APICOffset::LvtT as isize / 4);
-    lvt_timer.write_volatile(0x20 | (1 << 17));
+    lvt_timer.write_volatile(0x20 | (1 << 17) | (1 << 16));
 
     // Set divider to 16
     let tdcr = lapic_pointer.offset(APICOffset::Tdcr as isize / 4);
@@ -243,6 +243,26 @@ unsafe fn init_timer(lapic_pointer: *mut u32) {
     // Set initial count - smaller value for more frequent interrupts
     let ticr = lapic_pointer.offset(APICOffset::Ticr as isize / 4);
     ticr.write_volatile(10000); // Much smaller value than before
+}
+
+pub fn enable_timer() {
+    let lapic_ptr = LAPIC_ADDR.lock().address;
+    unsafe {
+        let lvt_timer = lapic_ptr.offset(APICOffset::LvtT as isize / 4);
+        let mut val = lvt_timer.read_volatile();
+        val &= !(1 << 16);
+        lvt_timer.write_volatile(val);
+    }
+}
+
+pub fn disable_timer() {
+    let lapic_ptr = LAPIC_ADDR.lock().address;
+    unsafe {
+        let lvt_timer = lapic_ptr.offset(APICOffset::LvtT as isize / 4);
+        let mut val = lvt_timer.read_volatile();
+        val |= 1 << 16;
+        lvt_timer.write_volatile(val);
+    }
 }
 
 #[allow(unsafe_op_in_unsafe_fn)]

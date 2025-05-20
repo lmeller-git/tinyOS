@@ -21,13 +21,14 @@ use crate::{
             task::{SimpleTask, Task},
         },
     },
+    serial_println,
 };
 use spin::Mutex;
 
 use super::interrupt::gdt::get_user_selectors;
 
-const KSTACK_AREA_START: VirtAddr = VirtAddr::new(0xffff_8000_1000_0000); // random location
-const KSTACK_USER_AREA_START: VirtAddr = VirtAddr::new(0xffff_8000_2000_0000);
+const KSTACK_AREA_START: VirtAddr = VirtAddr::new(0xffff_8000_c000_0000); // random location
+const KSTACK_USER_AREA_START: VirtAddr = VirtAddr::new(0xffff_8000_d000_0000);
 
 const KSTACK_SIZE: usize = 16 * 1024; // 16 KiB
 const KSTACK_SIZE_USER: usize = 8 * 1024; // 8 KiB
@@ -223,6 +224,8 @@ global_asm!(
         .global save_context_local
         .global get_context_local
         .global switch_and_apply
+        .global init_kernel_task
+        .global init_usr_task
 
         set_cpu_context:
             /// TaskCtx ptr in rdi
@@ -335,7 +338,7 @@ global_asm!(
             /// apply context saved on this stack
             /// clean up the interrupt
             /// iretq
-            mov rsp, rdi
+            mov rsp, [rdi]
             // now on tasks kstack, with state on stack
             pop r8
             pop r9
@@ -355,8 +358,47 @@ global_asm!(
             pop rbp
             pop rax
             call interrupt_cleanup
+
+        init_kernel_task:
+            mov rax, rsp
+            mov rsp, [rdi + 8]
+            // now on tasks kstack
+            // 1: push interrupt frame
+            push [rdi + 32] // ss
+            push [rdi + 8] // rsp
+            push [rdi + 24] // rflags
+            push [rdi + 16] // cs
+            push [rdi + 0] // rip
+
+            // 2: push Cpu Context, such that it can be popped by switch_and_apply
+            push 0 // rax
+            push 0 // rbp
+            push 0 // rdi
+            push 0 // rsi
+            push 0 // rdx
+            push 0 // rcx
+            push 0 // rbx
+            mov rsi, cr3
+            push rsi // cr3 TODO
+            push 0 // r15
+            push 0
+            push 0
+            push 0
+            push 0
+            push 0
+            push 0
+            push 0 // r8
+            mov rsp, rax
+            ret
+
+        init_usr_task:
+            ret
     "
 );
+
+fn serial_stub__(v1: u64, v2: u64) {
+    serial_println!("v1: {:x}, v2: {:x}", v1, v2);
+}
 
 unsafe extern "C" {
     pub fn save_reduced_cpu_context() -> (*const InterruptStackFrame, *const ReducedCpuInfo);
@@ -364,6 +406,37 @@ unsafe extern "C" {
     pub fn save_context_local();
     pub fn get_context_local();
     pub fn switch_and_apply(task: &SimpleTask);
+    pub fn init_kernel_task(info: KTaskInfo) -> VirtAddr;
+    pub fn init_usr_task(info: UsrTaskInfo);
+}
+
+pub struct KTaskInfo {
+    rip: VirtAddr,
+    kstack_top: VirtAddr,
+    cs: u64,
+    rflags: u64,
+    ss: u64,
+}
+
+impl KTaskInfo {
+    pub fn new(addr: VirtAddr, kstack: VirtAddr) -> Self {
+        serial_println!("rip: {:x}", addr.as_u64());
+        let (cs, ss) = get_kernel_selectors();
+        let rflags = RFlags::INTERRUPT_FLAG | RFlags::from_bits_truncate(0x2);
+        Self {
+            rip: addr,
+            kstack_top: kstack,
+            cs: cs.0 as u64,
+            rflags: rflags.bits(),
+            ss: ss.0 as u64,
+        }
+    }
+}
+
+pub struct UsrTaskInfo {
+    rip: VirtAddr,
+    kstack_top: VirtAddr,
+    usr_stack_top: VirtAddr,
 }
 
 pub fn allocate_kstack() -> Result<VirtAddr, ThreadingError> {
@@ -397,6 +470,8 @@ pub fn allocate_kstack() -> Result<VirtAddr, ThreadingError> {
         let mut mapper = PAGETABLE.lock();
         let mut frame_allocator = GLOBAL_FRAME_ALLOCATOR.lock();
 
+        assert!(mapper.translate_page(start_page).is_err());
+
         for page in Page::range_inclusive(start_page, end_page) {
             let frame = frame_allocator
                 .allocate_frame()
@@ -405,10 +480,13 @@ pub fn allocate_kstack() -> Result<VirtAddr, ThreadingError> {
                 mapper
                     .map_to(page, frame, flags, &mut *frame_allocator)
                     .map_err(|_| ThreadingError::StackNotBuilt)?
+                    // .unwrap()
                     .flush();
             };
         }
+        assert!(mapper.translate_page(end_page).is_ok());
     }
+    serial_println!("mapped");
     Ok(end)
 }
 

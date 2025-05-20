@@ -6,6 +6,7 @@ pub fn init() {
     schedule::init();
 }
 
+#[derive(Debug)]
 pub enum ThreadingError {
     StackNotBuilt,
     StackNotFreed,

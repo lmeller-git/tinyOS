@@ -11,7 +11,10 @@ use crate::{
     serial_println,
 };
 
-use super::task::{SimpleTask, Task, TaskID};
+use super::{
+    ThreadingError,
+    task::{SimpleTask, Task, TaskBuilder, TaskID},
+};
 
 mod round_robin;
 
@@ -54,8 +57,16 @@ pub fn init() {
 #[allow(unsafe_op_in_unsafe_fn)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn context_switch_local() {
-    if let Some(new) = GLOBAL_SCHEDULER.get_unchecked().lock().switch() {
-        switch_and_apply(new);
+    serial_println!("well");
+    let mut lock = GLOBAL_SCHEDULER.get_unchecked().lock();
+    if let Some(new) = lock.switch() {
+        // serial_println!("hello 2, {}", unsafe {
+        // GLOBAL_SCHEDULER.get_unchecked().lock().num_tasks()
+        // });
+        let new = new.clone();
+        drop(lock);
+        serial_println!("ptr: {:x}", new.krsp);
+        switch_and_apply(&new);
         unreachable!()
     }
 }
@@ -69,4 +80,20 @@ pub unsafe extern "C" fn context_switch(
     // let ctx = TaskCtx::from_trap_ctx(frame, state);
     // if let Some(new) = GLOBAL_SCHEDULER.get_unchecked().lock().switch(ctx) {}
     // set_cpu_context(ctx);
+}
+
+pub fn add_ktask(func: extern "C" fn()) -> Result<(), ThreadingError> {
+    let task = TaskBuilder::from_fn(func)?;
+    serial_println!("task inited");
+    let task = task.as_kernel();
+    serial_println!("task as kernel");
+    let task = task.build();
+    serial_println!("task built");
+    unsafe {
+        GLOBAL_SCHEDULER.get_unchecked().lock().add_task(task);
+    }
+    serial_println!("hello, {}", unsafe {
+        GLOBAL_SCHEDULER.get_unchecked().lock().num_tasks()
+    });
+    Ok(())
 }

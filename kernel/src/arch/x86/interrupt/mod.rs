@@ -4,6 +4,7 @@ pub mod gdt;
 pub mod handlers;
 mod idt;
 mod pic;
+pub use pic::*;
 
 pub(super) fn init() {
     gdt::init();
@@ -15,4 +16,8 @@ pub(super) fn init() {
     // unsafe { handlers::PICS.lock().initialize() };
     x86_64::instructions::interrupts::enable();
     println!("done");
+}
+
+pub fn enable_threading_interrupts() {
+    enable_timer();
 }

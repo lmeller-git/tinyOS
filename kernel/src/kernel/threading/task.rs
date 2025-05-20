@@ -1,26 +1,137 @@
 use crate::{
     arch::{
-        context::{TaskCtx, allocate_kstack, allocate_userkstack, allocate_userstack},
+        context::{
+            KTaskInfo, TaskCtx, UsrTaskInfo, allocate_kstack, allocate_userkstack,
+            allocate_userstack, init_kernel_task,
+        },
         current_page_tbl,
         mem::{Cr3Flags, PhysFrame, Size4KiB, VirtAddr},
     },
+    bootinfo,
     kernel::mem::paging::create_new_pagedir,
+    serial_println,
 };
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::{
+    marker::PhantomData,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use super::ThreadingError;
 
-#[derive(Debug)]
+pub trait TaskRepr {
+    fn krsp(&mut self) -> &mut VirtAddr;
+}
+
+#[repr(C)]
+#[derive(Debug, Clone)]
 pub struct SimpleTask {
     pub krsp: VirtAddr,
     pub frame_flags: Cr3Flags,
-    pub ktop: VirtAddr,
+    // pub ktop: VirtAddr,
     pub parent: Option<TaskID>,
     pub root_frame: PhysFrame<Size4KiB>,
     pub pid: TaskID,
 }
 
-impl SimpleTask {}
+impl SimpleTask {
+    fn new() -> Result<Self, ThreadingError> {
+        let stack_top = allocate_kstack()?;
+        let (tbl, flags) = current_page_tbl();
+        Ok(Self {
+            krsp: stack_top,
+            frame_flags: flags,
+            // ktop: stack_top,
+            parent: None,
+            root_frame: tbl,
+            pid: get_pid(),
+        })
+    }
+}
+
+impl TaskRepr for SimpleTask {
+    fn krsp(&mut self) -> &mut VirtAddr {
+        &mut self.krsp
+    }
+}
+
+pub struct Uninit;
+pub struct Init;
+pub struct Ready<I> {
+    inner: I,
+}
+
+impl From<KTaskInfo> for Ready<KTaskInfo> {
+    fn from(value: KTaskInfo) -> Self {
+        Self { inner: value }
+    }
+}
+
+pub struct TaskBuilder<T: TaskRepr, S> {
+    inner: T,
+    entry: VirtAddr,
+    _marker: S,
+}
+
+impl<T, S> TaskBuilder<T, S> where T: TaskRepr {}
+
+impl TaskBuilder<SimpleTask, Uninit> {
+    pub unsafe fn from_addr(
+        addr: VirtAddr,
+    ) -> Result<TaskBuilder<SimpleTask, Uninit>, ThreadingError> {
+        Ok(TaskBuilder::<SimpleTask, Uninit> {
+            inner: SimpleTask::new()?,
+            entry: addr,
+            _marker: Uninit,
+        })
+    }
+
+    pub fn from_fn(
+        func: extern "C" fn(),
+    ) -> Result<TaskBuilder<SimpleTask, Uninit>, ThreadingError> {
+        Ok(TaskBuilder::<SimpleTask, Uninit> {
+            inner: SimpleTask::new()?,
+            entry: VirtAddr::new(func as usize as u64),
+            _marker: Uninit,
+        })
+    }
+}
+
+impl TaskBuilder<SimpleTask, Uninit> {
+    pub fn as_kernel(mut self) -> TaskBuilder<SimpleTask, Ready<KTaskInfo>> {
+        let info = KTaskInfo::new(self.entry, self.inner.krsp);
+        TaskBuilder {
+            inner: self.inner,
+            entry: self.entry,
+            _marker: info.into(),
+        }
+    }
+
+    pub fn as_usr(mut self) -> TaskBuilder<SimpleTask, Ready<UsrTaskInfo>> {
+        todo!()
+    }
+}
+
+impl<T: TaskRepr> TaskBuilder<T, Ready<UsrTaskInfo>> {
+    pub fn build(mut self) -> T {
+        todo!()
+    }
+}
+
+impl<T: TaskRepr> TaskBuilder<T, Ready<KTaskInfo>> {
+    pub fn build(mut self) -> T {
+        let next_top = unsafe { init_kernel_task(self._marker.inner) };
+        serial_println!("{:x}", next_top);
+        serial_println!("wtf");
+        *self.inner.krsp() = next_top;
+        self.inner
+    }
+}
+
+impl<S> TaskBuilder<Task, S> {
+    pub unsafe fn from_addr(addr: VirtAddr) -> Result<Self, ThreadingError> {
+        todo!()
+    }
+}
 
 pub struct Task {
     // pub(super) kstack_rsp: Option<VirtAddr>,
@@ -70,6 +181,12 @@ impl Task {
     }
 }
 
+impl TaskRepr for Task {
+    fn krsp(&mut self) -> &mut VirtAddr {
+        todo!()
+    }
+}
+
 pub enum TaskState {
     Running,
     Ready,
@@ -89,7 +206,7 @@ pub struct ExitInfo {
     pub signal: Option<u8>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TaskID {
     inner: u64,
 }

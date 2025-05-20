@@ -8,12 +8,14 @@ use embedded_graphics::primitives::PrimitiveStyle;
 use embedded_graphics::primitives::StyledDrawable;
 use embedded_graphics::text::renderer::TextRenderer;
 use tiny_os::arch;
+use tiny_os::arch::interrupt::enable_threading_interrupts;
 use tiny_os::bootinfo;
 use tiny_os::cross_println;
 use tiny_os::drivers::graphics::colors::ColorCode;
 use tiny_os::drivers::graphics::framebuffers::LimineFrameBuffer;
 use tiny_os::drivers::graphics::text::draw_str;
 use tiny_os::kernel;
+use tiny_os::kernel::threading::schedule::add_ktask;
 use tiny_os::println;
 use tiny_os::serial_println;
 use tiny_os::services::graphics::Glyph;
@@ -27,22 +29,38 @@ use tiny_os::term;
 #[unsafe(no_mangle)]
 unsafe extern "C" fn kmain() -> ! {
     bootinfo::get();
+    // serial_println!("{:x}", bootinfo::get_phys_offset());
     kernel::mem::init_paging();
     term::init_term();
     println!("terminal started");
     kernel::init_mem();
-    kernel::threading::init();
     arch::init();
+    kernel::threading::init();
     cross_println!("OS booted succesfullly");
 
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
-    random_stuff();
-    tiny_os::term::synced_keyboard_listener();
+    add_ktask(rand).unwrap();
+    // add_ktask(listen).unwrap();
+    // random_stuff();
+    enable_threading_interrupts();
+    serial_println!("unreachable??");
     arch::hcf()
 }
 
+#[unsafe(no_mangle)]
+extern "C" fn rand() {
+    random_stuff();
+}
+
+#[unsafe(no_mangle)]
+extern "C" fn listen() {
+    serial_println!("hello 0 from task");
+    tiny_os::term::synced_keyboard_listener();
+}
+
 fn random_stuff() {
+    serial_println!("hello from task");
     let mut fbs = bootinfo::get_framebuffers().unwrap();
     let fb = LimineFrameBuffer::try_new(&mut fbs);
     if let Some(fb) = fb {
