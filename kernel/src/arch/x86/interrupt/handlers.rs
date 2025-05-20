@@ -47,8 +47,11 @@ pub fn timer_interrupt_handler__(frame: InterruptStackFrame, data: ReducedCpuInf
 }
 
 pub fn timer_interrupt_handler_local_() {
-    // serial_println!("timer");
+    serial_println!("timer");
     without_interrupts(|| unsafe { context_switch_local() });
+    // unsafe {
+    // context_switch_local();
+    // }
     end_interrupt();
 }
 
@@ -61,8 +64,16 @@ global_asm!(
 
         interrupt_cleanup:
             // reenables interrupts, signals eoi and iretqs
-            sti
+            push rdi
+            mov rdi, 1
+            call printer
+            pop rdi
             call {0}
+            push rdi
+            mov rdi, 2
+            call printer
+            pop rdi
+            sti
             iretq
 
         timer_interrupt_stub_local:
@@ -86,6 +97,10 @@ global_asm!(
             push r9
             push r8
             call {3}
+            push rdi
+            mov rdi, 0
+            call printer
+            pop rdi
             // call get_context_local
             pop r8
             pop r9
@@ -156,6 +171,11 @@ global_asm!(
     sym timer_interrupt_handler__,
     sym timer_interrupt_handler_local_
 );
+
+#[unsafe(no_mangle)]
+extern "C" fn printer(v: u64) {
+    serial_println!("hi from printer, {}", v);
+}
 
 unsafe extern "C" {
     pub(super) fn timer_interrupt_stub();

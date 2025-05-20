@@ -5,6 +5,7 @@ use crate::{
             allocate_userstack, init_kernel_task,
         },
         current_page_tbl,
+        interrupt::gdt::get_kernel_selectors,
         mem::{Cr3Flags, PhysFrame, Size4KiB, VirtAddr},
     },
     bootinfo,
@@ -119,7 +120,12 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<UsrTaskInfo>> {
 
 impl<T: TaskRepr> TaskBuilder<T, Ready<KTaskInfo>> {
     pub fn build(mut self) -> T {
-        let next_top = unsafe { init_kernel_task(self._marker.inner) };
+        serial_println!("krsp: {:x}", self.inner.krsp());
+        serial_println!("cs: {:#?}", self._marker.inner);
+        let (cs, ss) = get_kernel_selectors();
+        serial_println!("cs: {:#x}, ss: {:#x}", cs.0 as u64, ss.0 as u64);
+        let next_top = unsafe { init_kernel_task(&self._marker.inner) };
+
         serial_println!("{:x}", next_top);
         serial_println!("wtf");
         *self.inner.krsp() = next_top;

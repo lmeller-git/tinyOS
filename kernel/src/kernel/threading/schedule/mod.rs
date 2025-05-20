@@ -57,7 +57,7 @@ pub fn init() {
 #[allow(unsafe_op_in_unsafe_fn)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn context_switch_local() {
-    serial_println!("well");
+    // serial_println!("well");
     let mut lock = GLOBAL_SCHEDULER.get_unchecked().lock();
     if let Some(new) = lock.switch() {
         // serial_println!("hello 2, {}", unsafe {
@@ -65,7 +65,7 @@ pub unsafe extern "C" fn context_switch_local() {
         // });
         let new = new.clone();
         drop(lock);
-        serial_println!("ptr: {:x}", new.krsp);
+        // serial_println!("ptr: {:x}", new.krsp);
         switch_and_apply(&new);
         unreachable!()
     }

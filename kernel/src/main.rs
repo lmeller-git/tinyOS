@@ -44,18 +44,20 @@ unsafe extern "C" fn kmain() -> ! {
     // add_ktask(listen).unwrap();
     // random_stuff();
     enable_threading_interrupts();
-    serial_println!("unreachable??");
+    // serial_println!("unreachable??");
+    // serial_println!("wtffftftftftfft");
+    // serial_println!("yugfqweifuygweqiuygf");
     arch::hcf()
 }
 
 #[unsafe(no_mangle)]
 extern "C" fn rand() {
+    serial_println!("hello 0 from task");
     random_stuff();
 }
 
 #[unsafe(no_mangle)]
 extern "C" fn listen() {
-    serial_println!("hello 0 from task");
     tiny_os::term::synced_keyboard_listener();
 }
 

@@ -242,7 +242,7 @@ unsafe fn init_timer(lapic_pointer: *mut u32) {
 
     // Set initial count - smaller value for more frequent interrupts
     let ticr = lapic_pointer.offset(APICOffset::Ticr as isize / 4);
-    ticr.write_volatile(10000); // Much smaller value than before
+    ticr.write_volatile(1000000);
 }
 
 pub fn enable_timer() {
