@@ -338,6 +338,7 @@ global_asm!(
             /// apply context saved on this stack
             /// clean up the interrupt
             /// iretq
+            mov rsi, rsp
             mov rsp, [rdi]
             // now on tasks kstack, with state on stack
             // push rdi
@@ -352,10 +353,10 @@ global_asm!(
             pop r13
             pop r14
             pop r15
-            pop rax
-            call {0}
+            pop rax // cr3
+            // call {0}
             // mov cr3, rax
-            call {0}
+            // call {0}
             pop rbx
             pop rcx
             pop rdx
@@ -363,7 +364,7 @@ global_asm!(
             pop rdi
             pop rbp
             pop rax
-            call {0}
+            // call {0}
             call interrupt_cleanup
 
         init_kernel_task:
@@ -374,17 +375,8 @@ global_asm!(
             // push [rdi + 32] // ss
             // push [rdi + 8] // rsp
             push [rdi + 24] // rflags
-            // mov rsi, [rdi + 24]
-            // call {0}
-            // mov rsi, [rdi + 16]
-            // call {0}
-            // mov rsi, [rdi]
-            // call {0}
             push [rdi + 16] // cs
             push [rdi] // rip
-            // pop rsi
-            // call {0}
-            // push rsi
 
             // 2: push Cpu Context, such that it can be popped by switch_and_apply
             push 0 // rax
@@ -404,7 +396,10 @@ global_asm!(
             push 0
             push 0
             push 0 // r8
+            mov rsi, rsp
             mov rsp, rax
+            mov rax, rsi
+            // add rax, 32 // for some reason the addr in gpf in iretq is 32 downwards of the root (outside of InterruptStackFrame)
             ret
 
         init_usr_task:
@@ -413,8 +408,8 @@ global_asm!(
     sym serial_stub__
 );
 
-fn serial_stub__(v1: u64, v2: u64) {
-    serial_println!("v1: {:x}, v2: {:#x}", v1, v2);
+pub fn serial_stub__(v1: u64, v2: u64) {
+    serial_println!("v1: {:#x}, v2: {:#x}", v1, v2);
 }
 
 unsafe extern "C" {
@@ -480,8 +475,8 @@ pub fn allocate_kstack() -> Result<VirtAddr, ThreadingError> {
 
     let base =
         (KSTACK_AREA_START + kstack_start_idx as u64 * KSTACK_SIZE as u64).align_up(Size4KiB::SIZE);
-    let start = base + Size4KiB::SIZE;
-    let end = base + KSTACK_SIZE as u64 - 8;
+    let start = (base + Size4KiB::SIZE).align_up(Size4KiB::SIZE);
+    let end = (base + KSTACK_SIZE as u64 - 8).align_up(Size4KiB::SIZE);
 
     let start_page = Page::containing_address(start);
     let end_page = Page::containing_address(end);
@@ -512,10 +507,10 @@ pub fn allocate_kstack() -> Result<VirtAddr, ThreadingError> {
 
 pub fn free_kstack(top: VirtAddr) -> Result<(), ThreadingError> {
     // assuming top is a properly aligned addr in the correct region
-    let start = top + 8 - KSTACK_SIZE as u64;
+    let start = (top + 8 - KSTACK_SIZE as u64).align_up(Size4KiB::SIZE);
     let idx = (start - KSTACK_AREA_START) as usize / KSTACK_SIZE;
 
-    let start_page = Page::containing_address(start + Size4KiB::SIZE);
+    let start_page = Page::containing_address((start + Size4KiB::SIZE).align_up(Size4KiB::SIZE));
     let end_page = Page::containing_address(top);
     {
         let mut mapper = PAGETABLE.lock();
@@ -540,8 +535,8 @@ pub fn allocate_userstack(tbl: &mut TaskPageTable) -> Result<VirtAddr, Threading
     let flags = PageTableFlags::WRITABLE | PageTableFlags::PRESENT;
 
     let base = USER_STACK_START.align_up(Size4KiB::SIZE);
-    let start = base + Size4KiB::SIZE;
-    let end = base + USER_STACK_SIZE as u64 - 8;
+    let start = (base + Size4KiB::SIZE).align_up(Size4KiB::SIZE);
+    let end = (base + USER_STACK_SIZE as u64 - 8).align_up(Size4KiB::SIZE);
 
     let start_page = Page::containing_address(start);
     let end_page = Page::containing_address(end);
@@ -586,8 +581,8 @@ pub fn allocate_userkstack(tbl: &mut TaskPageTable) -> Result<VirtAddr, Threadin
 
     let base = (KSTACK_USER_AREA_START + kstack_start_idx as u64 * KSTACK_SIZE_USER as u64)
         .align_up(Size4KiB::SIZE);
-    let start = base + Size4KiB::SIZE;
-    let end = base + KSTACK_SIZE_USER as u64 - 8;
+    let start = (base + Size4KiB::SIZE).align_up(Size4KiB::SIZE);
+    let end = (base + KSTACK_SIZE_USER as u64 - 8).align_up(Size4KiB::SIZE);
 
     let start_page = Page::containing_address(start);
     let end_page = Page::containing_address(end);
@@ -613,10 +608,10 @@ pub fn allocate_userkstack(tbl: &mut TaskPageTable) -> Result<VirtAddr, Threadin
 
 pub fn free_user_kstack(top: VirtAddr, tbl: &mut TaskPageTable) -> Result<(), ThreadingError> {
     // assuming top is a properly aligned addr in the correct region
-    let start = top + 8 - KSTACK_SIZE_USER as u64;
+    let start = (top + 8 - KSTACK_SIZE_USER as u64).align_up(Size4KiB::SIZE);
     let idx = (start - KSTACK_USER_AREA_START) as usize / KSTACK_SIZE_USER;
 
-    let start_page = Page::containing_address(start + Size4KiB::SIZE);
+    let start_page = Page::containing_address((start + Size4KiB::SIZE).align_up(Size4KiB::SIZE));
     let end_page = Page::containing_address(top);
     {
         let mapper = &mut tbl.table;
@@ -640,9 +635,9 @@ pub fn free_user_kstack(top: VirtAddr, tbl: &mut TaskPageTable) -> Result<(), Th
 
 pub fn free_user_stack(top: VirtAddr, tbl: &mut TaskPageTable) -> Result<(), ThreadingError> {
     // assuming top is a properly aligned addr in the correct region
-    let start = top + 8 - KSTACK_SIZE_USER as u64;
+    let start = (top + 8 - KSTACK_SIZE_USER as u64).align_up(Size4KiB::SIZE);
 
-    let start_page = Page::containing_address(start + Size4KiB::SIZE);
+    let start_page = Page::containing_address((start + Size4KiB::SIZE).align_up(Size4KiB::SIZE));
     let end_page = Page::containing_address(top);
     {
         let mapper = &mut tbl.table;

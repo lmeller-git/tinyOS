@@ -64,15 +64,15 @@ global_asm!(
 
         interrupt_cleanup:
             // reenables interrupts, signals eoi and iretqs
-            push rdi
-            mov rdi, 1
-            call printer
-            pop rdi
+            // push rdi
+            // mov rdi, 1
+            // call printer
+            // pop rdi
             call {0}
-            push rdi
-            mov rdi, 2
-            call printer
-            pop rdi
+            // push rdi
+            // mov rdi, 2
+            // call printer
+            // pop rdi
             sti
             iretq
 

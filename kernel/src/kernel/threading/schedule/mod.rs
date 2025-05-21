@@ -65,7 +65,7 @@ pub unsafe extern "C" fn context_switch_local() {
         // });
         let new = new.clone();
         drop(lock);
-        // serial_println!("ptr: {:x}", new.krsp);
+        serial_println!("ptr: {:x}", new.krsp);
         switch_and_apply(&new);
         unreachable!()
     }
