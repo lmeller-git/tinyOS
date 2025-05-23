@@ -7,6 +7,7 @@ use crate::{
     arch::{
         self,
         context::{TaskCtx, set_cpu_context, switch_and_apply},
+        mem::VirtAddr,
     },
     serial_println,
 };
@@ -42,6 +43,7 @@ pub trait OneOneScheduler {
     fn current(&self) -> Option<&SimpleTask>;
     fn num_tasks(&self) -> usize;
     fn reschedule(&mut self, order: ScheduleOrder);
+    fn current_mut(&mut self) -> &mut Option<SimpleTask>;
 }
 
 pub enum ScheduleOrder {}
@@ -56,9 +58,12 @@ pub fn init() {
 
 #[allow(unsafe_op_in_unsafe_fn)]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn context_switch_local() {
+pub unsafe extern "C" fn context_switch_local(rsp: u64) {
     // serial_println!("well");
     let mut lock = GLOBAL_SCHEDULER.get_unchecked().lock();
+    if let Some(current) = lock.current_mut() {
+        current.krsp = VirtAddr::new(rsp);
+    }
     if let Some(new) = lock.switch() {
         // serial_println!("hello 2, {}", unsafe {
         // GLOBAL_SCHEDULER.get_unchecked().lock().num_tasks()

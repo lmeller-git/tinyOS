@@ -46,9 +46,9 @@ pub fn timer_interrupt_handler__(frame: InterruptStackFrame, data: ReducedCpuInf
     end_interrupt();
 }
 
-pub fn timer_interrupt_handler_local_() {
+pub fn timer_interrupt_handler_local_(rsp: u64) {
     serial_println!("timer");
-    without_interrupts(|| unsafe { context_switch_local() });
+    without_interrupts(|| unsafe { context_switch_local(rsp) });
     // unsafe {
     // context_switch_local();
     // }
@@ -68,16 +68,18 @@ global_asm!(
             // mov rdi, 1
             // call printer
             // pop rdi
+            // mov rdi, rsp
+            // call printer
             call {0}
             // push rdi
-            // mov rdi, 2
+            // mov rdi, rsp
             // call printer
             // pop rdi
             sti
             iretq
 
         timer_interrupt_stub_local:
-            // TODO use funcs
+            // TODO use funcs, maybe only push/pop in switch_and_apply
             // call save_context_local
             push rax
             push rbp
@@ -96,6 +98,7 @@ global_asm!(
             push r10
             push r9
             push r8
+            mov rax, rsp
             call {3}
             push rdi
             mov rdi, 0
@@ -110,7 +113,7 @@ global_asm!(
             pop r13
             pop r14
             pop r15
-            pop rax
+            pop rax // cr3
             mov cr3, rax
             pop rbx
             pop rcx
@@ -174,7 +177,7 @@ global_asm!(
 
 #[unsafe(no_mangle)]
 extern "C" fn printer(v: u64) {
-    serial_println!("hi from printer, {}", v);
+    serial_println!("hi from printer, {:#x}", v);
 }
 
 unsafe extern "C" {

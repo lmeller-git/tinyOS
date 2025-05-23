@@ -115,4 +115,8 @@ impl OneOneScheduler for OneOneRoundRobin {
     fn reschedule(&mut self, order: super::ScheduleOrder) {
         todo!()
     }
+
+    fn current_mut(&mut self) -> &mut Option<SimpleTask> {
+        &mut self.running
+    }
 }

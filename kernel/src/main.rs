@@ -8,6 +8,7 @@ use embedded_graphics::primitives::PrimitiveStyle;
 use embedded_graphics::primitives::StyledDrawable;
 use embedded_graphics::text::renderer::TextRenderer;
 use tiny_os::arch;
+use tiny_os::arch::hcf;
 use tiny_os::arch::interrupt::enable_threading_interrupts;
 use tiny_os::bootinfo;
 use tiny_os::cross_println;
@@ -138,6 +139,8 @@ fn random_stuff() {
         )
         .unwrap();
     }
+    serial_println!("finished");
+    hcf()
 }
 
 #[panic_handler]
