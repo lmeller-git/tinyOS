@@ -139,7 +139,10 @@ fn random_stuff() {
         )
         .unwrap();
     }
-    serial_println!("finished");
+    println!("finished");
+    // serial_println!("finished");
+    println!("finished2");
+    println!("finished3");
     hcf()
 }
 

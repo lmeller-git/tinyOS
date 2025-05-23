@@ -91,12 +91,12 @@ impl OneOneScheduler for OneOneRoundRobin {
 
     fn switch(&mut self) -> Option<&SimpleTask> {
         if let Some(next) = self.ready.pop_front() {
-            serial_println!("ok");
+            // serial_println!("ok");
             if let Some(current) = self.running.replace(next) {
                 self.ready.push_back(current);
             }
         }
-        serial_println!("{:#?}", self.current());
+        // serial_println!("{:#?}", self.current());
         self.current()
     }
 
