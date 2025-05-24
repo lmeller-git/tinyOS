@@ -1,5 +1,6 @@
 use core::arch::{asm, global_asm};
 
+use alloc::string::String;
 use conquer_once::spin::OnceCell;
 use spin::Mutex;
 
@@ -83,18 +84,25 @@ pub unsafe extern "C" fn context_switch(
     // set_cpu_context(ctx);
 }
 
-pub fn add_ktask(func: extern "C" fn()) -> Result<(), ThreadingError> {
-    let task = TaskBuilder::from_fn(func)?;
-    serial_println!("task inited");
-    let task = task.as_kernel();
-    serial_println!("task as kernel");
-    let task = task.build();
+pub fn add_named_ktask(func: extern "C" fn(), name: String) -> Result<(), ThreadingError> {
+    serial_println!("spawning task {} at {:#x}", name, func as usize);
+    let task = TaskBuilder::from_fn(func)?
+        .with_name(name)
+        .as_kernel()
+        .build();
     serial_println!("task built");
     unsafe {
         GLOBAL_SCHEDULER.get_unchecked().lock().add_task(task);
     }
-    serial_println!("hello, {}", unsafe {
-        GLOBAL_SCHEDULER.get_unchecked().lock().num_tasks()
-    });
+    Ok(())
+}
+
+pub fn add_ktask(func: extern "C" fn()) -> Result<(), ThreadingError> {
+    serial_println!("spawning task {:#x}", func as usize);
+    let task = TaskBuilder::from_fn(func)?.as_kernel().build();
+    serial_println!("task built");
+    unsafe {
+        GLOBAL_SCHEDULER.get_unchecked().lock().add_task(task);
+    }
     Ok(())
 }

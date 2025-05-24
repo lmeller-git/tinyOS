@@ -16,12 +16,10 @@ lazy_static! {
 #[doc(hidden)]
 pub fn _print(args: ::core::fmt::Arguments) {
     use core::fmt::Write;
-    // unsafe { asm!("cli") };
     without_interrupts(|| {
         SERIAL1
             .lock()
             .write_fmt(args)
             .expect("Printing to serial failed")
     });
-    // unsafe { asm!("sti") };
 }

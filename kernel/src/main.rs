@@ -17,6 +17,7 @@ use tiny_os::drivers::graphics::framebuffers::LimineFrameBuffer;
 use tiny_os::drivers::graphics::text::draw_str;
 use tiny_os::kernel;
 use tiny_os::kernel::threading::schedule::add_ktask;
+use tiny_os::kernel::threading::schedule::add_named_ktask;
 use tiny_os::println;
 use tiny_os::serial_println;
 use tiny_os::services::graphics::Glyph;
@@ -30,36 +31,44 @@ use tiny_os::term;
 #[unsafe(no_mangle)]
 unsafe extern "C" fn kmain() -> ! {
     bootinfo::get();
-    // serial_println!("{:x}", bootinfo::get_phys_offset());
     kernel::mem::init_paging();
+    serial_println!("paging set up");
     term::init_term();
-    println!("terminal started");
+    cross_println!("terminal started");
     kernel::init_mem();
+    cross_println!("heap set up");
     arch::init();
+    cross_println!("interrupts set up");
     kernel::threading::init();
+    cross_println!("scheduler initialized");
     cross_println!("OS booted succesfullly");
 
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
-    add_ktask(rand).unwrap();
-    // add_ktask(listen).unwrap();
-    // random_stuff();
+    add_named_ktask(rand, "random".into()).unwrap();
+    add_named_ktask(task2, "task2".into()).unwrap();
+    add_named_ktask(listen, "listen".into()).unwrap();
     enable_threading_interrupts();
-    // serial_println!("unreachable??");
-    // serial_println!("wtffftftftftfft");
-    // serial_println!("yugfqweifuygweqiuygf");
     arch::hcf()
 }
 
-#[unsafe(no_mangle)]
 extern "C" fn rand() {
     serial_println!("hello 0 from task");
     random_stuff();
 }
 
-#[unsafe(no_mangle)]
 extern "C" fn listen() {
     tiny_os::term::synced_keyboard_listener();
+}
+
+extern "C" fn task2() {
+    serial_println!("hello from task 2");
+    serial_println!("huhu");
+    for _ in 0..100 {
+        let x = 1;
+    }
+    serial_println!("task2 finished");
+    hcf()
 }
 
 fn random_stuff() -> ! {

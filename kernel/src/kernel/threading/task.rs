@@ -1,3 +1,5 @@
+use alloc::string::String;
+
 use crate::{
     arch::{
         context::{
@@ -32,6 +34,7 @@ pub struct SimpleTask {
     pub parent: Option<TaskID>,
     pub root_frame: PhysFrame<Size4KiB>,
     pub pid: TaskID,
+    pub name: Option<String>,
 }
 
 impl SimpleTask {
@@ -45,6 +48,7 @@ impl SimpleTask {
             parent: None,
             root_frame: tbl,
             pid: get_pid(),
+            name: None,
         })
     }
 }
@@ -75,29 +79,34 @@ pub struct TaskBuilder<T: TaskRepr, S> {
 
 impl<T, S> TaskBuilder<T, S> where T: TaskRepr {}
 
-impl TaskBuilder<SimpleTask, Uninit> {
-    pub unsafe fn from_addr(
-        addr: VirtAddr,
-    ) -> Result<TaskBuilder<SimpleTask, Uninit>, ThreadingError> {
-        Ok(TaskBuilder::<SimpleTask, Uninit> {
-            inner: SimpleTask::new()?,
-            entry: addr,
-            _marker: Uninit,
-        })
-    }
-
-    pub fn from_fn(
-        func: extern "C" fn(),
-    ) -> Result<TaskBuilder<SimpleTask, Uninit>, ThreadingError> {
-        Ok(TaskBuilder::<SimpleTask, Uninit> {
-            inner: SimpleTask::new()?,
-            entry: VirtAddr::new(func as usize as u64),
-            _marker: Uninit,
-        })
+impl<S> TaskBuilder<SimpleTask, S> {
+    pub fn with_name(mut self, name: String) -> TaskBuilder<SimpleTask, S> {
+        self.inner.name.replace(name);
+        self
     }
 }
 
 impl TaskBuilder<SimpleTask, Uninit> {
+    pub unsafe fn from_addr(
+        addr: VirtAddr,
+    ) -> Result<TaskBuilder<SimpleTask, Init>, ThreadingError> {
+        Ok(TaskBuilder::<SimpleTask, Init> {
+            inner: SimpleTask::new()?,
+            entry: addr,
+            _marker: Init,
+        })
+    }
+
+    pub fn from_fn(func: extern "C" fn()) -> Result<TaskBuilder<SimpleTask, Init>, ThreadingError> {
+        Ok(TaskBuilder::<SimpleTask, Init> {
+            inner: SimpleTask::new()?,
+            entry: VirtAddr::new(func as usize as u64),
+            _marker: Init,
+        })
+    }
+}
+
+impl TaskBuilder<SimpleTask, Init> {
     pub fn as_kernel(mut self) -> TaskBuilder<SimpleTask, Ready<KTaskInfo>> {
         let info = KTaskInfo::new(self.entry, self.inner.krsp);
         TaskBuilder {

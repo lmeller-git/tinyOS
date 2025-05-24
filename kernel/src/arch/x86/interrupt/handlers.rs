@@ -64,23 +64,20 @@ global_asm!(
 
         interrupt_cleanup:
             // reenables interrupts, signals eoi and iretqs
-            // push rdi
-            // mov rdi, 1
-            // call printer
-            // pop rdi
+
+            // test if aligned
             // mov rdi, rsp
+            // and rdi, 0xF
             // call printer
+
             call {0}
-            // push rdi
-            // mov rdi, rsp
-            // call printer
-            // pop rdi
             sti
             iretq
 
         timer_interrupt_stub_local:
             // TODO use funcs, maybe only push/pop in switch_and_apply
             // call save_context_local
+            cli
             push rax
             push rbp
             push rdi
@@ -114,7 +111,7 @@ global_asm!(
             pop r14
             pop r15
             pop rax // cr3
-            mov cr3, rax
+            // mov cr3, rax // not necessary, as task not switched
             pop rbx
             pop rcx
             pop rdx

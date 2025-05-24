@@ -358,9 +358,7 @@ global_asm!(
             pop r14
             pop r15
             pop rax // cr3
-            // call {0}
-            // mov cr3, rax
-            // call {0}
+            // mov cr3, rax // indefinite hang??
             pop rbx
             pop rcx
             pop rdx
