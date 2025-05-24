@@ -48,11 +48,11 @@ pub fn timer_interrupt_handler__(frame: InterruptStackFrame, data: ReducedCpuInf
 
 pub fn timer_interrupt_handler_local_(rsp: u64) {
     // serial_println!("timer");
-    without_interrupts(|| unsafe { context_switch_local(rsp) });
+    unsafe { context_switch_local(rsp) }
     // unsafe {
     // context_switch_local();
     // }
-    end_interrupt();
+    // end_interrupt();
 }
 
 //TODO cleanup
@@ -122,7 +122,7 @@ global_asm!(
             pop rdi
             pop rbp
             pop rax
-            iretq
+            jmp interrupt_cleanup
         
         timer_interrupt_stub:
             /// on entry, the InterruptStackFrame will sit in the stack at rsp

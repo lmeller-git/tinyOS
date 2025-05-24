@@ -121,13 +121,11 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<UsrTaskInfo>> {
 impl<T: TaskRepr> TaskBuilder<T, Ready<KTaskInfo>> {
     pub fn build(mut self) -> T {
         serial_println!("krsp: {:x}", self.inner.krsp());
-        serial_println!("cs: {:#?}", self._marker.inner);
+        serial_println!("task info: {:#?}", self._marker.inner);
         let (cs, ss) = get_kernel_selectors();
-        serial_println!("cs: {:#x}, ss: {:#x}", cs.0 as u64, ss.0 as u64);
         let next_top = unsafe { init_kernel_task(&self._marker.inner) };
 
-        serial_println!("{:x}", next_top);
-        serial_println!("wtf");
+        serial_println!("krsp after pushes: {:x}", next_top);
         *self.inner.krsp() = next_top;
         self.inner
     }

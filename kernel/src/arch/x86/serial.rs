@@ -1,6 +1,9 @@
+use crate::arch::interrupt;
+use core::arch::asm;
 use lazy_static::lazy_static;
 use spin::Mutex;
 use uart_16550::SerialPort;
+use x86_64::instructions::interrupts::without_interrupts;
 
 lazy_static! {
     static ref SERIAL1: Mutex<SerialPort> = {
@@ -13,8 +16,12 @@ lazy_static! {
 #[doc(hidden)]
 pub fn _print(args: ::core::fmt::Arguments) {
     use core::fmt::Write;
-    SERIAL1
-        .lock()
-        .write_fmt(args)
-        .expect("Printing to serial failed");
+    // unsafe { asm!("cli") };
+    without_interrupts(|| {
+        SERIAL1
+            .lock()
+            .write_fmt(args)
+            .expect("Printing to serial failed")
+    });
+    // unsafe { asm!("sti") };
 }

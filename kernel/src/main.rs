@@ -62,7 +62,7 @@ extern "C" fn listen() {
     tiny_os::term::synced_keyboard_listener();
 }
 
-fn random_stuff() {
+fn random_stuff() -> ! {
     serial_println!("hello from task");
     let mut fbs = bootinfo::get_framebuffers().unwrap();
     let fb = LimineFrameBuffer::try_new(&mut fbs);
@@ -139,11 +139,10 @@ fn random_stuff() {
         )
         .unwrap();
     }
-    println!("finished");
-    // serial_println!("finished");
-    println!("finished2");
-    println!("finished3");
-    hcf()
+    cross_println!("finished");
+    cross_println!("finished2");
+    cross_println!("finished3");
+    hcf();
 }
 
 #[panic_handler]

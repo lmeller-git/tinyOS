@@ -381,17 +381,10 @@ global_asm!(
             // call {0} // stack top
             
             mov rsp, [rdi + 8]
-            // and rsp, ~0xF // align to 16-byte boundary ??
-
-            // mov r8, [rdi + 8]               // Get kstack_top  
-            // sub r8, 512                    // Move down 512 bytes
-            // and r8, ~0xF                   // Align
-  
 
             // now on tasks kstack
             // 1: push interrupt frame
             push [rdi + 32] // ss
-            // push r8
             push [rdi + 8] // rsp
             push [rdi + 24] // rflags
             push [rdi + 16] // cs
@@ -424,8 +417,6 @@ global_asm!(
 
             // mov rsi, rax
             // call {0}
-            
-            // add rax, 32 // for some reason the addr in gpf in iretq is 32 downwards of the root (outside of InterruptStackFrame)
             ret
 
         init_usr_task:
@@ -460,7 +451,6 @@ pub struct KTaskInfo {
 
 impl KTaskInfo {
     pub fn new(addr: VirtAddr, kstack: VirtAddr) -> Self {
-        serial_println!("rip: {:x}", addr.as_u64());
         let (cs, ss) = get_kernel_selectors();
         let rflags = RFlags::INTERRUPT_FLAG | RFlags::from_bits_truncate(0x2);
         Self {

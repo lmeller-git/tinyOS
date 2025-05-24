@@ -95,9 +95,10 @@ impl OneOneScheduler for OneOneRoundRobin {
             if let Some(current) = self.running.replace(next) {
                 self.ready.push_back(current);
             }
+            return self.current();
         }
-        // serial_println!("{:#?}", self.current());
-        self.current()
+        serial_println!("now running: {:#?}", self.current());
+        None
     }
 
     fn init(&mut self) {

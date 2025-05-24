@@ -59,18 +59,14 @@ pub fn init() {
 #[allow(unsafe_op_in_unsafe_fn)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn context_switch_local(rsp: u64) {
-    // serial_println!("well");
     let mut lock = GLOBAL_SCHEDULER.get_unchecked().lock();
     if let Some(current) = lock.current_mut() {
         current.krsp = VirtAddr::new(rsp);
     }
     if let Some(new) = lock.switch() {
-        // serial_println!("hello 2, {}", unsafe {
-        // GLOBAL_SCHEDULER.get_unchecked().lock().num_tasks()
-        // });
         let new = new.clone();
         drop(lock);
-        // serial_println!("ptr: {:x}", new.krsp);
+        serial_println!("new task, {:#?}", new);
         switch_and_apply(&new);
         unreachable!()
     }

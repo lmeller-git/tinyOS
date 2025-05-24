@@ -1,5 +1,5 @@
 use crate::println;
-
+pub use x86_64::instructions::interrupts::without_interrupts;
 pub mod gdt;
 pub mod handlers;
 mod idt;

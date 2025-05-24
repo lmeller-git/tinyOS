@@ -5,5 +5,5 @@
 5: build a separate terminal, which connects to the tty
 6: somehow launch this as (first) task and let it launch other tasks
 7: interrupts (DONE)
-
+8: locks should be safe to use across different tasks, currently wihtout interrupts, should use other mechanism
 check out rustdoc for test gen?

@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use crate::{
+    arch,
     drivers::{
         graphics::{GLOBAL_FRAMEBUFFER, framebuffers::GlobalFrameBuffer},
         keyboard::{KEYBOARD_BUFFER, parse_scancode},
@@ -80,7 +81,9 @@ pub fn synced_keyboard_listener() {
 pub fn _print(args: Arguments) {
     // SAFETY must make sure that this is not calles prior to init_term()
     unsafe {
-        _ = write!(FOOBAR.get_unchecked().lock(), "{}", args);
+        arch::interrupt::without_interrupts(|| {
+            _ = write!(FOOBAR.get_unchecked().lock(), "{}", args)
+        });
     }
 }
 
