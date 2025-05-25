@@ -27,8 +27,8 @@ use spin::Mutex;
 
 use super::interrupt::gdt::get_user_selectors;
 
-const KSTACK_AREA_START: VirtAddr = VirtAddr::new(0xffff_8000_c000_0000); // random location
-const KSTACK_USER_AREA_START: VirtAddr = VirtAddr::new(0xffff_8000_d000_0000);
+const KSTACK_AREA_START: VirtAddr = VirtAddr::new(0xffff_f000_c000_0000); // random location
+const KSTACK_USER_AREA_START: VirtAddr = VirtAddr::new(0xffff_f000_f000_0000);
 
 const KSTACK_SIZE: usize = 16 * 1024; // 16 KiB
 const KSTACK_SIZE_USER: usize = 8 * 1024; // 8 KiB
@@ -424,7 +424,7 @@ global_asm!(
 );
 
 pub fn serial_stub__(v1: u64, v2: u64) {
-    serial_println!("rsp: {:#x}", v2);
+    serial_println!("rsp: {:#x}", v1);
 }
 
 unsafe extern "C" {

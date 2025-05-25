@@ -45,9 +45,15 @@ unsafe extern "C" fn kmain() -> ! {
 
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
-    add_named_ktask(rand, "random".into()).unwrap();
+    add_named_ktask(task1, "task1".into()).unwrap();
     add_named_ktask(task2, "task2".into()).unwrap();
+    add_named_ktask(rand, "random".into()).unwrap();
     add_named_ktask(listen, "listen".into()).unwrap();
+    let rsp: u64;
+    unsafe {
+        core::arch::asm!("mov {0}, rsp", out(reg) rsp);
+    }
+    serial_println!("currently on: {:#x}", rsp);
     enable_threading_interrupts();
     arch::hcf()
 }
@@ -61,13 +67,25 @@ extern "C" fn listen() {
     tiny_os::term::synced_keyboard_listener();
 }
 
+extern "C" fn task1() {
+    serial_println!("hello from task 1");
+    serial_println!("hi");
+    let mut x = 1;
+    for _ in 0..100 {
+        x = 1;
+    }
+    serial_println!("task{} finished", x);
+    hcf()
+}
+
 extern "C" fn task2() {
     serial_println!("hello from task 2");
     serial_println!("huhu");
+    let mut x = 2;
     for _ in 0..100 {
-        let x = 1;
+        x = 2;
     }
-    serial_println!("task2 finished");
+    serial_println!("task{} finished", x);
     hcf()
 }
 

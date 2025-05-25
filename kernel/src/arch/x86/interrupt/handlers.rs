@@ -47,7 +47,7 @@ pub fn timer_interrupt_handler__(frame: InterruptStackFrame, data: ReducedCpuInf
 }
 
 pub fn timer_interrupt_handler_local_(rsp: u64) {
-    // serial_println!("timer");
+    serial_println!("timer");
     unsafe { context_switch_local(rsp) }
     // unsafe {
     // context_switch_local();
@@ -95,7 +95,7 @@ global_asm!(
             push r10
             push r9
             push r8
-            mov rax, rsp
+            mov rdi, rsp
             call {3}
             // push rdi
             // mov rdi, 0

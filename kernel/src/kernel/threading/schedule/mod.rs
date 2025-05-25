@@ -62,6 +62,7 @@ pub fn init() {
 pub unsafe extern "C" fn context_switch_local(rsp: u64) {
     let mut lock = GLOBAL_SCHEDULER.get_unchecked().lock();
     if let Some(current) = lock.current_mut() {
+        serial_println!("old krsp: {:#x}, new krsp: {:#x}", current.krsp, rsp);
         current.krsp = VirtAddr::new(rsp);
     }
     if let Some(new) = lock.switch() {
