@@ -15,9 +15,13 @@ use tiny_os::cross_println;
 use tiny_os::drivers::graphics::colors::ColorCode;
 use tiny_os::drivers::graphics::framebuffers::LimineFrameBuffer;
 use tiny_os::drivers::graphics::text::draw_str;
+use tiny_os::exit_qemu;
 use tiny_os::kernel;
+use tiny_os::kernel::threading::schedule::GLOBAL_SCHEDULER;
+use tiny_os::kernel::threading::schedule::OneOneScheduler;
 use tiny_os::kernel::threading::schedule::add_ktask;
 use tiny_os::kernel::threading::schedule::add_named_ktask;
+use tiny_os::kernel::threading::task::TaskRepr;
 use tiny_os::println;
 use tiny_os::serial_println;
 use tiny_os::services::graphics::Glyph;
@@ -75,6 +79,7 @@ extern "C" fn task1() {
         x = 1;
     }
     serial_println!("task{} finished", x);
+    panic!("end task1");
     hcf()
 }
 
@@ -86,6 +91,7 @@ extern "C" fn task2() {
         x = 2;
     }
     serial_println!("task{} finished", x);
+    panic!("end task2");
     hcf()
 }
 
@@ -169,6 +175,7 @@ fn random_stuff() -> ! {
     cross_println!("finished");
     cross_println!("finished2");
     cross_println!("finished3");
+    panic!("random panic");
     hcf();
 }
 
@@ -176,7 +183,14 @@ fn random_stuff() -> ! {
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     #[cfg(feature = "test_run")]
     tiny_os::test_panic_handler(info);
-
-    serial_println!("{}", info);
+    serial_println!("{:#?}", info);
+    if GLOBAL_SCHEDULER.is_initialized() {
+        if let Some(ref mut sched) = GLOBAL_SCHEDULER.get().map(|sched| sched.lock()) {
+            if let Some(current) = sched.current_mut() {
+                //TODO kill with info
+                current.kill();
+            }
+        }
+    }
     arch::hcf()
 }

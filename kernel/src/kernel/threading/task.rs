@@ -23,6 +23,7 @@ use super::ThreadingError;
 
 pub trait TaskRepr {
     fn krsp(&mut self) -> &mut VirtAddr;
+    fn kill(&mut self);
 }
 
 #[repr(C)]
@@ -35,6 +36,7 @@ pub struct SimpleTask {
     pub root_frame: PhysFrame<Size4KiB>,
     pub pid: TaskID,
     pub name: Option<String>,
+    pub state: TaskState,
 }
 
 impl SimpleTask {
@@ -49,6 +51,7 @@ impl SimpleTask {
             root_frame: tbl,
             pid: get_pid(),
             name: None,
+            state: TaskState::Ready,
         })
     }
 }
@@ -56,6 +59,13 @@ impl SimpleTask {
 impl TaskRepr for SimpleTask {
     fn krsp(&mut self) -> &mut VirtAddr {
         &mut self.krsp
+    }
+
+    fn kill(&mut self) {
+        self.state = TaskState::Zombie(ExitInfo {
+            exit_code: 1,
+            signal: None,
+        })
     }
 }
 
@@ -198,8 +208,16 @@ impl TaskRepr for Task {
     fn krsp(&mut self) -> &mut VirtAddr {
         todo!()
     }
+
+    fn kill(&mut self) {
+        self.state = TaskState::Zombie(ExitInfo {
+            exit_code: 1,
+            signal: None,
+        })
+    }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TaskState {
     Running,
     Ready,
@@ -214,6 +232,7 @@ impl TaskState {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExitInfo {
     pub exit_code: u32,
     pub signal: Option<u8>,

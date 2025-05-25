@@ -1,7 +1,7 @@
 use super::{OneOneScheduler, Scheduler};
 use crate::{
     arch::{self, context::TaskCtx},
-    kernel::threading::task::{SimpleTask, Task},
+    kernel::threading::task::{SimpleTask, Task, TaskState},
     serial_println,
 };
 use alloc::{collections::vec_deque::VecDeque, vec::Vec};
@@ -90,8 +90,12 @@ impl OneOneScheduler for OneOneRoundRobin {
     }
 
     fn switch(&mut self) -> Option<&SimpleTask> {
-        if let Some(next) = self.ready.pop_front() {
+        while let Some(next) = self.ready.pop_front() {
             // serial_println!("ok");
+            if next.state != TaskState::Ready {
+                // TODO do something with these tasks, instead of just deleting
+                continue;
+            }
             if let Some(current) = self.running.replace(next) {
                 self.ready.push_back(current);
             }
