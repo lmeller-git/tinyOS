@@ -55,14 +55,10 @@ pub fn create_new_pagedir<'a, 'b>() -> Result<TaskPageTable<'b>, &'a str> {
         VirtAddr::new(current_frame.start_address().as_u64() + bootinfo::get_phys_offset());
     let current_tbl: &PageTable = unsafe { &*(current_tbl_ptr.as_mut_ptr()) };
 
-    let flags = PageTableFlags::PRESENT
-        | PageTableFlags::WRITABLE
-        | PageTableFlags::USER_ACCESSIBLE
-        | PageTableFlags::NO_EXECUTE;
-
-    for i in 0..256 {
-        new_table[i].set_flags(flags);
-    }
+    // let flags = PageTableFlags::PRESENT
+    // | PageTableFlags::WRITABLE
+    // | PageTableFlags::USER_ACCESSIBLE
+    // | PageTableFlags::NO_EXECUTE;
 
     //copy higher half
     for i in 256..512 {

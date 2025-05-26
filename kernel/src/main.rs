@@ -21,6 +21,7 @@ use tiny_os::kernel::threading::schedule::GLOBAL_SCHEDULER;
 use tiny_os::kernel::threading::schedule::OneOneScheduler;
 use tiny_os::kernel::threading::schedule::add_ktask;
 use tiny_os::kernel::threading::schedule::add_named_ktask;
+use tiny_os::kernel::threading::schedule::add_named_usr_task;
 use tiny_os::kernel::threading::task::TaskRepr;
 use tiny_os::println;
 use tiny_os::serial_println;
@@ -49,10 +50,11 @@ unsafe extern "C" fn kmain() -> ! {
 
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
-    add_named_ktask(task1, "task1".into()).unwrap();
-    add_named_ktask(task2, "task2".into()).unwrap();
-    add_named_ktask(rand, "random".into()).unwrap();
-    add_named_ktask(listen, "listen".into()).unwrap();
+    // add_named_ktask(task1, "task1".into()).unwrap();
+    // add_named_ktask(task2, "task2".into()).unwrap();
+    // add_named_ktask(rand, "random".into()).unwrap();
+    // add_named_ktask(listen, "listen".into()).unwrap();
+    add_named_usr_task(user_task, "user task 1".into());
     let rsp: u64;
     unsafe {
         core::arch::asm!("mov {0}, rsp", out(reg) rsp);
@@ -60,6 +62,11 @@ unsafe extern "C" fn kmain() -> ! {
     serial_println!("currently on: {:#x}", rsp);
     enable_threading_interrupts();
     arch::hcf()
+}
+
+extern "C" fn user_task() {
+    serial_println!("hello from user task");
+    hcf();
 }
 
 extern "C" fn rand() {

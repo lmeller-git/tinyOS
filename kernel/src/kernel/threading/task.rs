@@ -4,7 +4,7 @@ use crate::{
     arch::{
         context::{
             KTaskInfo, TaskCtx, UsrTaskInfo, allocate_kstack, allocate_userkstack,
-            allocate_userstack, init_kernel_task,
+            allocate_userstack, init_kernel_task, init_usr_task,
         },
         current_page_tbl,
         interrupt::gdt::get_kernel_selectors,
@@ -15,13 +15,14 @@ use crate::{
     serial_println,
 };
 use core::{
+    fmt::Debug,
     marker::PhantomData,
     sync::atomic::{AtomicU64, Ordering},
 };
 
 use super::ThreadingError;
 
-pub trait TaskRepr {
+pub trait TaskRepr: Debug {
     fn krsp(&mut self) -> &mut VirtAddr;
     fn kill(&mut self);
 }
@@ -37,14 +38,15 @@ pub struct SimpleTask {
     pub pid: TaskID,
     pub name: Option<String>,
     pub state: TaskState,
+    private_marker: PhantomData<u8>,
 }
 
 impl SimpleTask {
     fn new() -> Result<Self, ThreadingError> {
-        let stack_top = allocate_kstack()?;
+        // let stack_top = allocate_kstack()?;
         let (tbl, flags) = current_page_tbl();
         Ok(Self {
-            krsp: stack_top,
+            krsp: VirtAddr::zero(),
             frame_flags: flags,
             // ktop: stack_top,
             parent: None,
@@ -52,6 +54,7 @@ impl SimpleTask {
             pid: get_pid(),
             name: None,
             state: TaskState::Ready,
+            private_marker: PhantomData,
         })
     }
 }
@@ -81,6 +84,11 @@ impl From<KTaskInfo> for Ready<KTaskInfo> {
     }
 }
 
+impl From<UsrTaskInfo> for Ready<UsrTaskInfo> {
+    fn from(value: UsrTaskInfo) -> Self {
+        Self { inner: value }
+    }
+}
 pub struct TaskBuilder<T: TaskRepr, S> {
     inner: T,
     entry: VirtAddr,
@@ -117,45 +125,71 @@ impl TaskBuilder<SimpleTask, Uninit> {
 }
 
 impl TaskBuilder<SimpleTask, Init> {
-    pub fn as_kernel(mut self) -> TaskBuilder<SimpleTask, Ready<KTaskInfo>> {
+    pub fn as_kernel(
+        mut self,
+    ) -> Result<TaskBuilder<SimpleTask, Ready<KTaskInfo>>, ThreadingError> {
+        let stack_top = allocate_kstack()?;
+        self.inner.krsp = stack_top;
         let info = KTaskInfo::new(self.entry, self.inner.krsp);
-        TaskBuilder {
+        Ok(TaskBuilder {
             inner: self.inner,
             entry: self.entry,
             _marker: info.into(),
-        }
+        })
     }
 
-    pub fn as_usr(mut self) -> TaskBuilder<SimpleTask, Ready<UsrTaskInfo>> {
-        todo!()
+    pub fn as_usr(mut self) -> Result<TaskBuilder<SimpleTask, Ready<UsrTaskInfo>>, ThreadingError> {
+        let mut tbl = create_new_pagedir().map_err(|e| ThreadingError::PageDirNotBuilt)?;
+        let usr_end = allocate_userstack(&mut tbl)?;
+        let kstack = allocate_userkstack(&mut tbl)?;
+        self.inner.krsp = kstack;
+        let info = UsrTaskInfo::new(
+            self.entry,
+            self.inner.krsp,
+            usr_end,
+            tbl.root.start_address(),
+        );
+        Ok(TaskBuilder {
+            inner: self.inner,
+            entry: self.entry,
+            _marker: info.into(),
+        })
     }
 }
 
 impl<T: TaskRepr> TaskBuilder<T, Ready<UsrTaskInfo>> {
     pub fn build(mut self) -> T {
-        todo!()
-    }
-}
+        serial_println!("data: {:#?}", self._marker.inner);
+        serial_println!("task: {:#?}", self.inner);
 
-impl<T: TaskRepr> TaskBuilder<T, Ready<KTaskInfo>> {
-    pub fn build(mut self) -> T {
-        serial_println!("krsp: {:x}", self.inner.krsp());
-        serial_println!("task info: {:#?}", self._marker.inner);
-        let (cs, ss) = get_kernel_selectors();
-        let next_top = unsafe { init_kernel_task(&self._marker.inner) };
+        let next_top = unsafe { init_usr_task(&self._marker.inner) };
 
-        serial_println!("krsp after pushes: {:x}", next_top);
+        serial_println!("krsp after pushes: {:#x}", next_top);
         *self.inner.krsp() = next_top;
         self.inner
     }
 }
 
-impl<S> TaskBuilder<Task, S> {
-    pub unsafe fn from_addr(addr: VirtAddr) -> Result<Self, ThreadingError> {
+impl<T: TaskRepr> TaskBuilder<T, Ready<KTaskInfo>> {
+    pub fn build(mut self) -> T {
+        serial_println!("krsp: {:#x}", self.inner.krsp());
+        serial_println!("task info: {:#?}", self._marker.inner);
+
+        let next_top = unsafe { init_kernel_task(&self._marker.inner) };
+
+        serial_println!("krsp after pushes: {:#x}", next_top);
+        *self.inner.krsp() = next_top;
+        self.inner
+    }
+}
+
+impl TaskBuilder<Task, Uninit> {
+    pub unsafe fn from_addr(addr: VirtAddr) -> Result<TaskBuilder<Task, Init>, ThreadingError> {
         todo!()
     }
 }
 
+#[derive(Debug)]
 pub struct Task {
     // pub(super) kstack_rsp: Option<VirtAddr>,
     pub(super) ctx: TaskCtx,

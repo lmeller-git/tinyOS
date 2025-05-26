@@ -10,6 +10,7 @@ use crate::{
         context::{TaskCtx, set_cpu_context, switch_and_apply},
         mem::VirtAddr,
     },
+    kernel::threading::task::Uninit,
     serial_println,
 };
 
@@ -89,7 +90,7 @@ pub fn add_named_ktask(func: extern "C" fn(), name: String) -> Result<(), Thread
     serial_println!("spawning task {} at {:#x}", name, func as usize);
     let task = TaskBuilder::from_fn(func)?
         .with_name(name)
-        .as_kernel()
+        .as_kernel()?
         .build();
     serial_println!("task built");
     unsafe {
@@ -100,7 +101,41 @@ pub fn add_named_ktask(func: extern "C" fn(), name: String) -> Result<(), Thread
 
 pub fn add_ktask(func: extern "C" fn()) -> Result<(), ThreadingError> {
     serial_println!("spawning task {:#x}", func as usize);
-    let task = TaskBuilder::from_fn(func)?.as_kernel().build();
+    let task = TaskBuilder::from_fn(func)?.as_kernel()?.build();
+    serial_println!("task built");
+    unsafe {
+        GLOBAL_SCHEDULER.get_unchecked().lock().add_task(task);
+    }
+    Ok(())
+}
+
+pub fn add_named_usr_task(func: extern "C" fn(), name: String) -> Result<(), ThreadingError> {
+    serial_println!("spawning user task {} at {:#x}", name, func as usize);
+    let task = TaskBuilder::from_fn(func)?.with_name(name);
+    serial_println!("task created");
+    let task = task.as_usr()?;
+    serial_println!("task setup");
+    let task = task.build();
+    serial_println!("task built");
+    unsafe {
+        GLOBAL_SCHEDULER.get_unchecked().lock().add_task(task);
+    }
+    Ok(())
+}
+
+#[allow(unsafe_op_in_unsafe_fn)]
+pub unsafe fn add_named_usr_task_from_addr(
+    addr: VirtAddr,
+    name: String,
+) -> Result<(), ThreadingError> {
+    serial_println!("spawning user task {} at {:#x}", name, addr);
+    let task: TaskBuilder<SimpleTask, crate::kernel::threading::task::Init> =
+        TaskBuilder::<SimpleTask, Uninit>::from_addr(addr)?;
+    let task = task.with_name(name);
+    serial_println!("task created");
+    let task = task.as_usr()?;
+    serial_println!("task setup");
+    let task = task.build();
     serial_println!("task built");
     unsafe {
         GLOBAL_SCHEDULER.get_unchecked().lock().add_task(task);

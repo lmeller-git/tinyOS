@@ -1,4 +1,3 @@
-// use super::idt::InterruptIndex;
 use crate::{
     arch::{
         context::{
@@ -10,7 +9,6 @@ use crate::{
     kernel::threading::schedule::{context_switch, context_switch_local},
     serial_println,
 };
-// use pic8259::ChainedPics;
 use core::arch::{asm, global_asm};
 use x86_64::instructions::interrupts::without_interrupts;
 pub use x86_64::{
@@ -32,12 +30,10 @@ pub(super) extern "x86-interrupt" fn double_fault_handler(
 
 #[deprecated]
 pub(super) extern "x86-interrupt" fn timer_interrupt_handler(mut stack_frame: InterruptStackFrame) {
-    // cross_println!("timer");
-    // cross_println!("{:#?}", _stack_frame);
-    // crate::kernel::threading::schedule::switch(&mut stack_frame);
     end_interrupt();
 }
 
+#[deprecated]
 pub fn timer_interrupt_handler__(frame: InterruptStackFrame, data: ReducedCpuInfo) {
     // serial_println!("hello");
     // serial_println!("{:#?}\n{:#?}", frame, data);
@@ -49,10 +45,6 @@ pub fn timer_interrupt_handler__(frame: InterruptStackFrame, data: ReducedCpuInf
 pub fn timer_interrupt_handler_local_(rsp: u64) {
     serial_println!("timer");
     unsafe { context_switch_local(rsp) }
-    // unsafe {
-    // context_switch_local();
-    // }
-    // end_interrupt();
 }
 
 //TODO cleanup
@@ -178,59 +170,17 @@ extern "C" fn printer(v: u64) {
 }
 
 unsafe extern "C" {
+    #[deprecated]
     pub(super) fn timer_interrupt_stub();
     pub fn interrupt_cleanup();
     pub(super) fn timer_interrupt_stub_local();
 }
 
 pub(super) extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {
-    // cross_println!("keyboard");
     let mut port = Port::<u8>::new(0x60);
     let scancode: u8 = unsafe { port.read() };
     _ = crate::drivers::keyboard::put_scancode(scancode);
     let state: *const ReducedCpuInfo;
-    // unsafe { asm!("call save_cpu_state ", out("rax") state) };
-    // state = unsafe { save_cpu_state() };
-    // let state: *const ReducedCpuInfo;
-    // unsafe {
-    //     asm!(
-    //         "push r15",
-    //         "push r14",
-    //         "push r13",
-    //         "push r12",
-    //         "push r11",
-    //         "push r10",
-    //         "push r9",
-    //         "push r8",
-    //         "push rdi",
-    //         "push rsi",
-    //         "push rdx",
-    //         "push rcx",
-    //         "push rbx",
-    //         "push rax",
-    //         "mov rax, cr3",
-    //         "push rax",
-    //         "mov {0}, rsp",
-    //         out(reg) state,
-    //         options(nostack, preserves_flags)
-    //     )
-    // };
-    // serial_println!("calling switch");
-    // serial_println!("state_prt: {:#?}, state: {:#?}", state, unsafe {
-    //     &(*state)
-    // });
-    // serial_println!("true frame: {:#?}", _stack_frame);
-    // // unsafe { serial_println!("state: {:#?}", *state) };
-    // let ptr: *const InterruptStackFrame = &_stack_frame as *const InterruptStackFrame;
-    // serial_println!("ptr: {:#?}", ptr);
-    // without_interrupts(|| unsafe {
-    //     asm!(
-    //         "push {0}",
-    //         // "mov rdi, {0}",
-    //         // "call context_switch_stub",
-    //         in(reg) ptr)
-    // });
-
     end_interrupt();
 }
 
@@ -261,11 +211,5 @@ pub(super) const SPURIOUS_VECTOR: u8 = 0xFF;
 
 pub(super) extern "x86-interrupt" fn spurious_interrupt_handler(_stack_frame: InterruptStackFrame) {
     // nothing to do
-    // cross_println!("spurious interrupt");
+    serial_println!("spurious interrupt");
 }
-
-// pub(super) const PIC_1_OFFSET: u8 = 32;
-// pub(super) const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
-
-// pub(super) static PICS: spin::Mutex<ChainedPics> =
-//     spin::Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) });
