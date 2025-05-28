@@ -1,9 +1,7 @@
-use core::arch::{asm, global_asm};
-
-use alloc::string::String;
-use conquer_once::spin::OnceCell;
-use spin::Mutex;
-
+use super::{
+    ThreadingError,
+    task::{SimpleTask, Task, TaskBuilder, TaskID},
+};
 use crate::{
     arch::{
         self,
@@ -13,11 +11,13 @@ use crate::{
     kernel::threading::task::Uninit,
     serial_println,
 };
+use alloc::string::String;
+use conquer_once::spin::OnceCell;
+use core::arch::{asm, global_asm};
+use spin::Mutex;
 
-use super::{
-    ThreadingError,
-    task::{SimpleTask, Task, TaskBuilder, TaskID},
-};
+// #[cfg(feature = "test_case")]
+pub mod testing;
 
 mod round_robin;
 
@@ -47,6 +47,8 @@ pub trait OneOneScheduler {
     fn reschedule(&mut self, order: ScheduleOrder);
     fn current_mut(&mut self) -> &mut Option<SimpleTask>;
 }
+
+pub trait TestRunner {}
 
 pub enum ScheduleOrder {}
 

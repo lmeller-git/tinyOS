@@ -1,3 +1,5 @@
+pub mod kernel;
+
 pub trait TestCase {
     fn run(&self) {}
     fn name(&self) {}
@@ -40,6 +42,11 @@ where
     }
 }
 
+#[derive(Default)]
+pub struct TestConfig {
+    pub should_panic: bool,
+    pub verbose: bool,
+}
 #[allow(unused_imports)]
 #[cfg(feature = "test_run")]
 pub mod tests {

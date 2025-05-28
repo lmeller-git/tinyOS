@@ -52,6 +52,7 @@ pub static RSDP_REQUEST: RsdpRequest = RsdpRequest::new();
 #[used]
 #[unsafe(link_section = ".requests_start_marker")]
 pub static _START_MARKER: RequestsStartMarker = RequestsStartMarker::new();
+
 #[used]
 #[unsafe(link_section = ".requests_end_marker")]
 pub static _END_MARKER: RequestsEndMarker = RequestsEndMarker::new();

@@ -1,5 +1,11 @@
-use quote::{quote, ToTokens};
-use syn::{parse::Parse, ItemFn};
+use proc_macro2::{Span, TokenStream};
+use quote::{format_ident, quote, ToTokens};
+use syn::{
+    parse::{Parse, Parser},
+    token::Extern,
+    ItemFn, LitStr,
+};
+use tiny_os_common::testing::TestConfig;
 
 // TODO: add async?, run tests in separate QUEMU instances to catch error with out aborting operation/ run in threads
 
@@ -99,5 +105,94 @@ impl Parse for Func {
         Ok(Self {
             inner: input.parse()?,
         })
+    }
+}
+
+struct CABIFunc {
+    inner: ItemFn,
+}
+
+impl ToTokens for CABIFunc {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let inner = &self.inner;
+        tokens.extend(quote! {#inner});
+    }
+}
+
+impl Parse for CABIFunc {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let mut self_ = Self {
+            inner: input.parse()?,
+        };
+        self_.inner.sig.abi = Some(syn::Abi {
+            extern_token: Extern::default(),
+            name: Some(LitStr::new("C", Span::call_site())),
+        });
+        Ok(self_)
+    }
+}
+
+pub fn kernel_test_handler(
+    attr: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let func: CABIFunc = syn::parse_macro_input!(input as CABIFunc);
+    let attrs = syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated
+        .parse(attr)
+        .expect("malformed attrs");
+    let config: TestConfigParser = attrs.into();
+    let name = func.inner.sig.ident.clone();
+    let static_name = format_ident!("__STATIC_{}", name);
+    //TODO somhow store full name of the fun, ie module path
+
+    quote! {
+
+        #[cfg(feature = "test_run")]
+        #func
+
+        #[cfg(feature = "test_run")]
+        #[used]
+        #[unsafe(link_section = ".tests")]
+        pub static #static_name: KernelTest = KernelTest {
+            name: core::stringify!(#name),
+            func: #name,
+            config: #config
+        };
+    }
+    .into()
+}
+
+#[derive(Default)]
+struct TestConfigParser {
+    inner: TestConfig,
+}
+
+impl From<syn::punctuated::Punctuated<syn::Meta, syn::Token![,]>> for TestConfigParser {
+    fn from(value: syn::punctuated::Punctuated<syn::Meta, syn::Token![,]>) -> Self {
+        let mut self_ = Self::default();
+        if value
+            .iter()
+            .any(|attr| attr.path().is_ident("should_panic"))
+        {
+            self_.inner.should_panic = true;
+        }
+        if value.iter().any(|attr| attr.path().is_ident("verbose")) {
+            self_.inner.verbose = true;
+        }
+        self_
+    }
+}
+
+impl ToTokens for TestConfigParser {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let should_panic = self.inner.should_panic;
+        let verbose = self.inner.verbose;
+        let tokens_ = quote! {
+            TestConfig {
+                should_panic: #should_panic,
+                verbose: #verbose,
+            }
+        };
+        tokens.extend(tokens_);
     }
 }

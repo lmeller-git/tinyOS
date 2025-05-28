@@ -44,6 +44,11 @@ SECTIONS
         KEEP(*(.requests_start_marker))
         KEEP(*(.requests))
         KEEP(*(.requests_end_marker))
+
+        /* Testing */
+        __kernel_tests_start = .;
+        KEEP(*(.tests))
+        __kernel_tests_end = .;
     } :data
 
     /* NOTE: .bss needs to be the last thing mapped to :data, otherwise lots of */
@@ -55,6 +60,7 @@ SECTIONS
         *(COMMON)
     } :data
 
+    
     /* Discard .note.* and .eh_frame* since they may cause issues on some hosts. */
     /DISCARD/ : {
         *(.eh_frame*)

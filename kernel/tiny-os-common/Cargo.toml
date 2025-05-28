@@ -8,7 +8,7 @@ default = []
 test_run = []
 std = []
 
-# [dependencies]
+[dependencies]
 # core = { package = "core", optional = true }
 
 # [dependencies.std]

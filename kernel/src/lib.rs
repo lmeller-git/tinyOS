@@ -38,6 +38,13 @@ pub fn test_main() {
     exit_qemu(QemuExitCode::Success);
 }
 
+unsafe extern "C" {
+    static __kernel_tests_start: u64;
+    static __kernel_tests_end: u64;
+}
+
+pub fn test_test_main() {}
+
 #[cfg(feature = "test_run")]
 pub fn test_runner() {
     tests::test_runner();

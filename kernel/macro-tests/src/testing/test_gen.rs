@@ -2,7 +2,7 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
-use os_macros::tests;
+use os_macros::{kernel_test, tests};
 use std::sync::atomic::{AtomicBool, AtomicI16, Ordering};
 use tiny_os_common::testing::TestCase;
 
@@ -52,3 +52,10 @@ fn correct_calls() {
     assert!(!B.load(Ordering::Relaxed));
     assert_eq!(C.load(Ordering::Relaxed), 42);
 }
+
+#[kernel_test]
+fn test1() {}
+
+#[cfg(test)]
+#[test]
+fn kernel_test_gen() {}
