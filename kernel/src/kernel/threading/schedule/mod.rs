@@ -48,8 +48,6 @@ pub trait OneOneScheduler {
     fn current_mut(&mut self) -> &mut Option<SimpleTask>;
 }
 
-pub trait TestRunner {}
-
 pub enum ScheduleOrder {}
 
 type GlobalScheduler = round_robin::OneOneRoundRobin;

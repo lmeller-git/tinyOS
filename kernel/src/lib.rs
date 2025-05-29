@@ -1,6 +1,5 @@
 #![no_std]
 #![feature(abi_x86_interrupt)]
-
 pub extern crate alloc;
 
 #[cfg(feature = "test_run")]
@@ -42,10 +41,14 @@ pub fn test_main() {
 
 #[cfg(feature = "test_run")]
 pub fn test_test_main() {
+    use kernel::threading::schedule::testing;
+
+    testing::init();
     let tests = unsafe { get_kernel_tests() };
     serial_println!("huhu");
     for test in tests {
         serial_println!("name: {}", test.name());
+        test.run_in(runner)
     }
 }
 
@@ -56,9 +59,15 @@ pub fn test_runner() {
 
 #[cfg(feature = "test_run")]
 pub fn test_panic_handler(info: &PanicInfo) -> ! {
-    serial_print!("\t[Err] {}\n", info);
-    exit_qemu(QemuExitCode::Failed);
-    loop {}
+    use arch::hcf;
+    use kernel::threading::schedule::testing::GLOBAL_TEST_SCHEDULER;
+    if GLOBAL_TEST_SCHEDULER.is_initialized() {
+        unsafe { GLOBAL_TEST_SCHEDULER.get_unchecked() }.notify_panic(info);
+    } else {
+        serial_print!("\t[Err] {}\n", info);
+        exit_qemu(QemuExitCode::Failed);
+    }
+    hcf()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -112,4 +121,9 @@ tests! {
 #[kernel_test]
 fn first_test() {
     assert!(1 == 1)
+}
+
+#[kernel_test(should_panic, verbose)]
+fn second_test() {
+    assert!(2 == 3)
 }

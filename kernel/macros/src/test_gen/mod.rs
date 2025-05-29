@@ -149,20 +149,18 @@ pub fn kernel_test_handler(
         #[cfg(feature = "test_run")]
         #func
 
-        #[cfg(feature = "test_run")]
-        use tiny_os_common::testing::{kernel::{KernelTest, RawStr}, TestConfig};
 
         #[cfg(feature = "test_run")]
-        #[allow(non_uppercase_globals)]
+        #[allow(non_upper_case_globals)]
         const #get_name_name: &'static str = concat!(module_path!(), "::", stringify!(#name));
 
 
         #[cfg(feature = "test_run")]
-        #[allow(non_uppercase_globals)]
+        #[allow(non_upper_case_globals)]
         #[used]
         #[unsafe(link_section = ".tests")]
-        pub static #static_name: KernelTest = KernelTest {
-            name: RawStr::from_s_str(#get_name_name),
+        pub static #static_name: tiny_os_common::testing::kernel::KernelTest = tiny_os_common::testing::kernel::KernelTest {
+            name: tiny_os_common::testing::kernel::RawStr::from_s_str(#get_name_name),
             func: #name,
             config: #config
         };
@@ -196,7 +194,7 @@ impl ToTokens for TestConfigParser {
         let should_panic = self.inner.should_panic;
         let verbose = self.inner.verbose;
         let tokens_ = quote! {
-            TestConfig {
+            tiny_os_common::testing::TestConfig {
                 should_panic: #should_panic,
                 verbose: #verbose,
             }
