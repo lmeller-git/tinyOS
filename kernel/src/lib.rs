@@ -7,8 +7,9 @@ pub extern crate alloc;
 use alloc::vec::Vec;
 #[cfg(feature = "test_run")]
 use core::panic::PanicInfo;
+use tiny_os_common::testing::{TestCase, kernel::get_kernel_tests};
 
-use os_macros::tests;
+use os_macros::{kernel_test, tests};
 use thiserror::Error;
 
 pub mod arch;
@@ -33,17 +34,20 @@ impl tiny_os_common::logging::Logger for TestLogger {
 
 #[cfg(feature = "test_run")]
 pub fn test_main() {
+    test_test_main();
     tiny_os_common::logging::set_logger(&TestLogger {});
     test_runner();
     exit_qemu(QemuExitCode::Success);
 }
 
-unsafe extern "C" {
-    static __kernel_tests_start: u64;
-    static __kernel_tests_end: u64;
+#[cfg(feature = "test_run")]
+pub fn test_test_main() {
+    let tests = unsafe { get_kernel_tests() };
+    serial_println!("huhu");
+    for test in tests {
+        serial_println!("name: {}", test.name());
+    }
 }
-
-pub fn test_test_main() {}
 
 #[cfg(feature = "test_run")]
 pub fn test_runner() {
@@ -103,4 +107,9 @@ tests! {
         v.push(42);
         assert_eq!(v[0], 42);
     }
+}
+
+#[kernel_test]
+fn first_test() {
+    assert!(1 == 1)
 }

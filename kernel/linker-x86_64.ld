@@ -45,6 +45,9 @@ SECTIONS
         KEEP(*(.requests))
         KEEP(*(.requests_end_marker))
 
+    } :data
+
+    .tests : {
         /* Testing */
         __kernel_tests_start = .;
         KEEP(*(.tests))

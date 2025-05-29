@@ -143,18 +143,26 @@ pub fn kernel_test_handler(
     let config: TestConfigParser = attrs.into();
     let name = func.inner.sig.ident.clone();
     let static_name = format_ident!("__STATIC_{}", name);
-    //TODO somhow store full name of the fun, ie module path
+    let get_name_name = format_ident!("__GET_NAME_{}", name);
 
     quote! {
-
         #[cfg(feature = "test_run")]
         #func
 
         #[cfg(feature = "test_run")]
+        use tiny_os_common::testing::{kernel::{KernelTest, RawStr}, TestConfig};
+
+        #[cfg(feature = "test_run")]
+        #[allow(non_uppercase_globals)]
+        const #get_name_name: &'static str = concat!(module_path!(), "::", stringify!(#name));
+
+
+        #[cfg(feature = "test_run")]
+        #[allow(non_uppercase_globals)]
         #[used]
         #[unsafe(link_section = ".tests")]
         pub static #static_name: KernelTest = KernelTest {
-            name: core::stringify!(#name),
+            name: RawStr::from_s_str(#get_name_name),
             func: #name,
             config: #config
         };

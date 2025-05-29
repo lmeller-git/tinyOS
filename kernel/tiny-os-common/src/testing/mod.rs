@@ -2,7 +2,16 @@ pub mod kernel;
 
 pub trait TestCase {
     fn run(&self) {}
-    fn name(&self) {}
+    fn run_in(&self, runner: &mut dyn TestRunner) -> Result<(), TestingError> {
+        Ok(())
+    }
+    fn name(&self) -> &str;
+}
+
+pub enum TestingError {}
+
+pub trait TestRunner {
+    fn run_guarded(&mut self, task: extern "C" fn(), config: &TestConfig, name: &str);
 }
 
 pub struct FileTestRunner {
@@ -20,6 +29,9 @@ impl TestCase for FileTestRunner {
         for test in self.tests {
             test.run()
         }
+    }
+    fn name(&self) -> &str {
+        todo!()
     }
 }
 
@@ -40,8 +52,13 @@ where
         #[cfg(not(feature = "std"))]
         crate::log!("\t[OK]\n");
     }
+
+    fn name(&self) -> &str {
+        todo!()
+    }
 }
 
+#[repr(C)]
 #[derive(Default)]
 pub struct TestConfig {
     pub should_panic: bool,
