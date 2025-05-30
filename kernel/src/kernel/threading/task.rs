@@ -7,10 +7,8 @@ use crate::{
             allocate_userstack, init_kernel_task, init_usr_task,
         },
         current_page_tbl,
-        interrupt::gdt::get_kernel_selectors,
         mem::{Cr3Flags, PhysFrame, Size4KiB, VirtAddr},
     },
-    bootinfo,
     kernel::mem::paging::create_new_pagedir,
     serial_println,
 };

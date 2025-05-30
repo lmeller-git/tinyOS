@@ -1,13 +1,9 @@
-use crate::{
-    arch::{
-        interrupt::handlers::{timer_interrupt_stub, timer_interrupt_stub_local},
-        x86::interrupt::handlers::{
-            SPURIOUS_VECTOR, breakpoint_handler, double_fault_handler, gpf_handler,
-            keyboard_interrupt_handler, page_fault_handler, spurious_interrupt_handler,
-            timer_interrupt_handler,
-        },
+use crate::arch::{
+    interrupt::handlers::timer_interrupt_stub_local,
+    x86::interrupt::handlers::{
+        SPURIOUS_VECTOR, breakpoint_handler, double_fault_handler, gpf_handler,
+        keyboard_interrupt_handler, page_fault_handler, spurious_interrupt_handler,
     },
-    bootinfo,
 };
 
 use super::gdt;

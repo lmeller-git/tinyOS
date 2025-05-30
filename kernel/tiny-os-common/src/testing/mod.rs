@@ -2,7 +2,7 @@ pub mod kernel;
 
 pub trait TestCase {
     fn run(&self) {}
-    fn run_in(&self, runner: &mut dyn TestRunner) -> Result<(), TestingError> {
+    fn run_in(&self, _runner: &dyn TestRunner) -> Result<(), TestingError> {
         Ok(())
     }
     fn name(&self) -> &str;
@@ -11,7 +11,7 @@ pub trait TestCase {
 pub enum TestingError {}
 
 pub trait TestRunner {
-    fn run_guarded(&mut self, task: extern "C" fn(), config: &TestConfig, name: &str);
+    fn run_guarded(&self, task: extern "C" fn(), config: &TestConfig, name: &str);
 }
 
 pub struct FileTestRunner {

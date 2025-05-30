@@ -1,3 +1,7 @@
+# HACK
+# [build]
+# target = "x85_64-unknown-none"
+
 [unstable]
 build-std = ["core", "compiler_builtins", "alloc"]
 build-std-features = ["compiler-builtins-mem"]

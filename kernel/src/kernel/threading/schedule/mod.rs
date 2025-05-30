@@ -5,7 +5,7 @@ use super::{
 use crate::{
     arch::{
         self,
-        context::{TaskCtx, set_cpu_context, switch_and_apply},
+        context::{TaskCtx, switch_and_apply},
         mem::VirtAddr,
     },
     kernel::threading::task::Uninit,
@@ -13,7 +13,6 @@ use crate::{
 };
 use alloc::string::String;
 use conquer_once::spin::OnceCell;
-use core::arch::{asm, global_asm};
 use spin::Mutex;
 
 // #[cfg(feature = "test_case")]

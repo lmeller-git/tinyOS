@@ -1,15 +1,13 @@
+use super::TestRunner as SuperTestRunner;
 use tiny_os_common::{
     log,
     testing::{TestCase, TestRunner},
 };
-
-use crate::{kernel::threading::schedule::testing::TestRunner, serial_print};
-
 /// runs each Test in a separate thread and reports its outcome
 /// no preemptive multitasking
 pub struct SimpleTestRunner {}
 
-impl super::TestRunner for SimpleTestRunner {
+impl SuperTestRunner for SimpleTestRunner {
     fn new() -> Self {
         Self {}
     }
@@ -22,7 +20,7 @@ impl super::TestRunner for SimpleTestRunner {
 
 impl TestRunner for SimpleTestRunner {
     fn run_guarded(
-        &mut self,
+        &self,
         task: extern "C" fn(),
         config: &tiny_os_common::testing::TestConfig,
         name: &str,

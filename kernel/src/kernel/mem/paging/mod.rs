@@ -8,7 +8,7 @@ use core::mem::ManuallyDrop;
 use crate::{
     arch::{
         current_page_tbl,
-        mem::{FrameAllocator, OffsetPageTable, PageTable, PageTableFlags, PhysFrame, VirtAddr},
+        mem::{FrameAllocator, OffsetPageTable, PageTable, PhysFrame, VirtAddr},
     },
     bootinfo,
 };

@@ -1,5 +1,3 @@
-use crate::arch::interrupt;
-use core::arch::asm;
 use lazy_static::lazy_static;
 use spin::Mutex;
 use uart_16550::SerialPort;

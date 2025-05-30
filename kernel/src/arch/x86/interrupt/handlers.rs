@@ -1,15 +1,9 @@
 use crate::{
-    arch::{
-        context::{
-            ReducedCpuInfo, get_context_local, save_context_local, save_reduced_cpu_context,
-        },
-        hcf,
-        x86::interrupt::pic::end_interrupt,
-    },
+    arch::x86::interrupt::pic::end_interrupt,
     kernel::threading::schedule::{context_switch, context_switch_local},
     serial_println,
 };
-use core::arch::{asm, global_asm};
+use core::arch::global_asm;
 use x86_64::instructions::interrupts::without_interrupts;
 pub use x86_64::{
     instructions::port::Port,
@@ -28,20 +22,7 @@ pub(super) extern "x86-interrupt" fn double_fault_handler(
     panic!("EXCEPTION: DOUBLE FAULT\n{:#?}", stack_frame);
 }
 
-#[deprecated]
-pub(super) extern "x86-interrupt" fn timer_interrupt_handler(mut stack_frame: InterruptStackFrame) {
-    end_interrupt();
-}
-
-#[deprecated]
-pub fn timer_interrupt_handler__(frame: InterruptStackFrame, data: ReducedCpuInfo) {
-    // serial_println!("hello");
-    // serial_println!("{:#?}\n{:#?}", frame, data);
-    // hcf();
-    without_interrupts(|| unsafe { context_switch(data, frame) });
-    end_interrupt();
-}
-
+#[unsafe(no_mangle)]
 pub fn timer_interrupt_handler_local_(rsp: u64) {
     serial_println!("timer");
     unsafe { context_switch_local(rsp) }
@@ -56,19 +37,12 @@ global_asm!(
 
         interrupt_cleanup:
             // reenables interrupts, signals eoi and iretqs
-
-            // test if aligned
-            // mov rdi, rsp
-            // and rdi, 0xF
-            // call printer
-
-            call {0}
+            call end_interrupt
             sti
             iretq
 
         timer_interrupt_stub_local:
             // TODO use funcs, maybe only push/pop in switch_and_apply
-            // call save_context_local
             cli
             push rax
             push rbp
@@ -88,12 +62,7 @@ global_asm!(
             push r9
             push r8
             mov rdi, rsp
-            call {3}
-            // push rdi
-            // mov rdi, 0
-            // call printer
-            // pop rdi
-            // call get_context_local
+            call timer_interrupt_handler_local_
             pop r8
             pop r9
             pop r10
@@ -112,56 +81,7 @@ global_asm!(
             pop rbp
             pop rax
             jmp interrupt_cleanup
-        
-        timer_interrupt_stub:
-            /// on entry, the InterruptStackFrame will sit in the stack at rsp
-            //TODO call the save func, instead of doing it manually (currently page faults)
-            // call {1} // interrupt frame in rax, cpu state in rdx
-            // mov rdi, rax
-            // mov rsi, rdx
-            push rax
-            lea rax, [rsp + 8]
-            push rbp
-            push rdi
-            push rsi
-            push rdx
-            push rcx
-            push rbx
-            mov rdi, rax
-            mov rax, cr3
-            push rax
-            push r15
-            push r14
-            push r13
-            push r12
-            push r11
-            push r10
-            push r9
-            push r8
-            mov rsi, rsp 
-            call {2}
-            pop r8
-            pop r9
-            pop r10
-            pop r11
-            pop r12
-            pop r13
-            pop r14
-            pop r15
-            pop rax
-            pop rbx
-            pop rcx
-            pop rdx
-            pop rsi
-            pop rdi
-            pop rbp
-            pop rax
-            iretq
-    ",
-    sym end_interrupt,
-    sym save_reduced_cpu_context,
-    sym timer_interrupt_handler__,
-    sym timer_interrupt_handler_local_
+    "
 );
 
 #[unsafe(no_mangle)]
@@ -180,7 +100,6 @@ pub(super) extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: In
     let mut port = Port::<u8>::new(0x60);
     let scancode: u8 = unsafe { port.read() };
     _ = crate::drivers::keyboard::put_scancode(scancode);
-    let state: *const ReducedCpuInfo;
     end_interrupt();
 }
 

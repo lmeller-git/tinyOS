@@ -1,5 +1,5 @@
 use super::idt::InterruptIndex;
-use crate::{arch::x86::mem::*, bootinfo, println, serial_println};
+use crate::{arch::x86::mem::*, bootinfo, println};
 use acpi::AcpiTables;
 use core::ptr::NonNull;
 use lazy_static::lazy_static;
@@ -348,6 +348,7 @@ pub(super) fn init_apic() {
     // t
 }
 
+#[unsafe(no_mangle)]
 pub fn end_interrupt() {
     unsafe {
         let lapic_ptr = LAPIC_ADDR.lock().address;

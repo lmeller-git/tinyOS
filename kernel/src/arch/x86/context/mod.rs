@@ -6,23 +6,17 @@ use crate::{
             VirtAddr,
         },
         x86::{
-            interrupt::{
-                gdt::get_kernel_selectors,
-                handlers::{InterruptStackFrame, interrupt_cleanup},
-            },
+            interrupt::{gdt::get_kernel_selectors, handlers::InterruptStackFrame},
             mem::PhysAddr,
         },
     },
     kernel::{
         mem::paging::{GLOBAL_FRAME_ALLOCATOR, PAGETABLE, TaskPageTable},
-        threading::{
-            ThreadingError,
-            task::{SimpleTask, Task},
-        },
+        threading::{ThreadingError, task::SimpleTask},
     },
     serial_println,
 };
-use core::arch::{asm, global_asm};
+use core::arch::global_asm;
 use lazy_static::lazy_static;
 use spin::Mutex;
 use x86_64::registers::rflags::RFlags;
@@ -48,6 +42,7 @@ lazy_static! {
         Mutex::new([false; MAX_USER_KSTACKS]);
 }
 
+//TODO
 #[derive(Default, Debug)]
 #[repr(C)]
 pub struct TaskCtx {
@@ -133,66 +128,9 @@ impl TaskCtx {
     // this does not work, as these will be changed by the time we get here.
     #[inline(always)]
     pub fn store_current(&mut self) {
-        // unsafe {
-        //     asm!(
-        //         "mov {0}, r15",
-        //         "mov {1}, r14",
-        //         "mov {2}, r13",
-        //         "mov {3}, r12",
-        //         "mov {4}, r11",
-        //         "mov {5}, r10",
-        //         "mov {6}, r9",
-        //         "mov {7}, r8",
-        //         "mov {8}, rbp",
-        //         "mov {9}, rdi",
-        //         "mov {10}, rdx",
-        //         "mov {11}, rcx",
-        //         "mov {12}, rbx",
-        //         "mov {13}, cr3",
-        //         "mov {14}, rax",
-        //         "mov {15}, rsi",
-        //         out(reg) self.r15,
-        //         out(reg) self.r14,
-        //         out(reg) self.r13,
-        //         out(reg) self.r12,
-        //         out(reg) self.r11,
-        //         out(reg) self.r10,
-        //         out(reg) self.r9,
-        //         out(reg) self.r8,
-        //         out(reg) self.rbp,
-        //         out(reg) self.rdi,
-        //         out(reg) self.rdx,
-        //         out(reg) self.rcx,
-        //         out(reg) self.rbx,
-        //         out(reg) self.cr3,
-        //         out(reg) self.rax,
-        //         out(reg) self.rsi
-        //     )
-        // }
+        todo!()
     }
 }
-
-// #[derive(Default, Debug)]
-// #[repr(C)]
-// pub struct ReducedCpuInfo {
-//     /// Cpu state not passed via Interrupt frame\
-//     cr3: u64,
-//     rax: u64,
-//     rbx: u64,
-//     rcx: u64,
-//     rdx: u64,
-//     rsi: u64,
-//     rdi: u64,
-
-//     r8: u64,
-//     r9: u64,
-//     r10: u64,
-//     r11: u64,
-//     r12: u64,
-//     r13: u64,
-//     r14: u64,
-//     r15: u64,
-// }
 
 #[derive(Default, Debug)]
 #[repr(C)]
@@ -219,117 +157,9 @@ pub struct ReducedCpuInfo {
 // alternative: push taskctx to its kernel stack -> switch kernel stack -> pop context -> iretq
 global_asm!(
     "
-        .global set_cpu_context    
-        .global save_reduced_cpu_context
-        .global save_context_local
-        .global get_context_local
         .global switch_and_apply
         .global init_kernel_task
         .global init_usr_task
-
-        set_cpu_context:
-            /// TaskCtx ptr in rdi
-            /// installs task, cleans up and returns from trap
-            // goto new kernel stack
-            // mov rsp, [rdi + x]// need Task info 
-            // push interrupt frame
-            // ss | rsp | rflags | cs | rip
-            push [rdi + 16]
-            push rdi
-            push [rdi + 8]
-            push [rdi + 24]
-            push [rdi + 32]
-
-            // set registers
-            mov r15, [rdi + 40]
-            mov r14, [rdi + 48]
-            mov r13, [rdi + 56]
-            mov r12, [rdi + 64]
-            mov r11, [rdi + 72]
-            mov r10, [rdi + 80]
-            mov r9, [rdi + 88]
-            mov r8, [rdi + 96]
-
-            mov rsi, [rdi + 104]
-            mov rbp, [rdi + 112]
-            mov rdx, [rdi + 128]
-            mov rcx, [rdi + 136]
-            mov rbx, [rdi + 144]
-            mov rax, [rdi + 152]
-            mov cr3, rax
-            mov rax, [rdi + 160]
-            mov rdi, [rdi + 120]
-            
-            call interrupt_cleanup
-            // unreachable
-            ud2
-
-        save_context_local:
-            /// stack layout at entry:
-            /// <stuff> Interrupt frame
-            /// at exit:
-            /// <stuff> Interrupt Frame ReducedCpuState
-            push rax
-            push rbp
-            push rdi
-            push rsi
-            push rdx
-            push rcx
-            push rbx
-            mov rax, cr3
-            push rax
-            push r15
-            push r14
-            push r13
-            push r12
-            push r11
-            push r10
-            push r9
-            push r8
-            ret
-
-        get_context_local:
-            /// undoes save_context_local
-            pop r8
-            pop r9
-            pop r10
-            pop r11
-            pop r12
-            pop r13
-            pop r14
-            pop r15
-            pop rax
-            mov cr3, rax
-            pop rbx
-            pop rcx
-            pop rdx
-            pop rsi
-            pop rdi
-            pop rbp
-            pop rax
-            ret
-              
-        //TODO correct
-        save_reduced_cpu_context:
-            push rax
-            lea rax, [rsp + 8]
-            push rdi
-            push rsi
-            push rdx
-            push rcx
-            push rbx
-            mov rax, cr3
-            push rax
-            push r15
-            push r14
-            push r13
-            push r12
-            push r11
-            push r10
-            push r9
-            push r8
-            mov rdx, rsp
-            ret
 
         switch_and_apply:
             /// is called from context_switch_local after a trap
@@ -466,14 +296,6 @@ pub fn serial_stub__(v1: u64, v2: u64) {
 }
 
 unsafe extern "C" {
-    #[deprecated]
-    pub fn save_reduced_cpu_context() -> (*const InterruptStackFrame, *const ReducedCpuInfo);
-    #[deprecated]
-    pub fn set_cpu_context(ctx: TaskCtx);
-    #[deprecated]
-    pub fn save_context_local();
-    #[deprecated]
-    pub fn get_context_local();
     pub fn switch_and_apply(task: &SimpleTask);
     pub fn init_kernel_task(info: &KTaskInfo) -> VirtAddr;
     pub fn init_usr_task(info: &UsrTaskInfo) -> VirtAddr;
@@ -553,8 +375,8 @@ pub fn allocate_kstack() -> Result<VirtAddr, ThreadingError> {
 
     let base =
         (KSTACK_AREA_START + kstack_start_idx as u64 * KSTACK_SIZE as u64).align_up(Size4KiB::SIZE);
-    let start = (base + Size4KiB::SIZE); //.align_up(Size4KiB::SIZE);
-    let end = (base + KSTACK_SIZE as u64); //.align_up(Size4KiB::SIZE);
+    let start = base + Size4KiB::SIZE; //.align_up(Size4KiB::SIZE);
+    let end = base + KSTACK_SIZE as u64; //.align_up(Size4KiB::SIZE);
 
     let start_page = Page::containing_address(start);
     let end_page = Page::containing_address(end - 1);
@@ -578,7 +400,7 @@ pub fn allocate_kstack() -> Result<VirtAddr, ThreadingError> {
         }
         assert!(mapper.translate_page(end_page).is_ok());
     }
-    let stack_top = VirtAddr::new((end.as_u64() - 8)); // & !0xF);
+    let stack_top = VirtAddr::new(end.as_u64() - 8); // & !0xF);
     Ok(stack_top)
 }
 
@@ -615,8 +437,8 @@ pub fn allocate_userstack(tbl: &mut TaskPageTable) -> Result<VirtAddr, Threading
         PageTableFlags::WRITABLE | PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE;
 
     let base = USER_STACK_START.align_up(Size4KiB::SIZE);
-    let start = (base + Size4KiB::SIZE); //.align_up(Size4KiB::SIZE);
-    let end = (base + USER_STACK_SIZE as u64); //.align_up(Size4KiB::SIZE);
+    let start = base + Size4KiB::SIZE; //.align_up(Size4KiB::SIZE);
+    let end = base + USER_STACK_SIZE as u64; //.align_up(Size4KiB::SIZE);
 
     let start_page = Page::containing_address(start);
     let end_page = Page::containing_address(end - 1);
@@ -638,7 +460,7 @@ pub fn allocate_userstack(tbl: &mut TaskPageTable) -> Result<VirtAddr, Threading
         }
     }
 
-    let stack_top = VirtAddr::new((end.as_u64() - 8)); // & !0xF);
+    let stack_top = VirtAddr::new(end.as_u64() - 8); // & !0xF);
     Ok(stack_top)
 }
 
@@ -662,8 +484,8 @@ pub fn allocate_userkstack(tbl: &mut TaskPageTable) -> Result<VirtAddr, Threadin
 
     let base = (KSTACK_USER_AREA_START + kstack_start_idx as u64 * KSTACK_SIZE_USER as u64)
         .align_up(Size4KiB::SIZE);
-    let start = (base + Size4KiB::SIZE); //.align_up(Size4KiB::SIZE);
-    let end = (base + KSTACK_SIZE_USER as u64); //.align_up(Size4KiB::SIZE);
+    let start = base + Size4KiB::SIZE; //.align_up(Size4KiB::SIZE);
+    let end = base + KSTACK_SIZE_USER as u64; //.align_up(Size4KiB::SIZE);
 
     let start_page = Page::containing_address(start);
     let end_page = Page::containing_address(end - 1);
@@ -685,7 +507,7 @@ pub fn allocate_userkstack(tbl: &mut TaskPageTable) -> Result<VirtAddr, Threadin
         }
     }
 
-    let stack_top = VirtAddr::new((end.as_u64() - 8)); // & !0xF);
+    let stack_top = VirtAddr::new(end.as_u64() - 8); // & !0xF);
     Ok(stack_top)
 }
 

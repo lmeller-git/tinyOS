@@ -1,15 +1,17 @@
 #![no_std]
 #![feature(abi_x86_interrupt)]
+#![allow(unused_imports, unreachable_code)]
 pub extern crate alloc;
 
+#[cfg(feature = "test_run")]
+use crate::kernel::threading::schedule::testing::{self, GLOBAL_TEST_SCHEDULER, TestRunner};
 #[cfg(feature = "test_run")]
 use alloc::vec::Vec;
 #[cfg(feature = "test_run")]
 use core::panic::PanicInfo;
-use tiny_os_common::testing::{TestCase, kernel::get_kernel_tests};
-
 use os_macros::{kernel_test, tests};
 use thiserror::Error;
+use tiny_os_common::testing::{TestCase, kernel::get_kernel_tests};
 
 pub mod arch;
 pub mod bootinfo;
@@ -41,14 +43,12 @@ pub fn test_main() {
 
 #[cfg(feature = "test_run")]
 pub fn test_test_main() {
-    use kernel::threading::schedule::testing;
-
     testing::init();
     let tests = unsafe { get_kernel_tests() };
     serial_println!("huhu");
     for test in tests {
         serial_println!("name: {}", test.name());
-        test.run_in(runner)
+        // test.run_in(unsafe { GLOBAL_TEST_SCHEDULER.get_unchecked() });
     }
 }
 
@@ -60,7 +60,6 @@ pub fn test_runner() {
 #[cfg(feature = "test_run")]
 pub fn test_panic_handler(info: &PanicInfo) -> ! {
     use arch::hcf;
-    use kernel::threading::schedule::testing::GLOBAL_TEST_SCHEDULER;
     if GLOBAL_TEST_SCHEDULER.is_initialized() {
         unsafe { GLOBAL_TEST_SCHEDULER.get_unchecked() }.notify_panic(info);
     } else {

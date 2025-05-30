@@ -3,9 +3,7 @@ use lazy_static::lazy_static;
 use limine::{
     framebuffer::Framebuffer,
     memory_map::{Entry, EntryType},
-    response::MemoryMapResponse,
 };
-use spin::Mutex;
 
 // lazy_static! {
 //     static ref MMAP_RESPONSE: Mutex<MemoryMapResponse> =

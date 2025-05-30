@@ -1,6 +1,6 @@
 use super::{OneOneScheduler, Scheduler};
 use crate::{
-    arch::{self, context::TaskCtx},
+    arch::context::TaskCtx,
     kernel::threading::task::{SimpleTask, Task, TaskState},
     serial_println,
 };
