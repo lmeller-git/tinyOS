@@ -5,7 +5,7 @@ use super::{TestCase, TestConfig};
 #[repr(C)]
 pub struct KernelTest {
     pub name: RawStr,
-    pub func: extern "C" fn() -> (),
+    pub func: extern "C" fn() -> usize,
     pub config: TestConfig,
 }
 

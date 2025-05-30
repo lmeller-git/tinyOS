@@ -21,7 +21,7 @@ impl SuperTestRunner for SimpleTestRunner {
 impl TestRunner for SimpleTestRunner {
     fn run_guarded(
         &self,
-        task: extern "C" fn(),
+        task: extern "C" fn() -> usize,
         config: &tiny_os_common::testing::TestConfig,
         name: &str,
     ) {

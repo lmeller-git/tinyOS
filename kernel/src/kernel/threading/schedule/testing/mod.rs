@@ -10,7 +10,7 @@ pub use scheduler::*;
 
 pub trait TestRunner {
     fn new() -> Self;
-    fn run(&self, func: extern "C" fn()) -> Result<(), ThreadingError> {
+    fn run(&self, func: extern "C" fn() -> usize) -> Result<(), ThreadingError> {
         let task = TaskBuilder::from_fn(func)?.as_kernel()?.build();
         unsafe { switch_and_apply(&task) };
         Ok(())

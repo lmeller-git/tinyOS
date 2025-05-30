@@ -9,7 +9,7 @@ use crate::{
         current_page_tbl,
         mem::{Cr3Flags, PhysFrame, Size4KiB, VirtAddr},
     },
-    kernel::mem::paging::create_new_pagedir,
+    kernel::{mem::paging::create_new_pagedir, threading::trampoline::TaskExitInfo},
     serial_println,
 };
 use core::{
@@ -74,17 +74,24 @@ pub struct Uninit;
 pub struct Init;
 pub struct Ready<I> {
     inner: I,
+    exit: TaskExitInfo,
 }
 
 impl From<KTaskInfo> for Ready<KTaskInfo> {
     fn from(value: KTaskInfo) -> Self {
-        Self { inner: value }
+        Self {
+            inner: value,
+            exit: TaskExitInfo::default(),
+        }
     }
 }
 
 impl From<UsrTaskInfo> for Ready<UsrTaskInfo> {
     fn from(value: UsrTaskInfo) -> Self {
-        Self { inner: value }
+        Self {
+            inner: value,
+            exit: TaskExitInfo::default(),
+        }
     }
 }
 pub struct TaskBuilder<T: TaskRepr, S> {
@@ -113,7 +120,9 @@ impl TaskBuilder<SimpleTask, Uninit> {
         })
     }
 
-    pub fn from_fn(func: extern "C" fn()) -> Result<TaskBuilder<SimpleTask, Init>, ThreadingError> {
+    pub fn from_fn(
+        func: extern "C" fn() -> usize,
+    ) -> Result<TaskBuilder<SimpleTask, Init>, ThreadingError> {
         Ok(TaskBuilder::<SimpleTask, Init> {
             inner: SimpleTask::new()?,
             entry: VirtAddr::new(func as usize as u64),
@@ -160,7 +169,7 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<UsrTaskInfo>> {
         serial_println!("data: {:#?}", self._marker.inner);
         serial_println!("task: {:#?}", self.inner);
 
-        let next_top = unsafe { init_usr_task(&self._marker.inner) };
+        let next_top = unsafe { init_usr_task(&self._marker.inner, &self._marker.exit) };
 
         serial_println!("krsp after pushes: {:#x}", next_top);
         *self.inner.krsp() = next_top;
@@ -173,11 +182,18 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<KTaskInfo>> {
         serial_println!("krsp: {:#x}", self.inner.krsp());
         serial_println!("task info: {:#?}", self._marker.inner);
 
-        let next_top = unsafe { init_kernel_task(&self._marker.inner) };
+        let next_top = unsafe { init_kernel_task(&self._marker.inner, &self._marker.exit) };
 
         serial_println!("krsp after pushes: {:#x}", next_top);
         *self.inner.krsp() = next_top;
         self.inner
+    }
+}
+
+impl<T: TaskRepr, I> TaskBuilder<T, Ready<I>> {
+    fn with_exit_info(mut self, exit_info: TaskExitInfo) -> TaskBuilder<T, Ready<I>> {
+        self._marker.exit = exit_info;
+        self
     }
 }
 

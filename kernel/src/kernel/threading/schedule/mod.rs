@@ -85,7 +85,7 @@ pub unsafe extern "C" fn context_switch(
     // set_cpu_context(ctx);
 }
 
-pub fn add_named_ktask(func: extern "C" fn(), name: String) -> Result<(), ThreadingError> {
+pub fn add_named_ktask(func: extern "C" fn() -> usize, name: String) -> Result<(), ThreadingError> {
     serial_println!("spawning task {} at {:#x}", name, func as usize);
     let task = TaskBuilder::from_fn(func)?
         .with_name(name)
@@ -98,7 +98,7 @@ pub fn add_named_ktask(func: extern "C" fn(), name: String) -> Result<(), Thread
     Ok(())
 }
 
-pub fn add_ktask(func: extern "C" fn()) -> Result<(), ThreadingError> {
+pub fn add_ktask(func: extern "C" fn() -> usize) -> Result<(), ThreadingError> {
     serial_println!("spawning task {:#x}", func as usize);
     let task = TaskBuilder::from_fn(func)?.as_kernel()?.build();
     serial_println!("task built");
@@ -108,7 +108,10 @@ pub fn add_ktask(func: extern "C" fn()) -> Result<(), ThreadingError> {
     Ok(())
 }
 
-pub fn add_named_usr_task(func: extern "C" fn(), name: String) -> Result<(), ThreadingError> {
+pub fn add_named_usr_task(
+    func: extern "C" fn() -> usize,
+    name: String,
+) -> Result<(), ThreadingError> {
     serial_println!("spawning user task {} at {:#x}", name, func as usize);
     let task = TaskBuilder::from_fn(func)?.with_name(name);
     serial_println!("task created");

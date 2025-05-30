@@ -3,7 +3,7 @@ use quote::{format_ident, quote, ToTokens};
 use syn::{
     parse::{Parse, Parser},
     token::Extern,
-    ItemFn, LitStr,
+    Ident, ItemFn, LitStr,
 };
 use tiny_os_common::testing::TestConfig;
 
@@ -110,25 +110,35 @@ impl Parse for Func {
 
 struct CABIFunc {
     inner: ItemFn,
+    name: Ident,
 }
 
 impl ToTokens for CABIFunc {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let inner = &self.inner;
-        tokens.extend(quote! {#inner});
+        let name = &self.name;
+        let inner_name = &inner.sig.ident;
+
+        tokens.extend(quote! {
+            extern "C" fn #name() -> usize {
+                #inner
+                #inner_name();
+                0
+            }
+        });
     }
 }
 
 impl Parse for CABIFunc {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let mut self_ = Self {
-            inner: input.parse()?,
-        };
-        self_.inner.sig.abi = Some(syn::Abi {
-            extern_token: Extern::default(),
-            name: Some(LitStr::new("C", Span::call_site())),
-        });
-        Ok(self_)
+        let mut inner: ItemFn = input.parse()?;
+        let name = inner.sig.ident.clone();
+        inner.sig.ident = format_ident!("{}_inner__", inner.sig.ident);
+        // self_.inner.sig.abi = Some(syn::Abi {
+        //     extern_token: Extern::default(),
+        //     name: Some(LitStr::new("C", Span::call_site())),
+        // });
+        Ok(Self { inner, name })
     }
 }
 
@@ -141,7 +151,7 @@ pub fn kernel_test_handler(
         .parse(attr)
         .expect("malformed attrs");
     let config: TestConfigParser = attrs.into();
-    let name = func.inner.sig.ident.clone();
+    let name = func.name.clone();
     let static_name = format_ident!("__STATIC_{}", name);
     let get_name_name = format_ident!("__GET_NAME_{}", name);
 

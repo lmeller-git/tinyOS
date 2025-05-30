@@ -12,7 +12,7 @@ use crate::{
     },
     kernel::{
         mem::paging::{GLOBAL_FRAME_ALLOCATOR, PAGETABLE, TaskPageTable},
-        threading::{ThreadingError, task::SimpleTask},
+        threading::{ThreadingError, task::SimpleTask, trampoline::TaskExitInfo},
     },
     serial_println,
 };
@@ -154,12 +154,42 @@ pub struct ReducedCpuInfo {
     rax: u64,
 }
 
+/*
+callee saved registers:
+    rbp
+    (rsp)
+    rbx
+    r15
+    r14
+    r13
+    r12
+
+return:
+    rax
+    rdx
+
+call:
+    rdi
+    rsi
+    rdx
+    rcx
+    r8
+    r9
+
+temp:
+    rax
+    r10
+    r11
+*/
+
 // alternative: push taskctx to its kernel stack -> switch kernel stack -> pop context -> iretq
 global_asm!(
     "
+        .intel_syntax noprefix
         .global switch_and_apply
         .global init_kernel_task
         .global init_usr_task
+        .global return_trampoline_stub
 
         switch_and_apply:
             /// is called from context_switch_local after a trap
@@ -209,6 +239,23 @@ global_asm!(
             // call {0} // stack top
             
             mov rsp, [rdi + 8]
+            
+            /// pushes return addr after trampoline
+            /// trampoline addr
+            /// and relevant context
+            /// info in rsi
+
+            push [rsi + 8] // trampoline
+            push [rsi] // final return
+        
+            // push relevant context
+            push rax // rsp
+            mov r12, cr3
+            push r12 // cr3
+                        
+            // return stub
+            lea r12, return_trampoline_stub
+            push r12
 
             // now on tasks kstack
             // 1: push interrupt frame
@@ -255,6 +302,24 @@ global_asm!(
             
             mov rsp, [rdi + 8] // kstack top
 
+            /// pushes return addr after trampoline
+            /// trampoline addr
+            /// and relevant context
+            /// info in rsi
+
+            push [rsi + 8] // trampoline
+            push [rsi] // final return
+            
+            // push relevant context
+            push rax // rsp
+            mov r12, cr3
+            push r12 // cr3
+
+            // return stub
+            lea r12, return_trampoline_stub
+            push r12
+            
+            
             // now on tasks kstack
             // 1: push interrupt frame
             push [rdi + 40] // ss
@@ -287,7 +352,22 @@ global_asm!(
             mov rsp, rax
             mov rax, rsi
             ret
-    ",
+
+        return_trampoline_stub:
+            // set up for kernel return trampoline
+            // still on task stack
+            // return val in rax
+
+            pop r12 // cr3
+            mov cr3, r12
+            pop rdi // rsp
+            pop rsi // return to
+
+            ret // go to trampoline
+            
+        .att_syntax prefix
+            
+   ",
     sym serial_stub__
 );
 
@@ -297,8 +377,8 @@ pub fn serial_stub__(v1: u64, v2: u64) {
 
 unsafe extern "C" {
     pub fn switch_and_apply(task: &SimpleTask);
-    pub fn init_kernel_task(info: &KTaskInfo) -> VirtAddr;
-    pub fn init_usr_task(info: &UsrTaskInfo) -> VirtAddr;
+    pub fn init_kernel_task(info: &KTaskInfo, exit_info: &TaskExitInfo) -> VirtAddr;
+    pub fn init_usr_task(info: &UsrTaskInfo, exit_info: &TaskExitInfo) -> VirtAddr;
 }
 
 #[repr(C)]

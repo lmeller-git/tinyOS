@@ -50,11 +50,11 @@ unsafe extern "C" fn kmain() -> ! {
 
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
-    // add_named_ktask(task1, "task1".into()).unwrap();
-    // add_named_ktask(task2, "task2".into()).unwrap();
-    // add_named_ktask(rand, "random".into()).unwrap();
+    add_named_ktask(task1, "task1".into()).unwrap();
+    add_named_ktask(task2, "task2".into()).unwrap();
+    add_named_ktask(rand, "random".into()).unwrap();
     // add_named_ktask(listen, "listen".into()).unwrap();
-    add_named_usr_task(user_task, "user task 1".into());
+    // add_named_usr_task(user_task, "user task 1".into());
     let rsp: u64;
     unsafe {
         core::arch::asm!("mov {0}, rsp", out(reg) rsp);
@@ -64,21 +64,24 @@ unsafe extern "C" fn kmain() -> ! {
     arch::hcf()
 }
 
-extern "C" fn user_task() {
+extern "C" fn user_task() -> usize {
     serial_println!("hello from user task");
     hcf();
+    0
 }
 
-extern "C" fn rand() {
+extern "C" fn rand() -> usize {
     serial_println!("hello 0 from task");
     random_stuff();
+    0
 }
 
-extern "C" fn listen() {
+extern "C" fn listen() -> usize {
     tiny_os::term::synced_keyboard_listener();
+    0
 }
 
-extern "C" fn task1() {
+extern "C" fn task1() -> usize {
     serial_println!("hello from task 1");
     serial_println!("hi");
     let mut x = 1;
@@ -87,10 +90,11 @@ extern "C" fn task1() {
     }
     serial_println!("task{} finished", x);
     panic!("end task1");
-    hcf()
+    hcf();
+    0
 }
 
-extern "C" fn task2() {
+extern "C" fn task2() -> usize {
     serial_println!("hello from task 2");
     serial_println!("huhu");
     let mut x = 2;
@@ -98,8 +102,7 @@ extern "C" fn task2() {
         x = 2;
     }
     serial_println!("task{} finished", x);
-    panic!("end task2");
-    hcf()
+    0
 }
 
 fn random_stuff() -> ! {

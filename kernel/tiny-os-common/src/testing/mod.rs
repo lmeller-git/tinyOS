@@ -11,7 +11,7 @@ pub trait TestCase {
 pub enum TestingError {}
 
 pub trait TestRunner {
-    fn run_guarded(&self, task: extern "C" fn(), config: &TestConfig, name: &str);
+    fn run_guarded(&self, task: extern "C" fn() -> usize, config: &TestConfig, name: &str);
 }
 
 pub struct FileTestRunner {
