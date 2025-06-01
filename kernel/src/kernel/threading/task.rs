@@ -23,6 +23,7 @@ use super::ThreadingError;
 pub trait TaskRepr: Debug {
     fn krsp(&mut self) -> &mut VirtAddr;
     fn kill(&mut self);
+    fn kill_with_code(&mut self, code: usize);
 }
 
 #[repr(C)]
@@ -65,6 +66,13 @@ impl TaskRepr for SimpleTask {
     fn kill(&mut self) {
         self.state = TaskState::Zombie(ExitInfo {
             exit_code: 1,
+            signal: None,
+        })
+    }
+
+    fn kill_with_code(&mut self, code: usize) {
+        self.state = TaskState::Zombie(ExitInfo {
+            exit_code: code as u32,
             signal: None,
         })
     }
@@ -260,6 +268,13 @@ impl TaskRepr for Task {
     fn kill(&mut self) {
         self.state = TaskState::Zombie(ExitInfo {
             exit_code: 1,
+            signal: None,
+        })
+    }
+
+    fn kill_with_code(&mut self, code: usize) {
+        self.state = TaskState::Zombie(ExitInfo {
+            exit_code: code as u32,
             signal: None,
         })
     }

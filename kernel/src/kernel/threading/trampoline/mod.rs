@@ -9,7 +9,7 @@ use crate::{
 use core::arch::asm;
 
 #[allow(unsafe_op_in_unsafe_fn)]
-pub unsafe extern "C" fn kernel_return_trampoline(ret: usize, returnto: u64) {
+pub unsafe extern "C" fn kernel_return_trampoline(ret: usize, returnto: extern "C" fn(_: usize)) {
     // addr of this is set as the return address for tasks
     // rsp is currently at the topmost addr of tasks stack
     // should:
@@ -17,16 +17,15 @@ pub unsafe extern "C" fn kernel_return_trampoline(ret: usize, returnto: u64) {
     // call correct next func
     // just stay on tasks stack
     serial_println!("exit trampoline, exit: {}", ret);
-    panic!("breakpoint");
-    asm!("mov rdi, rsi")
+    returnto(ret);
 }
 
-pub extern "C" fn default_exit() -> ! {
+pub extern "C" fn default_exit(ret: usize) -> ! {
     serial_println!("default exit");
     if let Some(ref mut sched) = GLOBAL_SCHEDULER.get().map(|sched| sched.lock()) {
         if let Some(current) = sched.current_mut() {
             //TODO kill with info
-            current.kill();
+            current.kill_with_code(ret);
         }
     }
     unsafe { context_switch_local(0) };

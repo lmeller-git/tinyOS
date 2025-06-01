@@ -203,10 +203,7 @@ global_asm!(
             /// iretq
 
             mov rsp, [rdi]
-
-            // mov rdi, rsp
-            // call {0} //0xfffff000c0003f38
-            
+           
             // now on tasks kstack, with state on stack
             
             pop r8
@@ -226,20 +223,11 @@ global_asm!(
             pop rdi
             pop rbp
             pop rax
-
-            // mov rdi, rsp
-            // call {0} //0xfffff000c0003fb8
-            
+          
             jmp interrupt_cleanup
 
         init_kernel_task:
             mov rax, rsp
-
-            // push rdi
-            // mov rdi, [rdi + 8]
-            // call {0} //0xfffff000c0003ff0
-            // pop rdi
-                                    
             mov rsp, [rdi + 8]
 
             
@@ -253,15 +241,7 @@ global_asm!(
         
                     
             // return stub
-            // lea r12, return_trampoline_stub
-            // push r12
-
-            // push rdi
-            // mov rdi, rsp
-            // call {0} //0xfffff000c0003fe0
-            // pop rdi
-           
-            mov r12, 0xCAFEBABE
+            lea r12, return_trampoline_stub
             push r12
 
             // now on tasks kstack
@@ -365,8 +345,8 @@ global_asm!(
             pop rsi // return to
 
             mov rdi, rax
-            call {0}
             jmp {1}
+
             // ret // go to trampoline
    ",
     sym serial_stub__,

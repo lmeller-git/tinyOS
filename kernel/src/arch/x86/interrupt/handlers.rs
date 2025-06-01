@@ -38,11 +38,7 @@ global_asm!(
         interrupt_cleanup:
             // reenables interrupts, signals eoi and iretqs
             call end_interrupt
-            sti
-
-            // mov rdi, rsp
-            // call printer //0xfffff000c0003fb8
-            
+            sti     
             iretq
 
         timer_interrupt_stub_local:
