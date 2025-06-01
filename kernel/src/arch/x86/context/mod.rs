@@ -12,7 +12,11 @@ use crate::{
     },
     kernel::{
         mem::paging::{GLOBAL_FRAME_ALLOCATOR, PAGETABLE, TaskPageTable},
-        threading::{ThreadingError, task::SimpleTask, trampoline::TaskExitInfo},
+        threading::{
+            ThreadingError,
+            task::SimpleTask,
+            trampoline::{TaskExitInfo, kernel_return_trampoline},
+        },
     },
     serial_println,
 };
@@ -185,7 +189,6 @@ temp:
 // alternative: push taskctx to its kernel stack -> switch kernel stack -> pop context -> iretq
 global_asm!(
     "
-        .intel_syntax noprefix
         .global switch_and_apply
         .global init_kernel_task
         .global init_usr_task
@@ -198,16 +201,13 @@ global_asm!(
             /// apply context saved on this stack
             /// clean up the interrupt
             /// iretq
-            // mov rsi, rsp // was saved previously
-            mov rsp, [rdi]
-            // now on tasks kstack, with state on stack
-            // push rdi
-            // mov rdi, [rdi]
-            // call {0}
-            // pop rdi
 
-            // mov rsi, rsp
-            // call {0}
+            mov rsp, [rdi]
+
+            // mov rdi, rsp
+            // call {0} //0xfffff000c0003f38
+            
+            // now on tasks kstack, with state on stack
             
             pop r8
             pop r9
@@ -227,46 +227,53 @@ global_asm!(
             pop rbp
             pop rax
 
-            // mov rsi, rsp
-            // call {0}
+            // mov rdi, rsp
+            // call {0} //0xfffff000c0003fb8
             
             jmp interrupt_cleanup
 
         init_kernel_task:
             mov rax, rsp
-            
-            // mov rsi, [rdi + 8]
-            // call {0} // stack top
-            
+
+            // push rdi
+            // mov rdi, [rdi + 8]
+            // call {0} //0xfffff000c0003ff0
+            // pop rdi
+                                    
             mov rsp, [rdi + 8]
+
             
             /// pushes return addr after trampoline
             /// trampoline addr
             /// and relevant context
             /// info in rsi
 
-            push [rsi + 8] // trampoline
+            // push [rsi + 8] // trampoline
             push [rsi] // final return
         
-            // push relevant context
-            push rax // rsp
-            mov r12, cr3
-            push r12 // cr3
-                        
+                    
             // return stub
-            lea r12, return_trampoline_stub
+            // lea r12, return_trampoline_stub
+            // push r12
+
+            // push rdi
+            // mov rdi, rsp
+            // call {0} //0xfffff000c0003fe0
+            // pop rdi
+           
+            mov r12, 0xCAFEBABE
             push r12
 
             // now on tasks kstack
             // 1: push interrupt frame
             push [rdi + 32] // ss
-            push [rdi + 8] // rsp
+            // push [rdi + 8]  // rsp
+            mov r12, rsp
+            add r12, 8
+            push r12  // rsp before ss
             push [rdi + 24] // rflags
             push [rdi + 16] // cs
             push [rdi] // rip
-
-            // mov rsi, rsp
-            // call {0}
 
             // 2: push Cpu Context, such that it can be popped by switch_and_apply
             push 0 // rax
@@ -289,9 +296,6 @@ global_asm!(
             mov rsi, rsp
             mov rsp, rax
             mov rax, rsi
-
-            // mov rsi, rax
-            // call {0}
             ret
 
         init_usr_task:
@@ -358,17 +362,15 @@ global_asm!(
             // still on task stack
             // return val in rax
 
-            pop r12 // cr3
-            mov cr3, r12
-            pop rdi // rsp
             pop rsi // return to
 
-            ret // go to trampoline
-            
-        .att_syntax prefix
-            
+            mov rdi, rax
+            call {0}
+            jmp {1}
+            // ret // go to trampoline
    ",
-    sym serial_stub__
+    sym serial_stub__,
+    sym kernel_return_trampoline
 );
 
 pub fn serial_stub__(v1: u64, v2: u64) {
@@ -379,6 +381,7 @@ unsafe extern "C" {
     pub fn switch_and_apply(task: &SimpleTask);
     pub fn init_kernel_task(info: &KTaskInfo, exit_info: &TaskExitInfo) -> VirtAddr;
     pub fn init_usr_task(info: &UsrTaskInfo, exit_info: &TaskExitInfo) -> VirtAddr;
+    pub fn return_trampoline_stub();
 }
 
 #[repr(C)]
@@ -393,6 +396,7 @@ pub struct KTaskInfo {
 
 impl KTaskInfo {
     pub fn new(addr: VirtAddr, kstack: VirtAddr) -> Self {
+        serial_println!("tramp stub at: {:#x}", return_trampoline_stub as usize);
         let (cs, ss) = get_kernel_selectors();
         let rflags = RFlags::INTERRUPT_FLAG | RFlags::from_bits_truncate(0x2);
         Self {
@@ -455,8 +459,8 @@ pub fn allocate_kstack() -> Result<VirtAddr, ThreadingError> {
 
     let base =
         (KSTACK_AREA_START + kstack_start_idx as u64 * KSTACK_SIZE as u64).align_up(Size4KiB::SIZE);
-    let start = base + Size4KiB::SIZE; //.align_up(Size4KiB::SIZE);
-    let end = base + KSTACK_SIZE as u64; //.align_up(Size4KiB::SIZE);
+    let start = (base + Size4KiB::SIZE).align_up(Size4KiB::SIZE);
+    let end = (base + KSTACK_SIZE as u64).align_up(Size4KiB::SIZE);
 
     let start_page = Page::containing_address(start);
     let end_page = Page::containing_address(end - 1);
@@ -480,7 +484,7 @@ pub fn allocate_kstack() -> Result<VirtAddr, ThreadingError> {
         }
         assert!(mapper.translate_page(end_page).is_ok());
     }
-    let stack_top = VirtAddr::new(end.as_u64() - 8); // & !0xF);
+    let stack_top = VirtAddr::new((end.as_u64() - 8) & !0xF);
     Ok(stack_top)
 }
 

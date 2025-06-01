@@ -39,6 +39,10 @@ global_asm!(
             // reenables interrupts, signals eoi and iretqs
             call end_interrupt
             sti
+
+            // mov rdi, rsp
+            // call printer //0xfffff000c0003fb8
+            
             iretq
 
         timer_interrupt_stub_local:
@@ -72,7 +76,7 @@ global_asm!(
             pop r14
             pop r15
             pop rax // cr3
-            // mov cr3, rax // not necessary, as task not switched
+            mov cr3, rax // not necessary, as task not switched
             pop rbx
             pop rcx
             pop rdx

@@ -3,6 +3,8 @@
 
 extern crate tiny_os;
 
+use core::arch::global_asm;
+
 use embedded_graphics::mono_font;
 use embedded_graphics::primitives::PrimitiveStyle;
 use embedded_graphics::primitives::StyledDrawable;
@@ -50,9 +52,9 @@ unsafe extern "C" fn kmain() -> ! {
 
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
-    add_named_ktask(task1, "task1".into()).unwrap();
-    add_named_ktask(task2, "task2".into()).unwrap();
-    add_named_ktask(rand, "random".into()).unwrap();
+    // add_named_ktask(task1, "task1".into()).unwrap();
+    add_named_ktask(foo, "foo".into()).unwrap();
+    // add_named_ktask(rand, "random".into()).unwrap();
     // add_named_ktask(listen, "listen".into()).unwrap();
     // add_named_usr_task(user_task, "user task 1".into());
     let rsp: u64;
@@ -62,6 +64,38 @@ unsafe extern "C" fn kmain() -> ! {
     serial_println!("currently on: {:#x}", rsp);
     enable_threading_interrupts();
     arch::hcf()
+}
+
+global_asm!(
+    "
+        .global foo
+
+        foo:
+            // mov rdi, rsp
+            // call printer2 //0xfffff000c0003ff0
+            // sub rsp, 16
+            mov rax, 42
+            // pop rdi
+            // mov rdi, rsp
+            // call printer2  //0xfffff000c0003ff8
+            // call hcf2
+            // jmp rdi
+            ret
+    ",
+);
+
+#[unsafe(no_mangle)]
+extern "C" fn hcf2() {
+    hcf()
+}
+
+#[unsafe(no_mangle)]
+extern "C" fn printer2(v: usize) {
+    serial_println!("v: {:#x}", v);
+}
+
+unsafe extern "C" {
+    pub safe fn foo() -> usize;
 }
 
 extern "C" fn user_task() -> usize {
@@ -96,12 +130,9 @@ extern "C" fn task1() -> usize {
 
 extern "C" fn task2() -> usize {
     serial_println!("hello from task 2");
-    serial_println!("huhu");
-    let mut x = 2;
-    for _ in 0..100 {
-        x = 2;
-    }
-    serial_println!("task{} finished", x);
+    let x: usize;
+    unsafe { core::arch::asm!("mov {0}, rsp", out(reg) x) };
+    serial_println!("now at: {:#x}", x);
     0
 }
 

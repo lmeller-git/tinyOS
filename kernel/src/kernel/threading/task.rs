@@ -136,7 +136,7 @@ impl TaskBuilder<SimpleTask, Init> {
         mut self,
     ) -> Result<TaskBuilder<SimpleTask, Ready<KTaskInfo>>, ThreadingError> {
         let stack_top = allocate_kstack()?;
-        self.inner.krsp = stack_top;
+        *self.inner.krsp() = stack_top;
         let info = KTaskInfo::new(self.entry, self.inner.krsp);
         Ok(TaskBuilder {
             inner: self.inner,
@@ -149,7 +149,7 @@ impl TaskBuilder<SimpleTask, Init> {
         let mut tbl = create_new_pagedir().map_err(|e| ThreadingError::PageDirNotBuilt)?;
         let usr_end = allocate_userstack(&mut tbl)?;
         let kstack = allocate_userkstack(&mut tbl)?;
-        self.inner.krsp = kstack;
+        *self.inner.krsp() = kstack;
         let info = UsrTaskInfo::new(
             self.entry,
             self.inner.krsp,
