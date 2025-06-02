@@ -18,6 +18,13 @@ pub fn hcf() -> ! {
     }
 }
 
+pub fn timer() {
+    #[cfg(target_arch = "x86_64")]
+    x86::interrupt::timer();
+    #[cfg(not(any(target_arch = "x86_64")))]
+    compile_error!("arch not supported")
+}
+
 pub fn hlt() {
     unsafe {
         #[cfg(target_arch = "x86_64")]

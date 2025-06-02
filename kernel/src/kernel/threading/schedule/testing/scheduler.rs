@@ -5,6 +5,7 @@ use tiny_os_common::{
 };
 /// runs each Test in a separate thread and reports its outcome
 /// no preemptive multitasking
+//TODO: should have a Runner thread, which spawns new
 pub struct SimpleTestRunner {}
 
 impl SuperTestRunner for SimpleTestRunner {

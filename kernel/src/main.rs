@@ -19,6 +19,7 @@ use tiny_os::drivers::graphics::framebuffers::LimineFrameBuffer;
 use tiny_os::drivers::graphics::text::draw_str;
 use tiny_os::exit_qemu;
 use tiny_os::kernel;
+use tiny_os::kernel::threading;
 use tiny_os::kernel::threading::schedule::GLOBAL_SCHEDULER;
 use tiny_os::kernel::threading::schedule::OneOneScheduler;
 use tiny_os::kernel::threading::schedule::add_ktask;
@@ -52,18 +53,21 @@ unsafe extern "C" fn kmain() -> ! {
 
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
-    // add_named_ktask(task1, "task1".into()).unwrap();
-    add_named_ktask(foo, "foo".into()).unwrap();
-    // add_named_ktask(rand, "random".into()).unwrap();
-    // add_named_ktask(listen, "listen".into()).unwrap();
-    // add_named_usr_task(user_task, "user task 1".into());
-    let rsp: u64;
-    unsafe {
-        core::arch::asm!("mov {0}, rsp", out(reg) rsp);
-    }
-    serial_println!("currently on: {:#x}", rsp);
+    add_named_ktask(idle, "idle".into());
     enable_threading_interrupts();
+    threading::yield_now();
     arch::hcf()
+}
+
+extern "C" fn idle() -> usize {
+    add_named_ktask(foo, "foo".into());
+    add_named_ktask(rand, "random".into());
+    add_named_ktask(listen, "term".into());
+    loop {
+        threading::yield_now();
+    }
+    hcf();
+    0
 }
 
 global_asm!(

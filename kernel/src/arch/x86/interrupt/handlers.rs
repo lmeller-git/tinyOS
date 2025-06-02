@@ -32,7 +32,6 @@ pub fn timer_interrupt_handler_local_(rsp: u64) {
 global_asm!(
     "
         .global interrupt_cleanup
-        .global timer_interrupt_stub
         .global timer_interrupt_stub_local
 
         interrupt_cleanup:
@@ -90,10 +89,8 @@ extern "C" fn printer(v: u64) {
 }
 
 unsafe extern "C" {
-    #[deprecated]
-    pub(super) fn timer_interrupt_stub();
     pub fn interrupt_cleanup();
-    pub(super) fn timer_interrupt_stub_local();
+    pub fn timer_interrupt_stub_local();
 }
 
 pub(super) extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {

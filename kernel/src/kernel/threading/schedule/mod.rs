@@ -15,7 +15,7 @@ use alloc::string::String;
 use conquer_once::spin::OnceCell;
 use spin::Mutex;
 
-// #[cfg(feature = "test_case")]
+#[cfg(feature = "test_case")]
 pub mod testing;
 
 mod round_robin;
@@ -66,8 +66,7 @@ pub unsafe extern "C" fn context_switch_local(rsp: u64) {
         current.krsp = VirtAddr::new(rsp);
     }
     if let Some(new) = lock.switch() {
-        let new = new.clone();
-        drop(lock);
+        unsafe { GLOBAL_SCHEDULER.get_unchecked().force_unlock() };
         serial_println!("new task, {:#?}", new);
         switch_and_apply(&new);
         unreachable!()
@@ -85,6 +84,12 @@ pub unsafe extern "C" fn context_switch(
     // set_cpu_context(ctx);
 }
 
+pub fn add_built_task(task: SimpleTask) {
+    unsafe { GLOBAL_SCHEDULER.get_unchecked() }
+        .lock()
+        .add_task(task);
+}
+
 pub fn add_named_ktask(func: extern "C" fn() -> usize, name: String) -> Result<(), ThreadingError> {
     serial_println!("spawning task {} at {:#x}", name, func as usize);
     let task = TaskBuilder::from_fn(func)?
@@ -92,9 +97,7 @@ pub fn add_named_ktask(func: extern "C" fn() -> usize, name: String) -> Result<(
         .as_kernel()?
         .build();
     serial_println!("task built");
-    unsafe {
-        GLOBAL_SCHEDULER.get_unchecked().lock().add_task(task);
-    }
+    add_built_task(task);
     Ok(())
 }
 
@@ -102,9 +105,7 @@ pub fn add_ktask(func: extern "C" fn() -> usize) -> Result<(), ThreadingError> {
     serial_println!("spawning task {:#x}", func as usize);
     let task = TaskBuilder::from_fn(func)?.as_kernel()?.build();
     serial_println!("task built");
-    unsafe {
-        GLOBAL_SCHEDULER.get_unchecked().lock().add_task(task);
-    }
+    add_built_task(task);
     Ok(())
 }
 
@@ -119,9 +120,7 @@ pub fn add_named_usr_task(
     serial_println!("task setup");
     let task = task.build();
     serial_println!("task built");
-    unsafe {
-        GLOBAL_SCHEDULER.get_unchecked().lock().add_task(task);
-    }
+    add_built_task(task);
     Ok(())
 }
 
@@ -139,8 +138,6 @@ pub unsafe fn add_named_usr_task_from_addr(
     serial_println!("task setup");
     let task = task.build();
     serial_println!("task built");
-    unsafe {
-        GLOBAL_SCHEDULER.get_unchecked().lock().add_task(task);
-    }
+    add_built_task(task);
     Ok(())
 }

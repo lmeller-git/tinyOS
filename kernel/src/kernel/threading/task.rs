@@ -1,4 +1,4 @@
-use alloc::string::String;
+use alloc::{boxed::Box, string::String};
 
 use crate::{
     arch::{
@@ -15,6 +15,7 @@ use crate::{
 use core::{
     fmt::Debug,
     marker::PhantomData,
+    pin::Pin,
     sync::atomic::{AtomicU64, Ordering},
 };
 
@@ -24,10 +25,12 @@ pub trait TaskRepr: Debug {
     fn krsp(&mut self) -> &mut VirtAddr;
     fn kill(&mut self);
     fn kill_with_code(&mut self, code: usize);
+    fn exit_info(&self) -> &TaskExitInfo;
+    fn get_mut_exit_info(&mut self) -> &mut TaskExitInfo;
 }
 
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct SimpleTask {
     pub krsp: VirtAddr,
     pub frame_flags: Cr3Flags,
@@ -37,6 +40,7 @@ pub struct SimpleTask {
     pub pid: TaskID,
     pub name: Option<String>,
     pub state: TaskState,
+    pub exit_info: Pin<Box<TaskExitInfo>>,
     private_marker: PhantomData<u8>,
 }
 
@@ -54,6 +58,7 @@ impl SimpleTask {
             name: None,
             state: TaskState::Ready,
             private_marker: PhantomData,
+            exit_info: Box::pin(TaskExitInfo::default()),
         })
     }
 }
@@ -75,6 +80,14 @@ impl TaskRepr for SimpleTask {
             exit_code: code as u32,
             signal: None,
         })
+    }
+
+    fn exit_info(&self) -> &TaskExitInfo {
+        self.exit_info.as_ref().get_ref()
+    }
+
+    fn get_mut_exit_info(&mut self) -> &mut TaskExitInfo {
+        self.exit_info.as_mut().get_mut()
     }
 }
 
@@ -113,6 +126,11 @@ impl<T, S> TaskBuilder<T, S> where T: TaskRepr {}
 impl<S> TaskBuilder<SimpleTask, S> {
     pub fn with_name(mut self, name: String) -> TaskBuilder<SimpleTask, S> {
         self.inner.name.replace(name);
+        self
+    }
+
+    pub fn with_exit_info(mut self, exit_info: TaskExitInfo) -> TaskBuilder<SimpleTask, S> {
+        *self.inner.get_mut_exit_info() = exit_info;
         self
     }
 }
@@ -177,7 +195,7 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<UsrTaskInfo>> {
         serial_println!("data: {:#?}", self._marker.inner);
         serial_println!("task: {:#?}", self.inner);
 
-        let next_top = unsafe { init_usr_task(&self._marker.inner, &self._marker.exit) };
+        let next_top = unsafe { init_usr_task(&self._marker.inner, self.inner.exit_info()) };
 
         serial_println!("krsp after pushes: {:#x}", next_top);
         *self.inner.krsp() = next_top;
@@ -190,18 +208,11 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<KTaskInfo>> {
         serial_println!("krsp: {:#x}", self.inner.krsp());
         serial_println!("task info: {:#?}", self._marker.inner);
 
-        let next_top = unsafe { init_kernel_task(&self._marker.inner, &self._marker.exit) };
+        let next_top = unsafe { init_kernel_task(&self._marker.inner, self.inner.exit_info()) };
 
         serial_println!("krsp after pushes: {:#x}", next_top);
         *self.inner.krsp() = next_top;
         self.inner
-    }
-}
-
-impl<T: TaskRepr, I> TaskBuilder<T, Ready<I>> {
-    fn with_exit_info(mut self, exit_info: TaskExitInfo) -> TaskBuilder<T, Ready<I>> {
-        self._marker.exit = exit_info;
-        self
     }
 }
 
@@ -277,6 +288,12 @@ impl TaskRepr for Task {
             exit_code: code as u32,
             signal: None,
         })
+    }
+    fn exit_info(&self) -> &TaskExitInfo {
+        todo!()
+    }
+    fn get_mut_exit_info(&mut self) -> &mut TaskExitInfo {
+        todo!()
     }
 }
 

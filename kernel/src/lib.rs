@@ -7,6 +7,7 @@ pub extern crate alloc;
 use crate::kernel::threading::schedule::testing::{self, GLOBAL_TEST_SCHEDULER, TestRunner};
 #[cfg(feature = "test_run")]
 use alloc::vec::Vec;
+use arch::hcf;
 #[cfg(feature = "test_run")]
 use core::panic::PanicInfo;
 use os_macros::{kernel_test, tests};
@@ -43,12 +44,25 @@ pub fn test_main() {
 
 #[cfg(feature = "test_run")]
 pub fn test_test_main() {
+    use kernel::threading::{self, schedule::add_named_ktask, yield_now};
+    threading::init();
     testing::init();
+    add_named_ktask(kernel_test_runner, "test runner".into());
+    yield_now();
     let tests = unsafe { get_kernel_tests() };
     serial_println!("huhu");
     for test in tests {
         serial_println!("name: {}", test.name());
         // test.run_in(unsafe { GLOBAL_TEST_SCHEDULER.get_unchecked() });
+    }
+}
+
+extern "C" fn kernel_test_runner() {
+    let tests = unsafe { get_kernel_tests() };
+    serial_println!("running {} tests...", tests.len());
+
+    for test in tests {
+        serial_print!("{}...", test.name());
     }
 }
 

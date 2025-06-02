@@ -21,3 +21,7 @@ pub(super) fn init() {
 pub fn enable_threading_interrupts() {
     enable_timer();
 }
+
+pub fn timer() {
+    unsafe { core::arch::asm!("int 0x20") }
+}

@@ -12,11 +12,7 @@ use crate::{
     },
     kernel::{
         mem::paging::{GLOBAL_FRAME_ALLOCATOR, PAGETABLE, TaskPageTable},
-        threading::{
-            ThreadingError,
-            task::SimpleTask,
-            trampoline::{TaskExitInfo, kernel_return_trampoline},
-        },
+        threading::{ThreadingError, task::SimpleTask, trampoline::TaskExitInfo},
     },
     serial_println,
 };
@@ -236,8 +232,8 @@ global_asm!(
             /// and relevant context
             /// info in rsi
 
-            // push [rsi + 8] // trampoline
-            push [rsi] // final return
+            push [rsi] // trampoline
+            push rsi // task exit info
         
                     
             // return stub
@@ -246,10 +242,9 @@ global_asm!(
 
             // now on tasks kstack
             // 1: push interrupt frame
+            mov r12, rsp
             push [rdi + 32] // ss
             // push [rdi + 8]  // rsp
-            mov r12, rsp
-            add r12, 8
             push r12  // rsp before ss
             push [rdi + 24] // rflags
             push [rdi + 16] // cs
@@ -279,6 +274,7 @@ global_asm!(
             ret
 
         init_usr_task:
+            //TODO return, ..
             mov rax, rsp
             
             // mov rsi, [rdi + 8]
@@ -342,15 +338,12 @@ global_asm!(
             // still on task stack
             // return val in rax
 
-            pop rsi // return to
+            pop rsi // exit info
 
             mov rdi, rax
-            jmp {1}
-
-            // ret // go to trampoline
+            ret // go to trampoline
    ",
     sym serial_stub__,
-    sym kernel_return_trampoline
 );
 
 pub fn serial_stub__(v1: u64, v2: u64) {
