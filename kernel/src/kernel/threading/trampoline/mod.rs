@@ -11,14 +11,14 @@ use crate::{
 use core::{arch::asm, fmt::Debug, pin::Pin};
 
 #[unsafe(no_mangle)]
-pub extern "C" fn kernel_return_trampoline(ret: usize, info: &TaskExitInfo) {
+pub extern "C" fn kernel_return_trampoline(ret: usize, info: &mut TaskExitInfo) {
     // addr of this is set as the return address for tasks
     // rsp is currently at the topmost addr of tasks stack
     // should:
     // restore cpu context
     // call correct next func
     // just stay on tasks stack
-    serial_println!("hello");
+    serial_println!("trampoline");
     (info.callback.inner)(ret);
 }
 
@@ -42,13 +42,13 @@ pub fn default_exit(ret: usize) {
 
 #[repr(C)]
 pub struct Callback {
-    pub inner: Box<dyn Fn(usize) + Send + 'static>,
+    pub inner: Box<dyn FnMut(usize) + Send + 'static>,
 }
 
 impl Callback {
     pub fn new<F>(func: F) -> Self
     where
-        F: Fn(usize) + Send + 'static,
+        F: FnMut(usize) + Send + 'static,
     {
         Self {
             inner: Box::new(func),
@@ -81,7 +81,7 @@ impl Debug for TaskExitInfo {
 impl TaskExitInfo {
     pub fn new<F>(callback: F, trampoline: extern "C" fn()) -> Self
     where
-        F: Fn(usize) + Send + 'static,
+        F: FnMut(usize) + Send + 'static,
     {
         Self {
             callback: Callback::new(callback),
@@ -91,7 +91,7 @@ impl TaskExitInfo {
 
     pub fn new_with_default_trampoline<F>(callback: F) -> Self
     where
-        F: Fn(usize) + Send + 'static,
+        F: FnMut(usize) + Send + 'static,
     {
         Self {
             callback: Callback::new(callback),

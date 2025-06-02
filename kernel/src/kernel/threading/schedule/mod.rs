@@ -11,11 +11,11 @@ use crate::{
     kernel::threading::task::Uninit,
     serial_println,
 };
-use alloc::string::String;
+use alloc::{string::String, sync::Arc};
 use conquer_once::spin::OnceCell;
-use spin::Mutex;
+use spin::{Mutex, MutexGuard, RwLock};
 
-#[cfg(feature = "test_case")]
+#[cfg(feature = "test_run")]
 pub mod testing;
 
 mod round_robin;
@@ -49,12 +49,31 @@ pub trait OneOneScheduler {
 
 pub enum ScheduleOrder {}
 
-type GlobalScheduler = round_robin::OneOneRoundRobin;
+pub type GlobalScheduler = round_robin::OneOneRoundRobin;
+pub type GlobalTask = SimpleTask;
+pub type GlobalTaskPtr = Arc<RwLock<GlobalTask>>;
 
 pub static GLOBAL_SCHEDULER: OnceCell<Mutex<GlobalScheduler>> = OnceCell::uninit();
 
 pub fn init() {
     _ = GLOBAL_SCHEDULER.try_init_once(|| Mutex::new(GlobalScheduler::new()));
+}
+
+pub fn get<'a>() -> Option<MutexGuard<'a, GlobalScheduler>> {
+    GLOBAL_SCHEDULER.get().map(|s| s.lock())
+}
+
+pub unsafe fn get_unchecked<'a>() -> MutexGuard<'a, GlobalScheduler> {
+    GLOBAL_SCHEDULER.get_unchecked().lock()
+}
+
+pub fn with_current_task<F, R>(f: F) -> Option<R>
+where
+    F: FnOnce(&GlobalTask) -> R,
+{
+    let guard = get()?;
+    let task = guard.current()?;
+    Some(f(task))
 }
 
 #[allow(unsafe_op_in_unsafe_fn)]
@@ -66,8 +85,8 @@ pub unsafe extern "C" fn context_switch_local(rsp: u64) {
         current.krsp = VirtAddr::new(rsp);
     }
     if let Some(new) = lock.switch() {
-        unsafe { GLOBAL_SCHEDULER.get_unchecked().force_unlock() };
         serial_println!("new task, {:#?}", new);
+        unsafe { GLOBAL_SCHEDULER.get_unchecked().force_unlock() };
         switch_and_apply(&new);
         unreachable!()
     }

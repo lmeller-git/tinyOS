@@ -1,6 +1,7 @@
 #![no_std]
 #![feature(abi_x86_interrupt)]
-#![allow(unused_imports, unreachable_code)]
+#![feature(result_flattening)]
+#![allow(unused_imports, unreachable_code, unsafe_op_in_unsafe_fn)]
 pub extern crate alloc;
 
 #[cfg(feature = "test_run")]
@@ -10,6 +11,8 @@ use alloc::vec::Vec;
 use arch::hcf;
 #[cfg(feature = "test_run")]
 use core::panic::PanicInfo;
+#[cfg(feature = "test_run")]
+use kernel::threading::{self, JoinHandle, schedule::add_named_ktask, spawn_fn, yield_now};
 use os_macros::{kernel_test, tests};
 use thiserror::Error;
 use tiny_os_common::testing::{TestCase, kernel::get_kernel_tests};
@@ -44,26 +47,35 @@ pub fn test_main() {
 
 #[cfg(feature = "test_run")]
 pub fn test_test_main() {
-    use kernel::threading::{self, schedule::add_named_ktask, yield_now};
     threading::init();
     testing::init();
     add_named_ktask(kernel_test_runner, "test runner".into());
     yield_now();
-    let tests = unsafe { get_kernel_tests() };
-    serial_println!("huhu");
-    for test in tests {
-        serial_println!("name: {}", test.name());
-        // test.run_in(unsafe { GLOBAL_TEST_SCHEDULER.get_unchecked() });
-    }
+    // let tests = unsafe { get_kernel_tests() };
+    // serial_println!("huhu");
+    // for test in tests {
+    // serial_println!("name: {}", test.name());
+    // test.run_in(unsafe { GLOBAL_TEST_SCHEDULER.get_unchecked() });
+    // }
 }
 
-extern "C" fn kernel_test_runner() {
+#[cfg(feature = "test_run")]
+extern "C" fn kernel_test_runner() -> usize {
     let tests = unsafe { get_kernel_tests() };
     serial_println!("running {} tests...", tests.len());
 
     for test in tests {
         serial_print!("{}...", test.name());
+        match spawn_fn(test.func).map(|handle| handle.wait()).flatten() {
+            Ok(v) => {
+                serial_println!("\t[OK]");
+            }
+            Err(_) => {
+                serial_println!("\t[ERR]");
+            }
+        };
     }
+    0
 }
 
 #[cfg(feature = "test_run")]

@@ -15,12 +15,13 @@ pub use scheduler::*;
 pub trait TestRunner {
     fn new() -> Self;
     fn run(&self, func: extern "C" fn() -> usize) -> Result<(), ThreadingError> {
-        let task = TaskBuilder::from_fn(func)?
-            .as_kernel()?
-            .with_exit_info(TaskExitInfo::new(next_test, test_kernel_return_trampoline))
-            .build();
-        unsafe { switch_and_apply(&task) };
-        Ok(())
+        // let task = TaskBuilder::from_fn(func)?
+        // .as_kernel()?
+        // .with_exit_info(TaskExitInfo::new(next_test, test_kernel_return_trampoline))
+        // .build();
+        // unsafe { switch_and_apply(&task) };
+        // Ok(())
+        todo!()
     }
     fn notify_panic(&self, info: &PanicInfo);
 }
