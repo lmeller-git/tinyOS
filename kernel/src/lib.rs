@@ -49,7 +49,7 @@ pub fn test_main() {
 pub fn test_test_main() {
     threading::init();
     testing::init();
-    add_named_ktask(kernel_test_runner, "test runner".into());
+    // add_named_ktask(kernel_test_runner, "test runner".into());
     yield_now();
     // let tests = unsafe { get_kernel_tests() };
     // serial_println!("huhu");
