@@ -10,6 +10,3 @@ macro_rules! log {
         $crate::logging::log(format_args!($($arg)*));
     };
 }
-
-#[cfg(test)]
-mod tests {}

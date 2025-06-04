@@ -5,6 +5,8 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
+use os_macros::kernel_test;
+
 pub struct Mutex<T> {
     lock: AtomicBool,
     value: UnsafeCell<T>,
@@ -68,16 +70,14 @@ pub enum MutexError {
     IsLocked,
 }
 
-crate::tests! {
-    #[test_case]
-    fn mutex() {
-        let m = Mutex::new(0);
-        assert_eq!(*m.lock(), 0);
-        *m.lock() = 42;
-        assert_eq!(*m.lock(), 42);
-        let lock = m.lock();
-        assert!(m.try_lock().is_err());
-        drop(lock);
-        assert!(m.try_lock().is_ok());
-    }
+#[kernel_test]
+fn mutex() {
+    let m = Mutex::new(0);
+    assert_eq!(*m.lock(), 0);
+    *m.lock() = 42;
+    assert_eq!(*m.lock(), 42);
+    let lock = m.lock();
+    assert!(m.try_lock().is_err());
+    drop(lock);
+    assert!(m.try_lock().is_ok());
 }

@@ -41,7 +41,6 @@ impl tiny_os_common::logging::Logger for TestLogger {
 pub fn test_main() {
     test_test_main();
     tiny_os_common::logging::set_logger(&TestLogger {});
-    test_runner();
     exit_qemu(QemuExitCode::Success);
 }
 
@@ -49,7 +48,7 @@ pub fn test_main() {
 pub fn test_test_main() {
     threading::init();
     testing::init();
-    // add_named_ktask(kernel_test_runner, "test runner".into());
+    add_named_ktask(kernel_test_runner, "test runner".into());
     yield_now();
     // let tests = unsafe { get_kernel_tests() };
     // serial_println!("huhu");
@@ -94,11 +93,6 @@ extern "C" fn kernel_test_runner() -> usize {
 }
 
 #[cfg(feature = "test_run")]
-pub fn test_runner() {
-    tests::test_runner();
-}
-
-#[cfg(feature = "test_run")]
 pub fn test_panic_handler(info: &PanicInfo) -> ! {
     use arch::hcf;
     use kernel::threading::{
@@ -135,45 +129,6 @@ pub fn exit_qemu(exit_code: QemuExitCode) {
 #[derive(Error, Debug)]
 pub enum KernelError {}
 
-tests! {
-    #[test_case]
-    fn trivial() {
-        let a = 0;
-        assert_eq!(a, 0);
-    }
-    #[test_case]
-    fn trivial_fail() {
-        let a = 1;
-        assert_eq!(a, 1);
-    }
-    #[runner]
-    fn test_locks() {
-        locks::tests::test_runner();
-    }
-
-    #[runner]
-    fn test_term() {
-        term::tests::test_runner();
-    }
-
-    #[test_case]
-    fn t() {
-        let mut v = Vec::new();
-        v.push(42);
-        assert_eq!(v[0], 42);
-    }
-}
-
-#[kernel_test]
-fn first_test() {
-    assert!(1 == 1)
-}
-
-#[kernel_test(should_panic, verbose)]
-fn second_test() {
-    assert!(2 == 3)
-}
-
 #[kernel_test(should_panic)]
 fn should_panic_err() {
     assert!(true)
@@ -187,9 +142,4 @@ fn should_panic() {
 #[kernel_test]
 fn correct() {
     assert!(true)
-}
-
-#[kernel_test]
-fn fail() {
-    assert!(false)
 }

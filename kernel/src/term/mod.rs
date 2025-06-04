@@ -86,10 +86,3 @@ pub fn _print(args: Arguments) {
         });
     }
 }
-
-tests! {
-    #[runner]
-    fn test_buffer() {
-        render::tests::test_runner();
-    }
-}

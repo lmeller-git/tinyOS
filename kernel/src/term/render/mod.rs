@@ -11,7 +11,7 @@ use embedded_graphics::{
     primitives::Rectangle,
     text::Baseline,
 };
-use os_macros::tests;
+use os_macros::{kernel_test, tests};
 use spin::Mutex;
 use thiserror::Error;
 
@@ -523,11 +523,12 @@ where
     }
 }
 
-tests! {
-    #[test_case]
+mod tests {
+    use super::*;
+    #[kernel_test]
     fn print_to_buffer() {
         // SAFETY This is safe, as long it is not run parallely to some other functionality accessing FOOBAR / BAR, and init_term() was run in the same execution context
-        use crate::{println, print};
+        use crate::{print, println};
         unsafe { super::super::BAR.clear() };
         unsafe { assert!(super::super::BAR.is_empty()) };
         unsafe {
@@ -541,24 +542,54 @@ tests! {
         row[2].replace('s');
         row[3].replace('t');
         unsafe { assert_eq!(row, super::super::BAR.inner[0]) };
-        unsafe { assert_eq!(super::super::FOOBAR.get_unchecked().lock().cursor.row, TermPixel{inner: 1}) };
-        unsafe { assert_eq!(super::super::FOOBAR.get_unchecked().lock().cursor.col, TermPixel{inner: 0}) };
+        unsafe {
+            assert_eq!(
+                super::super::FOOBAR.get_unchecked().lock().cursor.row,
+                TermPixel { inner: 1 }
+            )
+        };
+        unsafe {
+            assert_eq!(
+                super::super::FOOBAR.get_unchecked().lock().cursor.col,
+                TermPixel { inner: 0 }
+            )
+        };
         print!("test2");
         unsafe { assert_eq!(row, super::super::BAR.inner[0]) };
         row[4].replace('2');
         unsafe { assert_eq!(row, super::super::BAR.inner[1]) };
-        unsafe { assert_eq!(super::super::FOOBAR.get_unchecked().lock().cursor.row, TermPixel{inner: 1}) };
-        unsafe { assert_eq!(super::super::FOOBAR.get_unchecked().lock().cursor.col, TermPixel{inner: 5}) };
+        unsafe {
+            assert_eq!(
+                super::super::FOOBAR.get_unchecked().lock().cursor.row,
+                TermPixel { inner: 1 }
+            )
+        };
+        unsafe {
+            assert_eq!(
+                super::super::FOOBAR.get_unchecked().lock().cursor.col,
+                TermPixel { inner: 5 }
+            )
+        };
         print!("hey");
         row[5].replace('h');
         row[6].replace('e');
         row[7].replace('y');
         unsafe { assert_eq!(row, super::super::BAR.inner[1]) };
-        unsafe { assert_eq!(super::super::FOOBAR.get_unchecked().lock().cursor.row, TermPixel{inner: 1}) };
-        unsafe { assert_eq!(super::super::FOOBAR.get_unchecked().lock().cursor.col, TermPixel{inner: 8}) };
+        unsafe {
+            assert_eq!(
+                super::super::FOOBAR.get_unchecked().lock().cursor.row,
+                TermPixel { inner: 1 }
+            )
+        };
+        unsafe {
+            assert_eq!(
+                super::super::FOOBAR.get_unchecked().lock().cursor.col,
+                TermPixel { inner: 8 }
+            )
+        };
     }
 
-    #[test_case]
+    #[kernel_test]
     fn buf_shifts() {
         // SAFETY This is safe, as long it is not run parallely to some other functionality accessing FOOBAR / BAR, and init_term() was run in the same execution context
         use crate::println;
@@ -605,10 +636,10 @@ tests! {
         //TODO also test/implement shift_down
     }
 
-    #[test_case]
+    #[kernel_test]
     fn print_many() {
         use crate::print;
-        unsafe {super::super::BAR.clear()};
+        unsafe { super::super::BAR.clear() };
         for _ in 0..300 {
             print!(".");
         }
