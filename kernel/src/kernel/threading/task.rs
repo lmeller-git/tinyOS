@@ -1,4 +1,5 @@
-use alloc::{boxed::Box, string::String};
+use alloc::{boxed::Box, string::String, sync::Arc};
+use spin::{RwLockReadGuard, rwlock::RwLockWriteGuard};
 
 use crate::{
     arch::{
@@ -19,7 +20,7 @@ use core::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use super::ThreadingError;
+use super::{ThreadingError, schedule::TaskPtr_};
 
 pub trait TaskRepr: Debug {
     fn krsp(&mut self) -> &mut VirtAddr;
@@ -205,11 +206,14 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<UsrTaskInfo>> {
 
 impl<T: TaskRepr> TaskBuilder<T, Ready<KTaskInfo>> {
     pub fn build(mut self) -> T {
+        #[cfg(not(feature = "test_run"))]
         serial_println!("krsp: {:#x}", self.inner.krsp());
+        #[cfg(not(feature = "test_run"))]
         serial_println!("task info: {:#?}", self._marker.inner);
 
         let next_top = unsafe { init_kernel_task(&self._marker.inner, self.inner.exit_info()) };
 
+        #[cfg(not(feature = "test_run"))]
         serial_println!("krsp after pushes: {:#x}", next_top);
         *self.inner.krsp() = next_top;
         self.inner
@@ -327,4 +331,68 @@ pub fn get_pid() -> TaskID {
     static CURRENT_PID: AtomicU64 = AtomicU64::new(0);
     let current = CURRENT_PID.fetch_add(1, Ordering::Relaxed);
     TaskID { inner: current }
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+pub struct TaskPtr<T: TaskRepr> {
+    inner: TaskPtr_<T>,
+}
+
+impl<T: TaskRepr> TaskPtr<T> {
+    pub fn new(ptr: TaskPtr_<T>) -> Self {
+        Self { inner: ptr }
+    }
+
+    pub fn try_into_inner(self) -> Option<T> {
+        Arc::try_unwrap(self.inner)
+            .ok()
+            .map(|inner| inner.into_inner())
+    }
+
+    pub fn into_raw(self) -> TaskPtr_<T> {
+        self.inner
+    }
+
+    pub fn raw(&self) -> &TaskPtr_<T> {
+        &self.inner
+    }
+
+    pub fn with_inner<F, R>(&self, func: F) -> R
+    where
+        F: FnOnce(&T) -> R,
+    {
+        let guard = self.inner.read();
+        func(&*guard)
+    }
+
+    pub fn with_inner_mut<F, R>(&self, func: F) -> R
+    where
+        F: FnOnce(&mut T) -> R,
+    {
+        let mut guard = self.inner.write();
+        func(&mut *guard)
+    }
+
+    pub fn read_inner(&self) -> RwLockReadGuard<T> {
+        self.inner.read()
+    }
+
+    pub fn write_inner(&self) -> RwLockWriteGuard<T> {
+        self.inner.write()
+    }
+}
+
+impl<T: TaskRepr> From<T> for TaskPtr<T> {
+    fn from(value: T) -> Self {
+        Self {
+            inner: TaskPtr_::new(value.into()),
+        }
+    }
+}
+
+impl<T: TaskRepr> Clone for TaskPtr<T> {
+    fn clone(&self) -> Self {
+        Self::new(self.inner.clone())
+    }
 }

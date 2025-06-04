@@ -63,18 +63,33 @@ pub fn test_test_main() {
 extern "C" fn kernel_test_runner() -> usize {
     let tests = unsafe { get_kernel_tests() };
     serial_println!("running {} tests...", tests.len());
-
+    let mut tests_failed = false;
+    let max_len = tests.iter().map(|t| t.name().len()).max().unwrap_or(0);
     for test in tests {
-        serial_print!("{}...", test.name());
+        let dots = ".".repeat(max_len - test.name().len() + 3);
+        serial_print!("{}{} ", test.name(), dots);
         match spawn_fn(test.func).map(|handle| handle.wait()).flatten() {
             Ok(v) => {
-                serial_println!("\t[OK]");
+                if v == 0 && !test.config.should_panic {
+                    serial_println!("\x1b[32m[OK]\x1b[0m");
+                } else if test.config.should_panic {
+                    serial_println!("\x1b[33m[OK]\x1b[0m");
+                } else {
+                    serial_println!("\x1b[31m[ERR]\x1b[0m");
+                    tests_failed = true;
+                }
             }
             Err(_) => {
-                serial_println!("\t[ERR]");
+                serial_println!("\x1b[1;31m[ERR]\x1b[0m");
+                tests_failed = true;
             }
         };
     }
+    exit_qemu(if tests_failed {
+        QemuExitCode::Failed
+    } else {
+        QemuExitCode::Success
+    });
     0
 }
 
@@ -86,12 +101,18 @@ pub fn test_runner() {
 #[cfg(feature = "test_run")]
 pub fn test_panic_handler(info: &PanicInfo) -> ! {
     use arch::hcf;
-    if GLOBAL_TEST_SCHEDULER.is_initialized() {
-        unsafe { GLOBAL_TEST_SCHEDULER.get_unchecked() }.notify_panic(info);
-    } else {
-        serial_print!("\t[Err] {}\n", info);
-        exit_qemu(QemuExitCode::Failed);
-    }
+    use kernel::threading::{
+        self,
+        schedule::with_current_task,
+        task::{ExitInfo, TaskState},
+    };
+    with_current_task(|task| {
+        task.raw().write().state = TaskState::Zombie(ExitInfo {
+            exit_code: 1,
+            signal: None,
+        })
+    });
+    threading::yield_now();
     hcf()
 }
 
@@ -151,4 +172,24 @@ fn first_test() {
 #[kernel_test(should_panic, verbose)]
 fn second_test() {
     assert!(2 == 3)
+}
+
+#[kernel_test(should_panic)]
+fn should_panic_err() {
+    assert!(true)
+}
+
+#[kernel_test(should_panic)]
+fn should_panic() {
+    assert!(false)
+}
+
+#[kernel_test]
+fn correct() {
+    assert!(true)
+}
+
+#[kernel_test]
+fn fail() {
+    assert!(false)
 }

@@ -1,6 +1,6 @@
 use super::{
     ThreadingError,
-    task::{SimpleTask, Task, TaskBuilder, TaskID},
+    task::{SimpleTask, Task, TaskBuilder, TaskID, TaskPtr, TaskRepr},
 };
 use crate::{
     arch::{
@@ -35,23 +35,24 @@ pub trait Scheduler {
 
 pub trait OneOneScheduler {
     fn new() -> Self;
-    fn add_task(&mut self, task: SimpleTask);
+    fn add_task(&mut self, task: GlobalTaskPtr);
     fn yield_now(&mut self);
     fn cleanup(&mut self);
     fn kill(&mut self, id: TaskID);
-    fn switch(&mut self) -> Option<&SimpleTask>;
+    fn switch(&mut self) -> Option<GlobalTaskPtr>;
     fn init(&mut self);
-    fn current(&self) -> Option<&SimpleTask>;
+    fn current(&self) -> Option<GlobalTaskPtr>;
     fn num_tasks(&self) -> usize;
     fn reschedule(&mut self, order: ScheduleOrder);
-    fn current_mut(&mut self) -> &mut Option<SimpleTask>;
+    fn current_mut(&mut self) -> &mut Option<GlobalTaskPtr>;
 }
 
 pub enum ScheduleOrder {}
 
 pub type GlobalScheduler = round_robin::OneOneRoundRobin;
 pub type GlobalTask = SimpleTask;
-pub type GlobalTaskPtr = Arc<RwLock<GlobalTask>>;
+pub type TaskPtr_<T: TaskRepr> = Arc<RwLock<T>>;
+pub type GlobalTaskPtr = TaskPtr<GlobalTask>;
 
 pub static GLOBAL_SCHEDULER: OnceCell<Mutex<GlobalScheduler>> = OnceCell::uninit();
 
@@ -69,7 +70,7 @@ pub unsafe fn get_unchecked<'a>() -> MutexGuard<'a, GlobalScheduler> {
 
 pub fn with_current_task<F, R>(f: F) -> Option<R>
 where
-    F: FnOnce(&GlobalTask) -> R,
+    F: FnOnce(GlobalTaskPtr) -> R,
 {
     let guard = get()?;
     let task = guard.current()?;
@@ -81,13 +82,22 @@ where
 pub unsafe extern "C" fn context_switch_local(rsp: u64) {
     let mut lock = GLOBAL_SCHEDULER.get_unchecked().lock();
     if let Some(current) = lock.current_mut() {
-        serial_println!("old krsp: {:#x}, new krsp: {:#x}", current.krsp, rsp);
-        current.krsp = VirtAddr::new(rsp);
+        #[cfg(not(feature = "test_run"))]
+        serial_println!(
+            "old krsp: {:#x}, new krsp: {:#x}",
+            current.read_inner().krsp,
+            rsp
+        );
+        current.write_inner().krsp = VirtAddr::new(rsp);
     }
     if let Some(new) = lock.switch() {
-        serial_println!("new task, {:#?}", new);
+        // #[cfg(not(feature = "test_run"))]
+        // serial_println!("new task, {:#?}", new);
         unsafe { GLOBAL_SCHEDULER.get_unchecked().force_unlock() };
-        switch_and_apply(&new);
+        let guard = new.raw().read();
+        let task: *const GlobalTask = &*guard as *const _;
+        drop(guard);
+        switch_and_apply(task);
         unreachable!()
     }
 }
@@ -103,13 +113,16 @@ pub unsafe extern "C" fn context_switch(
     // set_cpu_context(ctx);
 }
 
-pub fn add_built_task(task: SimpleTask) {
-    unsafe { GLOBAL_SCHEDULER.get_unchecked() }
-        .lock()
-        .add_task(task);
+pub fn add_task_ptr__(ptr: GlobalTaskPtr) {
+    unsafe { get_unchecked() }.add_task(ptr);
+}
+
+pub fn add_built_task(task: GlobalTask) {
+    add_task_ptr__(task.into());
 }
 
 pub fn add_named_ktask(func: extern "C" fn() -> usize, name: String) -> Result<(), ThreadingError> {
+    #[cfg(not(feature = "test_run"))]
     serial_println!("spawning task {} at {:#x}", name, func as usize);
     let task = TaskBuilder::from_fn(func)?
         .with_name(name)
