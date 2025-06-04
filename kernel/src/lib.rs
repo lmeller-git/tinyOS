@@ -71,7 +71,7 @@ extern "C" fn kernel_test_runner() -> usize {
             Ok(v) => {
                 if v == 0 && !test.config.should_panic {
                     serial_println!("\x1b[32m[OK]\x1b[0m");
-                } else if test.config.should_panic {
+                } else if test.config.should_panic && v != 0 {
                     serial_println!("\x1b[33m[OK]\x1b[0m");
                 } else {
                     serial_println!("\x1b[31m[ERR]\x1b[0m");
