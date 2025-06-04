@@ -351,7 +351,7 @@ pub fn serial_stub__(v1: u64, v2: u64) {
 }
 
 unsafe extern "C" {
-    pub fn switch_and_apply(task: &SimpleTask);
+    pub fn switch_and_apply(task: *const SimpleTask);
     pub fn init_kernel_task(info: &KTaskInfo, exit_info: &TaskExitInfo) -> VirtAddr;
     pub fn init_usr_task(info: &UsrTaskInfo, exit_info: &TaskExitInfo) -> VirtAddr;
     pub fn return_trampoline_stub();
@@ -369,6 +369,7 @@ pub struct KTaskInfo {
 
 impl KTaskInfo {
     pub fn new(addr: VirtAddr, kstack: VirtAddr) -> Self {
+        #[cfg(not(feature = "test_run"))]
         serial_println!("tramp stub at: {:#x}", return_trampoline_stub as usize);
         let (cs, ss) = get_kernel_selectors();
         let rflags = RFlags::INTERRUPT_FLAG | RFlags::from_bits_truncate(0x2);

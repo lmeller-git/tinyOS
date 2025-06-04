@@ -233,7 +233,7 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
         if let Some(ref mut sched) = GLOBAL_SCHEDULER.get().map(|sched| sched.lock()) {
             if let Some(current) = sched.current_mut() {
                 //TODO kill with info
-                current.kill();
+                current.write_inner().kill_with_code(1);
             }
         }
     }

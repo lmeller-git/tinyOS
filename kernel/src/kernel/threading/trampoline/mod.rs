@@ -18,7 +18,7 @@ pub extern "C" fn kernel_return_trampoline(ret: usize, info: &mut TaskExitInfo) 
     // restore cpu context
     // call correct next func
     // just stay on tasks stack
-    serial_println!("trampoline");
+    // serial_println!("trampoline");
     (info.callback.inner)(ret);
 }
 
@@ -33,7 +33,7 @@ pub fn default_exit(ret: usize) {
     if let Some(ref mut sched) = GLOBAL_SCHEDULER.get().map(|sched| sched.lock()) {
         if let Some(current) = sched.current_mut() {
             //TODO kill with info
-            current.kill_with_code(ret);
+            current.write_inner().kill_with_code(ret);
         }
     }
     unsafe { context_switch_local(0) };
@@ -42,13 +42,13 @@ pub fn default_exit(ret: usize) {
 
 #[repr(C)]
 pub struct Callback {
-    pub inner: Box<dyn FnMut(usize) + Send + 'static>,
+    pub inner: Box<dyn Fn(usize) + Send + Sync + 'static>,
 }
 
 impl Callback {
     pub fn new<F>(func: F) -> Self
     where
-        F: FnMut(usize) + Send + 'static,
+        F: Fn(usize) + Send + Sync + 'static,
     {
         Self {
             inner: Box::new(func),
@@ -81,7 +81,7 @@ impl Debug for TaskExitInfo {
 impl TaskExitInfo {
     pub fn new<F>(callback: F, trampoline: extern "C" fn()) -> Self
     where
-        F: FnMut(usize) + Send + 'static,
+        F: Fn(usize) + Send + Sync + 'static,
     {
         Self {
             callback: Callback::new(callback),
@@ -91,7 +91,7 @@ impl TaskExitInfo {
 
     pub fn new_with_default_trampoline<F>(callback: F) -> Self
     where
-        F: FnMut(usize) + Send + 'static,
+        F: Fn(usize) + Send + Sync + 'static,
     {
         Self {
             callback: Callback::new(callback),

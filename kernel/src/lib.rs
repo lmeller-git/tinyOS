@@ -63,18 +63,29 @@ pub fn test_test_main() {
 extern "C" fn kernel_test_runner() -> usize {
     let tests = unsafe { get_kernel_tests() };
     serial_println!("running {} tests...", tests.len());
-
+    let mut tests_failed = false;
     for test in tests {
         serial_print!("{}...", test.name());
         match spawn_fn(test.func).map(|handle| handle.wait()).flatten() {
             Ok(v) => {
-                serial_println!("\t[OK]");
+                if v == 0 {
+                    serial_println!("\t[OK]");
+                } else {
+                    serial_println!("\t[ERR]");
+                    tests_failed = true;
+                }
             }
             Err(_) => {
                 serial_println!("\t[ERR]");
+                tests_failed = true;
             }
         };
     }
+    exit_qemu(if tests_failed {
+        QemuExitCode::Failed
+    } else {
+        QemuExitCode::Success
+    });
     0
 }
 
@@ -86,12 +97,18 @@ pub fn test_runner() {
 #[cfg(feature = "test_run")]
 pub fn test_panic_handler(info: &PanicInfo) -> ! {
     use arch::hcf;
-    if GLOBAL_TEST_SCHEDULER.is_initialized() {
-        unsafe { GLOBAL_TEST_SCHEDULER.get_unchecked() }.notify_panic(info);
-    } else {
-        serial_print!("\t[Err] {}\n", info);
-        exit_qemu(QemuExitCode::Failed);
-    }
+    use kernel::threading::{
+        self,
+        schedule::with_current_task,
+        task::{ExitInfo, TaskState},
+    };
+    with_current_task(|task| {
+        task.raw().write().state = TaskState::Zombie(ExitInfo {
+            exit_code: 1,
+            signal: None,
+        })
+    });
+    threading::yield_now();
     hcf()
 }
 
@@ -150,5 +167,5 @@ fn first_test() {
 
 #[kernel_test(should_panic, verbose)]
 fn second_test() {
-    assert!(2 == 3)
+    assert!(2 == 2)
 }

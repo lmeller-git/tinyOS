@@ -1,7 +1,10 @@
-use super::{OneOneScheduler, Scheduler};
+use super::{GlobalTaskPtr, OneOneScheduler, Scheduler};
 use crate::{
     arch::context::TaskCtx,
-    kernel::threading::task::{SimpleTask, Task, TaskState},
+    kernel::threading::{
+        self,
+        task::{SimpleTask, Task, TaskState},
+    },
     serial_println,
 };
 use alloc::{collections::vec_deque::VecDeque, vec::Vec};
@@ -59,9 +62,9 @@ impl Scheduler for RoundRobin {
 }
 
 pub struct OneOneRoundRobin {
-    ready: VecDeque<SimpleTask>,
-    blocking: Vec<SimpleTask>,
-    running: Option<SimpleTask>,
+    ready: VecDeque<GlobalTaskPtr>,
+    blocking: Vec<GlobalTaskPtr>,
+    running: Option<GlobalTaskPtr>,
 }
 
 impl OneOneScheduler for OneOneRoundRobin {
@@ -73,12 +76,12 @@ impl OneOneScheduler for OneOneRoundRobin {
         }
     }
 
-    fn add_task(&mut self, task: SimpleTask) {
+    fn add_task(&mut self, task: GlobalTaskPtr) {
         self.ready.push_back(task);
     }
 
     fn yield_now(&mut self) {
-        todo!()
+        threading::yield_now();
     }
 
     fn cleanup(&mut self) {
@@ -89,11 +92,10 @@ impl OneOneScheduler for OneOneRoundRobin {
         todo!()
     }
 
-    fn switch(&mut self) -> Option<&SimpleTask> {
+    fn switch(&mut self) -> Option<GlobalTaskPtr> {
         while let Some(next) = self.ready.pop_front() {
-            // serial_println!("ok");
-            if next.state != TaskState::Ready {
-                // TODO do something with these tasks, instead of just deleting
+            if next.read_inner().state != TaskState::Ready {
+                // TODO do something with these tasks, instead of just ignoring
                 continue;
             }
             if let Some(current) = self.running.replace(next) {
@@ -109,8 +111,8 @@ impl OneOneScheduler for OneOneRoundRobin {
         todo!()
     }
 
-    fn current(&self) -> Option<&SimpleTask> {
-        self.running.as_ref()
+    fn current(&self) -> Option<GlobalTaskPtr> {
+        self.running.as_ref().map(|r| r.clone())
     }
 
     fn num_tasks(&self) -> usize {
@@ -121,7 +123,7 @@ impl OneOneScheduler for OneOneRoundRobin {
         todo!()
     }
 
-    fn current_mut(&mut self) -> &mut Option<SimpleTask> {
+    fn current_mut(&mut self) -> &mut Option<GlobalTaskPtr> {
         &mut self.running
     }
 }
