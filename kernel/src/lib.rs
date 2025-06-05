@@ -11,9 +11,10 @@ use alloc::vec::Vec;
 use arch::hcf;
 #[cfg(feature = "test_run")]
 use core::panic::PanicInfo;
+use kernel::threading::task::Arg;
 #[cfg(feature = "test_run")]
 use kernel::threading::{self, JoinHandle, schedule::add_named_ktask, spawn_fn, yield_now};
-use os_macros::{kernel_test, tests};
+use os_macros::{kernel_test, tests, with_default_args};
 use thiserror::Error;
 use tiny_os_common::testing::{TestCase, kernel::get_kernel_tests};
 
@@ -148,4 +149,61 @@ fn should_panic() {
 #[kernel_test]
 fn correct() {
     assert!(true)
+}
+
+#[kernel_test]
+fn arg_expansion() {
+    #[with_default_args]
+    fn foo() {
+        assert_eq!(_arg0, Arg::default());
+        assert_eq!(_arg5, Arg::default());
+    }
+
+    #[with_default_args]
+    fn bar(foobar: Arg) {
+        assert_eq!(foobar, Arg::from_usize(42));
+        assert_eq!(_arg1, Arg::default());
+    }
+
+    #[with_default_args(6)]
+    fn foobar(a: usize, b: usize) {
+        assert_eq!(a, b);
+        assert_eq!(_arg7, Arg::default());
+    }
+
+    #[with_default_args]
+    fn foobarfoo(a: usize, b: usize, c: usize, d: usize, e: usize, f: usize) {
+        assert_eq!(a, f)
+    }
+
+    foo(
+        Arg::default(),
+        Arg::default(),
+        Arg::default(),
+        Arg::default(),
+        Arg::default(),
+        Arg::default(),
+    );
+
+    bar(
+        Arg::from_usize(42),
+        Arg::default(),
+        Arg::default(),
+        Arg::default(),
+        Arg::default(),
+        Arg::default(),
+    );
+
+    foobarfoo(42, 42, 42, 42, 42, 42);
+
+    foobar(
+        42,
+        42,
+        Arg::default(),
+        Arg::default(),
+        Arg::default(),
+        Arg::default(),
+        Arg::default(),
+        Arg::default(),
+    );
 }

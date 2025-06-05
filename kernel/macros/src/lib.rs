@@ -1,6 +1,8 @@
 #![allow(unused_doc_comments)]
+mod common;
 mod mem;
 mod test_gen;
+use common::args::default_arg_parser;
 use mem::addr::derive_addr;
 use proc_macro::TokenStream;
 use quote::quote;
@@ -38,6 +40,11 @@ pub fn kernel_test(attr: TokenStream, input: TokenStream) -> TokenStream {
     /// #[unsafe(link_section = .tests)]
     /// pub static test: KernelTest = KernelTest { ... };
     kernel_test_handler(attr, input)
+}
+
+#[proc_macro_attribute]
+pub fn with_default_args(attr: TokenStream, input: TokenStream) -> TokenStream {
+    default_arg_parser(attr, input)
 }
 
 #[cfg(test)]

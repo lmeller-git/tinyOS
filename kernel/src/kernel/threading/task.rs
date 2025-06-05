@@ -143,15 +143,15 @@ impl Args {
 macro_rules! args {
     ($($arg:expr),* $(,)?) => {{
         const MAX_ARGS: usize = 6;
-        let mut arr = [Arg::default(); MAX_ARGS];
+        let mut arr = [crate::kernel::threading::task::Arg::default(); MAX_ARGS];
         let mut idx = 0;
         $(
             if idx < MAX_ARGS {
-                arr[idx] = Arg::from_val($arg);
+                arr[idx] = crate::kernel::threading::task::Arg::from_val($arg);
                 idx += 1;
             }
         )*
-        Args::new(arr)
+        crate::kernel::threading::task::Args::new(arr)
     }};
 }
 
