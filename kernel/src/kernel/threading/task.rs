@@ -92,6 +92,69 @@ impl TaskRepr for SimpleTask {
     }
 }
 
+#[repr(transparent)]
+#[derive(Default, Debug, PartialEq, Eq, Clone, Copy)]
+pub struct Arg(usize);
+
+impl Arg {
+    pub fn from_usize(v: usize) -> Self {
+        Self(v)
+    }
+
+    pub fn from_ptr<T>(ptr: *mut T) -> Self {
+        Self(ptr as usize)
+    }
+
+    pub fn from_val<T>(v: T) -> Self {
+        let boxed = Box::new(v);
+        Self::from_ptr(Box::into_raw(boxed))
+    }
+
+    pub fn from_fn<F>(func: F) -> Self
+    where
+        F: FnOnce() + 'static + Send + Sync,
+    {
+        let boxed: Box<dyn FnOnce() + Send + Sync + 'static> = Box::new(func);
+        let ptr = Box::new(boxed);
+        Self::from_ptr(Box::into_raw(ptr))
+    }
+
+    pub unsafe fn as_val<T>(&self) -> T {
+        let boxed = unsafe { Box::from_raw(self.0 as *mut T) };
+        *boxed
+    }
+
+    pub unsafe fn as_closure(&self) -> Box<dyn FnOnce() + 'static + Send + Sync> {
+        *Box::from_raw(self.0 as *mut Box<dyn FnOnce() + 'static + Send + Sync>)
+    }
+}
+
+#[repr(transparent)]
+#[derive(Default, Debug, PartialEq, Eq)]
+pub struct Args([Arg; 6]);
+
+impl Args {
+    fn new(s: [Arg; 6]) -> Self {
+        Self(s)
+    }
+}
+
+#[macro_export]
+macro_rules! args {
+    ($($arg:expr),* $(,)?) => {{
+        const MAX_ARGS: usize = 6;
+        let mut arr = [Arg::default(); MAX_ARGS];
+        let mut idx = 0;
+        $(
+            if idx < MAX_ARGS {
+                arr[idx] = Arg::from_val($arg);
+                idx += 1;
+            }
+        )*
+        Args::new(arr)
+    }};
+}
+
 pub struct Uninit;
 pub struct Init;
 pub struct Ready<I> {
@@ -116,6 +179,7 @@ impl From<UsrTaskInfo> for Ready<UsrTaskInfo> {
         }
     }
 }
+
 pub struct TaskBuilder<T: TaskRepr, S> {
     inner: T,
     entry: VirtAddr,
@@ -394,5 +458,58 @@ impl<T: TaskRepr> From<T> for TaskPtr<T> {
 impl<T: TaskRepr> Clone for TaskPtr<T> {
     fn clone(&self) -> Self {
         Self::new(self.inner.clone())
+    }
+}
+
+#[cfg(feature = "test_run")]
+mod tests {
+    use os_macros::kernel_test;
+
+    use super::*;
+
+    #[kernel_test]
+    fn zero_args() {
+        let a0 = args!();
+        assert_eq!(
+            a0,
+            Args::new([
+                Arg::default(),
+                Arg::default(),
+                Arg::default(),
+                Arg::default(),
+                Arg::default(),
+                Arg::default()
+            ])
+        );
+    }
+
+    #[kernel_test]
+    fn closure_arg() {
+        let handle = Arc::new(AtomicU64::new(0));
+        let handle_clone = handle.clone();
+        let arg = Arg::from_fn(move || {
+            handle_clone.store(42, Ordering::Relaxed);
+        });
+
+        unsafe { (arg.as_closure())() };
+
+        assert_eq!(handle.load(Ordering::Relaxed), 42);
+    }
+
+    #[kernel_test]
+    fn any_args() {
+        #[derive(Debug, Eq, PartialEq)]
+        struct Foo {
+            a: usize,
+        };
+        let args = args!(1, "hello", Foo { a: 1 }, Box::new(42));
+        unsafe {
+            assert_eq!(args.0[0].as_val::<usize>(), 1);
+            assert_eq!(args.0[1].as_val::<&str>(), "hello");
+            assert_eq!(args.0[2].as_val::<Foo>(), Foo { a: 1 });
+            assert_eq!(args.0[3].as_val::<Box<usize>>(), Box::new(42));
+            assert_eq!(args.0[4].0, 0);
+            assert_eq!(args.0[5].0, 0);
+        }
     }
 }

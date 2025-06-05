@@ -2,13 +2,19 @@ use alloc::{boxed::Box, sync::Arc};
 
 use super::{
     schedule::{GLOBAL_SCHEDULER, OneOneScheduler, context_switch_local},
-    task::TaskRepr,
+    task::{Arg, TaskRepr},
 };
 use crate::{
     arch::{context::return_trampoline_stub, hcf},
     serial_println,
 };
 use core::{arch::asm, fmt::Debug, pin::Pin};
+
+#[unsafe(no_mangle)]
+pub extern "C" fn closure_trampoline(func: Arg) {
+    let func = unsafe { func.as_closure() };
+    (func)()
+}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kernel_return_trampoline(ret: usize, info: &mut TaskExitInfo) {

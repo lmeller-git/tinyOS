@@ -56,7 +56,7 @@ unsafe extern "C" fn kmain() -> ! {
     add_named_ktask(idle, "idle".into());
     enable_threading_interrupts();
     threading::yield_now();
-    arch::hcf()
+    unreachable!()
 }
 
 extern "C" fn idle() -> usize {
