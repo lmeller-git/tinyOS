@@ -14,7 +14,7 @@ use crate::{
     serial_println,
 };
 use core::{
-    fmt::Debug,
+    fmt::{Debug, LowerHex},
     marker::PhantomData,
     pin::Pin,
     sync::atomic::{AtomicU64, Ordering},
@@ -120,7 +120,7 @@ impl Arg {
     }
 
     pub unsafe fn as_val<T>(&self) -> T {
-        let boxed = unsafe { Box::from_raw(self.0 as *mut T) };
+        let boxed = Box::from_raw(self.0 as *mut T);
         *boxed
     }
 
@@ -135,6 +135,13 @@ impl Default for Arg {
     }
 }
 
+impl LowerHex for Arg {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{:#x}", self.0)?;
+        Ok(())
+    }
+}
+
 #[repr(transparent)]
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct Args([Arg; 6]);
@@ -142,6 +149,14 @@ pub struct Args([Arg; 6]);
 impl Args {
     pub fn new(s: [Arg; 6]) -> Self {
         Self(s)
+    }
+
+    pub fn get_mut(&mut self, idx: usize) -> &mut Arg {
+        self.0.get_mut(idx).expect("cannot index over max_args")
+    }
+
+    pub fn get(&self, idx: usize) -> &Arg {
+        self.0.get(idx).expect("cannot index over max_args")
     }
 }
 

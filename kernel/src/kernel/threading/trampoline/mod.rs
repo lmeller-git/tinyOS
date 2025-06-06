@@ -1,4 +1,5 @@
 use alloc::{boxed::Box, sync::Arc};
+use os_macros::with_default_args;
 
 use super::{
     ProcessReturn,
@@ -12,9 +13,11 @@ use crate::{
 use core::{arch::asm, fmt::Debug, pin::Pin};
 
 #[unsafe(no_mangle)]
-pub extern "C" fn closure_trampoline(func: Arg) {
+#[with_default_args]
+pub extern "C" fn closure_trampoline(func: Arg) -> ProcessReturn {
     let func = unsafe { func.as_closure() };
-    (func)()
+    (func)();
+    ProcessReturn::default()
 }
 
 #[unsafe(no_mangle)]

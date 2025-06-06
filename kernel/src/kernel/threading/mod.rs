@@ -10,7 +10,7 @@ use spin::RwLock;
 use task::{Arg, Args, ExitInfo, TaskBuilder, TaskState};
 use trampoline::{TaskExitInfo, closure_trampoline};
 
-use crate::{arch, serial_println};
+use crate::{arch, args, serial_println};
 
 pub mod context;
 pub mod schedule;
@@ -53,6 +53,7 @@ impl<R> JoinHandle<R> {
             yield_now();
         }
         // serial_println!("finished");
+        // serial_println!("{:#?}, {}", self.task, self.inner.finished());
         let r = self.inner.get_return().map_err(|_| {
             if let TaskState::Zombie(ExitInfo {
                 exit_code,
@@ -125,7 +126,6 @@ pub fn spawn_fn(
         .as_kernel()?
         .with_exit_info(TaskExitInfo::new_with_default_trampoline(
             move |v: usize| {
-                // serial_println!("hello");
                 unsafe { get_unchecked() }.current().map(|c| {
                     c.raw().write().state = TaskState::Zombie(task::ExitInfo {
                         exit_code: v as u32,
@@ -134,7 +134,6 @@ pub fn spawn_fn(
                 });
                 raw.val.write().replace(v);
                 raw.finished.store(true, Ordering::Release);
-                // serial_println!("hello 2");
                 yield_now();
             },
         ))
@@ -146,17 +145,30 @@ pub fn spawn_fn(
     Ok(handle)
 }
 
-// pub fn spawn<F, R>(func: F) -> Result<JoinHandle, ThreadingError>
-// where
-//     F: FnOnce() -> R + 'static + Send + Sync,
-// {
-//     let mut handle: JoinHandle<R> = JoinHandle::default();
-//     let raw = handle.inner.clone();
+pub fn spawn<F, R>(func: F) -> Result<JoinHandle<R>, ThreadingError>
+where
+    F: FnOnce() -> R + 'static + Send + Sync,
+    R: Send + Sync + 'static,
+{
+    let mut handle: JoinHandle<R> = JoinHandle::default();
+    let raw = handle.inner.clone();
 
-//     let task: GlobalTaskPtr = TaskBuilder::from_fn(closure_trampoline)?
-//         .as_kernel()?
-//         .with_exit_info(|| {});
-// }
+    let wrapper = move || {
+        let ret = func();
+        raw.val.write().replace(ret);
+        raw.finished.store(true, Ordering::Release);
+        yield_now();
+    };
+
+    let mut args = args!();
+    *args.get_mut(0) = Arg::from_fn(wrapper);
+    let _outer_handle = spawn_fn(closure_trampoline, args)?;
+    if let Some(ptr) = _outer_handle.task {
+        handle.attach(ptr);
+    }
+
+    Ok(handle)
+}
 
 #[cfg(feature = "test_run")]
 mod tests {
@@ -201,5 +213,26 @@ mod tests {
         let handle2 = spawn_fn(bar, args!()).unwrap();
         assert_eq!(handle.wait(), Ok(42));
         assert_eq!(handle2.wait(), Ok(0))
+    }
+
+    #[kernel_test]
+    fn spawn_closure() {
+        let hello = "hello world";
+        let value = 42;
+        let atomic = Arc::new(AtomicBool::new(false));
+        let atomic_ptr = atomic.clone();
+        assert_eq!(spawn(|| { 42 }).unwrap().wait(), Ok(42));
+        assert_eq!(
+            spawn(move || {
+                atomic_ptr.store(true, Ordering::Relaxed);
+                let new_value = format!("{}_{}", hello, value);
+                new_value
+            })
+            .unwrap()
+            .wait()
+            .unwrap(),
+            "hello world_42"
+        );
+        assert_eq!(atomic.load(Ordering::Relaxed), true);
     }
 }

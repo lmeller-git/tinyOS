@@ -27,6 +27,7 @@ use tiny_os::kernel::threading::schedule::OneOneScheduler;
 use tiny_os::kernel::threading::schedule::add_ktask;
 use tiny_os::kernel::threading::schedule::add_named_ktask;
 use tiny_os::kernel::threading::schedule::add_named_usr_task;
+use tiny_os::kernel::threading::spawn;
 use tiny_os::kernel::threading::spawn_fn;
 use tiny_os::kernel::threading::task::Arg;
 use tiny_os::kernel::threading::task::Args;
@@ -58,8 +59,8 @@ unsafe extern "C" fn kmain() -> ! {
 
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
-    // spawn_fn(task1, args!("hello"));
     add_named_ktask(idle, "idle".into());
+    // spawn_fn(task1, args!("hello"));
     enable_threading_interrupts();
     threading::yield_now();
     unreachable!()
@@ -67,6 +68,12 @@ unsafe extern "C" fn kmain() -> ! {
 
 #[with_default_args]
 extern "C" fn idle() -> usize {
+    let h = spawn(|| {
+        serial_println!("hello from closure");
+        42
+    })
+    .unwrap();
+    serial_println!("{:#?}", h.wait());
     add_named_ktask(rand, "random".into());
     add_named_ktask(listen, "term".into());
     loop {
