@@ -12,7 +12,11 @@ use crate::{
     },
     kernel::{
         mem::paging::{GLOBAL_FRAME_ALLOCATOR, PAGETABLE, TaskPageTable},
-        threading::{ThreadingError, task::SimpleTask, trampoline::TaskExitInfo},
+        threading::{
+            ThreadingError,
+            task::{SimpleTask, TaskData},
+            trampoline::TaskExitInfo,
+        },
     },
     serial_println,
 };
@@ -200,6 +204,7 @@ global_asm!(
 
             mov rsp, [rdi]
            
+            call end_interrupt
             // now on tasks kstack, with state on stack
             
             pop r8
@@ -253,10 +258,10 @@ global_asm!(
             // 2: push Cpu Context, such that it can be popped by switch_and_apply
             push 0 // rax
             push 0 // rbp
-            push 0 // rdi
-            push 0 // rsi
-            push 0 // rdx
-            push 0 // rcx
+            push [rdx + 0] // rdi
+            push [rdx + 8] // rsi
+            push [rdx + 16] // rdx
+            push [rdx + 24] // rcx
             push 0 // rbx
             mov rsi, cr3
             push rsi // cr3 TODO
@@ -266,8 +271,8 @@ global_asm!(
             push 0
             push 0
             push 0
-            push 0
-            push 0 // r8
+            push [rdx + 40]
+            push [rdx + 32] // r8
             mov rsi, rsp
             mov rsp, rax
             mov rax, rsi
@@ -352,8 +357,13 @@ pub fn serial_stub__(v1: u64, v2: u64) {
 
 unsafe extern "C" {
     pub fn switch_and_apply(task: *const SimpleTask);
-    pub fn init_kernel_task(info: &KTaskInfo, exit_info: &TaskExitInfo) -> VirtAddr;
-    pub fn init_usr_task(info: &UsrTaskInfo, exit_info: &TaskExitInfo) -> VirtAddr;
+    pub fn init_kernel_task(
+        info: &KTaskInfo,
+        exit_info: &TaskExitInfo,
+        data: &TaskData,
+    ) -> VirtAddr;
+    pub fn init_usr_task(info: &UsrTaskInfo, exit_info: &TaskExitInfo, data: &TaskData)
+    -> VirtAddr;
     pub fn return_trampoline_stub();
 }
 

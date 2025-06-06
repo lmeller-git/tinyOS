@@ -20,7 +20,7 @@ use core::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use super::{ThreadingError, schedule::TaskPtr_};
+use super::{ProcessEntry, ThreadingError, schedule::TaskPtr_};
 
 pub trait TaskRepr: Debug {
     fn krsp(&mut self) -> &mut VirtAddr;
@@ -93,7 +93,7 @@ impl TaskRepr for SimpleTask {
 }
 
 #[repr(transparent)]
-#[derive(Default, Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Arg(usize);
 
 impl Arg {
@@ -129,12 +129,18 @@ impl Arg {
     }
 }
 
+impl Default for Arg {
+    fn default() -> Self {
+        Self(42)
+    }
+}
+
 #[repr(transparent)]
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct Args([Arg; 6]);
 
 impl Args {
-    fn new(s: [Arg; 6]) -> Self {
+    pub fn new(s: [Arg; 6]) -> Self {
         Self(s)
     }
 }
@@ -180,13 +186,28 @@ impl From<UsrTaskInfo> for Ready<UsrTaskInfo> {
     }
 }
 
+#[repr(C)]
+#[derive(Default, Debug)]
+pub struct TaskData {
+    args: Args,
+}
+
 pub struct TaskBuilder<T: TaskRepr, S> {
     inner: T,
     entry: VirtAddr,
+    data: TaskData,
     _marker: S,
 }
 
-impl<T, S> TaskBuilder<T, S> where T: TaskRepr {}
+impl<T, S> TaskBuilder<T, S>
+where
+    T: TaskRepr,
+{
+    pub fn with_args(mut self, args: Args) -> Self {
+        self.data.args = args;
+        self
+    }
+}
 
 impl<S> TaskBuilder<SimpleTask, S> {
     pub fn with_name(mut self, name: String) -> TaskBuilder<SimpleTask, S> {
@@ -207,16 +228,16 @@ impl TaskBuilder<SimpleTask, Uninit> {
         Ok(TaskBuilder::<SimpleTask, Init> {
             inner: SimpleTask::new()?,
             entry: addr,
+            data: TaskData::default(),
             _marker: Init,
         })
     }
 
-    pub fn from_fn(
-        func: extern "C" fn() -> usize,
-    ) -> Result<TaskBuilder<SimpleTask, Init>, ThreadingError> {
+    pub fn from_fn(func: ProcessEntry) -> Result<TaskBuilder<SimpleTask, Init>, ThreadingError> {
         Ok(TaskBuilder::<SimpleTask, Init> {
             inner: SimpleTask::new()?,
             entry: VirtAddr::new(func as usize as u64),
+            data: TaskData::default(),
             _marker: Init,
         })
     }
@@ -232,6 +253,7 @@ impl TaskBuilder<SimpleTask, Init> {
         Ok(TaskBuilder {
             inner: self.inner,
             entry: self.entry,
+            data: self.data,
             _marker: info.into(),
         })
     }
@@ -250,6 +272,7 @@ impl TaskBuilder<SimpleTask, Init> {
         Ok(TaskBuilder {
             inner: self.inner,
             entry: self.entry,
+            data: self.data,
             _marker: info.into(),
         })
     }
@@ -260,7 +283,8 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<UsrTaskInfo>> {
         serial_println!("data: {:#?}", self._marker.inner);
         serial_println!("task: {:#?}", self.inner);
 
-        let next_top = unsafe { init_usr_task(&self._marker.inner, self.inner.exit_info()) };
+        let next_top =
+            unsafe { init_usr_task(&self._marker.inner, self.inner.exit_info(), &self.data) };
 
         serial_println!("krsp after pushes: {:#x}", next_top);
         *self.inner.krsp() = next_top;
@@ -275,7 +299,9 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<KTaskInfo>> {
         #[cfg(not(feature = "test_run"))]
         serial_println!("task info: {:#?}", self._marker.inner);
 
-        let next_top = unsafe { init_kernel_task(&self._marker.inner, self.inner.exit_info()) };
+        // serial_println!("task data: {:#?}", self.data.args);
+        let next_top =
+            unsafe { init_kernel_task(&self._marker.inner, self.inner.exit_info(), &self.data) };
 
         #[cfg(not(feature = "test_run"))]
         serial_println!("krsp after pushes: {:#x}", next_top);
@@ -463,9 +489,9 @@ impl<T: TaskRepr> Clone for TaskPtr<T> {
 
 #[cfg(feature = "test_run")]
 mod tests {
-    use os_macros::kernel_test;
-
     use super::*;
+    use crate::kernel::threading::{ProcessReturn, spawn_fn};
+    use os_macros::{kernel_test, with_default_args};
 
     #[kernel_test]
     fn zero_args() {
@@ -508,8 +534,30 @@ mod tests {
             assert_eq!(args.0[1].as_val::<&str>(), "hello");
             assert_eq!(args.0[2].as_val::<Foo>(), Foo { a: 1 });
             assert_eq!(args.0[3].as_val::<Box<usize>>(), Box::new(42));
-            assert_eq!(args.0[4].0, 0);
-            assert_eq!(args.0[5].0, 0);
+            assert_eq!(args.0[4].0, Arg::default().0);
+            assert_eq!(args.0[5].0, Arg::default().0);
         }
+    }
+
+    #[with_default_args]
+    extern "C" fn foo() -> ProcessReturn {
+        _arg0.0 + _arg1.0 + _arg2.0 + _arg3.0 + _arg4.0 + _arg5.0
+    }
+
+    #[with_default_args]
+    extern "C" fn bar(v1: Arg) -> ProcessReturn {
+        let v1 = unsafe { v1.as_val::<&str>() };
+        assert_eq!(v1, "hello");
+        assert_eq!(unsafe { _arg1.as_val::<i64>() }, 4242);
+        assert_eq!(unsafe { _arg2.as_val::<Box<u8>>() }, Box::new(42));
+        ProcessReturn::default()
+    }
+
+    #[kernel_test]
+    fn with_args() {
+        let handle = spawn_fn(foo, args!()).unwrap();
+        let handle2 = spawn_fn(bar, args!("hello", 4242, Box::new(42))).unwrap();
+        assert_eq!(handle.wait(), Ok(Arg::default().0 * 6));
+        assert_eq!(handle2.wait(), Ok(ProcessReturn::default()));
     }
 }

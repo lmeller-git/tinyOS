@@ -16,7 +16,7 @@ use kernel::threading::task::Arg;
 use kernel::threading::{self, JoinHandle, schedule::add_named_ktask, spawn_fn, yield_now};
 use os_macros::{kernel_test, tests, with_default_args};
 use thiserror::Error;
-use tiny_os_common::testing::{TestCase, kernel::get_kernel_tests};
+use tiny_os_common::testing::TestCase;
 
 pub mod arch;
 pub mod bootinfo;
@@ -59,8 +59,12 @@ pub fn test_test_main() {
     // }
 }
 
+use kernel::threading::ProcessReturn;
 #[cfg(feature = "test_run")]
-extern "C" fn kernel_test_runner() -> usize {
+#[with_default_args]
+extern "C" fn kernel_test_runner() -> ProcessReturn {
+    use common::get_kernel_tests;
+
     let tests = unsafe { get_kernel_tests() };
     serial_println!("running {} tests...", tests.len());
     let mut tests_failed = false;
@@ -68,7 +72,10 @@ extern "C" fn kernel_test_runner() -> usize {
     for test in tests {
         let dots = ".".repeat(max_len - test.name().len() + 3);
         serial_print!("{}{} ", test.name(), dots);
-        match spawn_fn(test.func).map(|handle| handle.wait()).flatten() {
+        match spawn_fn(test.func, args!())
+            .map(|handle| handle.wait())
+            .flatten()
+        {
             Ok(v) => {
                 if v == 0 && !test.config.should_panic {
                     serial_println!("\x1b[32m[OK]\x1b[0m");

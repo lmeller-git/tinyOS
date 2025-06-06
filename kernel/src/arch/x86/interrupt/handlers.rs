@@ -36,7 +36,6 @@ global_asm!(
 
         interrupt_cleanup:
             // reenables interrupts, signals eoi and iretqs
-            call end_interrupt
             sti     
             iretq
 
@@ -62,6 +61,7 @@ global_asm!(
             push r8
             mov rdi, rsp
             call timer_interrupt_handler_local_
+            call end_interrupt
             pop r8
             pop r9
             pop r10

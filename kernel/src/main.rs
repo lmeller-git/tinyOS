@@ -13,6 +13,7 @@ use os_macros::with_default_args;
 use tiny_os::arch;
 use tiny_os::arch::hcf;
 use tiny_os::arch::interrupt::enable_threading_interrupts;
+use tiny_os::args;
 use tiny_os::bootinfo;
 use tiny_os::cross_println;
 use tiny_os::drivers::graphics::colors::ColorCode;
@@ -26,6 +27,8 @@ use tiny_os::kernel::threading::schedule::OneOneScheduler;
 use tiny_os::kernel::threading::schedule::add_ktask;
 use tiny_os::kernel::threading::schedule::add_named_ktask;
 use tiny_os::kernel::threading::schedule::add_named_usr_task;
+use tiny_os::kernel::threading::spawn_fn;
+use tiny_os::kernel::threading::task::Arg;
 use tiny_os::kernel::threading::task::Args;
 use tiny_os::kernel::threading::task::TaskRepr;
 use tiny_os::println;
@@ -55,14 +58,15 @@ unsafe extern "C" fn kmain() -> ! {
 
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
+    // spawn_fn(task1, args!("hello"));
     add_named_ktask(idle, "idle".into());
     enable_threading_interrupts();
     threading::yield_now();
     unreachable!()
 }
 
+#[with_default_args]
 extern "C" fn idle() -> usize {
-    add_named_ktask(foo, "foo".into());
     add_named_ktask(rand, "random".into());
     add_named_ktask(listen, "term".into());
     loop {
@@ -104,36 +108,37 @@ unsafe extern "C" {
     pub safe fn foo() -> usize;
 }
 
+#[with_default_args]
 extern "C" fn user_task() -> usize {
     serial_println!("hello from user task");
     hcf();
     0
 }
 
+#[with_default_args]
 extern "C" fn rand() -> usize {
     serial_println!("hello 0 from task");
     random_stuff();
     0
 }
 
+#[with_default_args]
 extern "C" fn listen() -> usize {
     tiny_os::term::synced_keyboard_listener();
     0
 }
 
+#[with_default_args]
 extern "C" fn task1() -> usize {
+    serial_println!("a1: {:#?}", _arg0);
+    let val = unsafe { _arg0.as_val::<&str>() };
+    serial_println!("v: {}", val);
     serial_println!("hello from task 1");
-    serial_println!("hi");
-    let mut x = 1;
-    for _ in 0..100 {
-        x = 1;
-    }
-    serial_println!("task{} finished", x);
     panic!("end task1");
-    hcf();
     0
 }
 
+#[with_default_args]
 extern "C" fn task2() -> usize {
     serial_println!("hello from task 2");
     let x: usize;

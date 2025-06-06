@@ -7,7 +7,7 @@ use schedule::{
     context_switch_local, get_unchecked,
 };
 use spin::RwLock;
-use task::{ExitInfo, TaskBuilder, TaskState};
+use task::{Arg, Args, ExitInfo, TaskBuilder, TaskState};
 use trampoline::{TaskExitInfo, closure_trampoline};
 
 use crate::{arch, serial_println};
@@ -16,6 +16,9 @@ pub mod context;
 pub mod schedule;
 pub mod task;
 pub mod trampoline;
+
+pub type ProcessReturn = usize;
+pub type ProcessEntry = extern "C" fn(Arg, Arg, Arg, Arg, Arg, Arg) -> ProcessReturn;
 
 pub fn init() {
     schedule::init();
@@ -111,11 +114,14 @@ impl<R> Default for RawJoinHandle<R> {
     }
 }
 
-pub fn spawn_fn(func: extern "C" fn() -> usize) -> Result<JoinHandle<usize>, ThreadingError> {
-    let mut handle: JoinHandle<usize> = JoinHandle::default();
+pub fn spawn_fn(
+    func: ProcessEntry,
+    args: Args,
+) -> Result<JoinHandle<ProcessReturn>, ThreadingError> {
+    let mut handle: JoinHandle<ProcessReturn> = JoinHandle::default();
     let raw = handle.inner.clone();
-
     let task: GlobalTaskPtr = TaskBuilder::from_fn(func)?
+        .with_args(args)
         .as_kernel()?
         .with_exit_info(TaskExitInfo::new_with_default_trampoline(
             move |v: usize| {
@@ -154,6 +160,10 @@ pub fn spawn_fn(func: extern "C" fn() -> usize) -> Result<JoinHandle<usize>, Thr
 
 #[cfg(feature = "test_run")]
 mod tests {
+    use os_macros::with_default_args;
+
+    use crate::args;
+
     use super::*;
 
     #[kernel_test]
@@ -175,18 +185,20 @@ mod tests {
         assert_eq!(handle.wait(), Ok("hello"));
     }
 
-    extern "C" fn foo() -> usize {
+    #[with_default_args]
+    extern "C" fn foo() -> ProcessReturn {
         42
     }
 
-    extern "C" fn bar() -> usize {
+    #[with_default_args]
+    extern "C" fn bar() -> ProcessReturn {
         0
     }
 
     #[kernel_test]
     fn spawn_fn_() {
-        let handle = spawn_fn(foo).unwrap();
-        let handle2 = spawn_fn(bar).unwrap();
+        let handle = spawn_fn(foo, args!()).unwrap();
+        let handle2 = spawn_fn(bar, args!()).unwrap();
         assert_eq!(handle.wait(), Ok(42));
         assert_eq!(handle2.wait(), Ok(0))
     }

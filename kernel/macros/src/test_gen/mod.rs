@@ -120,7 +120,8 @@ impl ToTokens for CABIFunc {
         let inner_name = &inner.sig.ident;
 
         tokens.extend(quote! {
-            extern "C" fn #name() -> usize {
+            #[os_macros::with_default_args]
+            extern "C" fn #name() -> crate::kernel::threading::ProcessReturn {
                 #inner
                 #inner_name();
                 0
@@ -169,7 +170,7 @@ pub fn kernel_test_handler(
         #[allow(non_upper_case_globals)]
         #[used]
         #[unsafe(link_section = ".tests")]
-        pub static #static_name: tiny_os_common::testing::kernel::KernelTest = tiny_os_common::testing::kernel::KernelTest {
+        pub static #static_name: crate::common::KernelTest = crate::common::KernelTest {
             name: tiny_os_common::testing::kernel::RawStr::from_s_str(#get_name_name),
             func: #name,
             config: #config

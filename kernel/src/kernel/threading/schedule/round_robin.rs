@@ -103,7 +103,7 @@ impl OneOneScheduler for OneOneRoundRobin {
             }
             return self.current();
         }
-        serial_println!("now running: {:#?}", self.current());
+        // serial_println!("now running: {:#?}", self.current());
         None
     }
 

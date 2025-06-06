@@ -1,6 +1,7 @@
 use alloc::{boxed::Box, sync::Arc};
 
 use super::{
+    ProcessReturn,
     schedule::{GLOBAL_SCHEDULER, OneOneScheduler, context_switch_local},
     task::{Arg, TaskRepr},
 };
@@ -17,7 +18,7 @@ pub extern "C" fn closure_trampoline(func: Arg) {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn kernel_return_trampoline(ret: usize, info: &mut TaskExitInfo) {
+pub extern "C" fn kernel_return_trampoline(ret: ProcessReturn, info: &mut TaskExitInfo) {
     // addr of this is set as the return address for tasks
     // rsp is currently at the topmost addr of tasks stack
     // should:
@@ -30,7 +31,7 @@ pub extern "C" fn kernel_return_trampoline(ret: usize, info: &mut TaskExitInfo) 
 
 #[cfg(feature = "test_run")]
 #[unsafe(no_mangle)]
-pub extern "C" fn test_kernel_return_trampoline(ret: usize, returnto: extern "C" fn()) {
+pub extern "C" fn test_kernel_return_trampoline(ret: ProcessReturn, returnto: extern "C" fn()) {
     returnto();
 }
 
@@ -48,13 +49,13 @@ pub fn default_exit(ret: usize) {
 
 #[repr(C)]
 pub struct Callback {
-    pub inner: Box<dyn Fn(usize) + Send + Sync + 'static>,
+    pub inner: Box<dyn Fn(ProcessReturn) + Send + Sync + 'static>,
 }
 
 impl Callback {
     pub fn new<F>(func: F) -> Self
     where
-        F: Fn(usize) + Send + Sync + 'static,
+        F: Fn(ProcessReturn) + Send + Sync + 'static,
     {
         Self {
             inner: Box::new(func),
@@ -87,7 +88,7 @@ impl Debug for TaskExitInfo {
 impl TaskExitInfo {
     pub fn new<F>(callback: F, trampoline: extern "C" fn()) -> Self
     where
-        F: Fn(usize) + Send + Sync + 'static,
+        F: Fn(ProcessReturn) + Send + Sync + 'static,
     {
         Self {
             callback: Callback::new(callback),
@@ -97,7 +98,7 @@ impl TaskExitInfo {
 
     pub fn new_with_default_trampoline<F>(callback: F) -> Self
     where
-        F: Fn(usize) + Send + Sync + 'static,
+        F: Fn(ProcessReturn) + Send + Sync + 'static,
     {
         Self {
             callback: Callback::new(callback),

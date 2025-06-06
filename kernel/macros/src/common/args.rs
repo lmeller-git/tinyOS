@@ -17,7 +17,7 @@ pub fn default_arg_parser(attr: TokenStream, input: TokenStream) -> TokenStream 
     };
     for i in start..end {
         let name = Ident::new(&format!("_arg{}", i), input_fn.sig.span());
-        let arg_type: Type = syn::parse_str("Arg").unwrap();
+        let arg_type: Type = syn::parse_str("crate::kernel::threading::task::Arg").unwrap();
         input_fn.sig.inputs.push(parse_quote!(#name: #arg_type));
     }
 

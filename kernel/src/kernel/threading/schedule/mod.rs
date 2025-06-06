@@ -1,5 +1,5 @@
 use super::{
-    ThreadingError,
+    ProcessEntry, ThreadingError,
     task::{SimpleTask, Task, TaskBuilder, TaskID, TaskPtr, TaskRepr},
 };
 use crate::{
@@ -82,12 +82,12 @@ where
 pub unsafe extern "C" fn context_switch_local(rsp: u64) {
     let mut lock = GLOBAL_SCHEDULER.get_unchecked().lock();
     if let Some(current) = lock.current_mut() {
-        #[cfg(not(feature = "test_run"))]
-        serial_println!(
-            "old krsp: {:#x}, new krsp: {:#x}",
-            current.read_inner().krsp,
-            rsp
-        );
+        // #[cfg(not(feature = "test_run"))]
+        // serial_println!(
+        //     "old krsp: {:#x}, new krsp: {:#x}",
+        //     current.read_inner().krsp,
+        //     rsp
+        // );
         current.write_inner().krsp = VirtAddr::new(rsp);
     }
     if let Some(new) = lock.switch() {
@@ -121,7 +121,7 @@ pub fn add_built_task(task: GlobalTask) {
     add_task_ptr__(task.into());
 }
 
-pub fn add_named_ktask(func: extern "C" fn() -> usize, name: String) -> Result<(), ThreadingError> {
+pub fn add_named_ktask(func: ProcessEntry, name: String) -> Result<(), ThreadingError> {
     #[cfg(not(feature = "test_run"))]
     serial_println!("spawning task {} at {:#x}", name, func as usize);
     let task = TaskBuilder::from_fn(func)?
@@ -133,7 +133,7 @@ pub fn add_named_ktask(func: extern "C" fn() -> usize, name: String) -> Result<(
     Ok(())
 }
 
-pub fn add_ktask(func: extern "C" fn() -> usize) -> Result<(), ThreadingError> {
+pub fn add_ktask(func: ProcessEntry) -> Result<(), ThreadingError> {
     serial_println!("spawning task {:#x}", func as usize);
     let task = TaskBuilder::from_fn(func)?.as_kernel()?.build();
     serial_println!("task built");
@@ -141,10 +141,7 @@ pub fn add_ktask(func: extern "C" fn() -> usize) -> Result<(), ThreadingError> {
     Ok(())
 }
 
-pub fn add_named_usr_task(
-    func: extern "C" fn() -> usize,
-    name: String,
-) -> Result<(), ThreadingError> {
+pub fn add_named_usr_task(func: ProcessEntry, name: String) -> Result<(), ThreadingError> {
     serial_println!("spawning user task {} at {:#x}", name, func as usize);
     let task = TaskBuilder::from_fn(func)?.with_name(name);
     serial_println!("task created");
