@@ -17,17 +17,18 @@ use kernel::threading::{self, JoinHandle, schedule::add_named_ktask, spawn_fn, y
 use os_macros::{kernel_test, tests, with_default_args};
 use thiserror::Error;
 use tiny_os_common::testing::TestCase;
+pub use utils::*;
 
 pub mod arch;
 pub mod bootinfo;
 pub mod common;
 pub mod drivers;
 pub mod kernel;
-pub mod locks;
 pub mod requests;
 pub mod services;
 pub mod structures;
 pub mod term;
+mod utils;
 
 #[cfg(feature = "test_run")]
 struct TestLogger {}
