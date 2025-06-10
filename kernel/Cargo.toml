@@ -16,7 +16,7 @@ default = []
 test_run = []
 
 [dependencies]
-limine = "0.5.0"
+limine = "0.5"
 x86_64 = "0.15.2"
 os_macros = { path = "macros" }
 tiny_os_common = { path = "./tiny-os-common", features = ["test_run"] }
