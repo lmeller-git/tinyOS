@@ -1,12 +1,12 @@
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
+use crate::locks::thread_safe::RwLock;
 use alloc::{format, string::String, sync::Arc};
 use os_macros::kernel_test;
 use schedule::{
     GLOBAL_SCHEDULER, GlobalTaskPtr, OneOneScheduler, add_built_task, add_ktask, add_task_ptr__,
     context_switch_local, get_unchecked,
 };
-use spin::RwLock;
 use task::{Arg, Args, ExitInfo, TaskBuilder, TaskState};
 use trampoline::{TaskExitInfo, closure_trampoline};
 
@@ -34,6 +34,7 @@ pub enum ThreadingError {
 
 pub fn yield_now() {
     //TODO
+    // serial_println!("hello");
     arch::timer();
 }
 

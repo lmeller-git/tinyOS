@@ -1,5 +1,6 @@
 use core::{
     cell::UnsafeCell,
+    fmt::Debug,
     ops::{Deref, DerefMut},
     sync::atomic::{AtomicBool, Ordering},
 };
@@ -23,6 +24,7 @@ impl<T> Mutex<T> {
         }
         MutexGuard { inner: self }
     }
+
     pub fn try_lock(&self) -> Result<MutexGuard<'_, T>, MutexError> {
         if self.lock.swap(true, Ordering::Acquire) {
             Err(MutexError::IsLocked)
@@ -30,20 +32,39 @@ impl<T> Mutex<T> {
             Ok(MutexGuard { inner: self })
         }
     }
+
     fn unlock(&self) {
         self.lock.store(false, Ordering::Release)
     }
+
     pub fn new(value: T) -> Self {
         Self {
             lock: AtomicBool::new(false),
             value: UnsafeCell::new(value),
         }
     }
+
+    pub fn into_inner(self) -> T {
+        self.value.into_inner()
+    }
+
+    pub unsafe fn force_unlock(&self) {
+        self.lock.store(false, Ordering::Release);
+    }
+}
+
+impl<T> From<T> for Mutex<T> {
+    fn from(value: T) -> Self {
+        Self::new(value)
+    }
 }
 
 pub struct MutexGuard<'a, T> {
     inner: &'a Mutex<T>,
 }
+
+unsafe impl<T: Send> Send for MutexGuard<'_, T> {}
+unsafe impl<T: Send + Sync> Sync for MutexGuard<'_, T> {}
 
 impl<T> MutexGuard<'_, T> {}
 
@@ -63,6 +84,13 @@ impl<T> DerefMut for MutexGuard<'_, T> {
 impl<T> Drop for MutexGuard<'_, T> {
     fn drop(&mut self) {
         self.inner.unlock()
+    }
+}
+
+impl<T> Debug for Mutex<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Mutex, locked: {:#?}", self.lock)?;
+        Ok(())
     }
 }
 

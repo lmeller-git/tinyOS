@@ -1,5 +1,4 @@
 use alloc::{boxed::Box, string::String, sync::Arc};
-use spin::{RwLockReadGuard, rwlock::RwLockWriteGuard};
 
 use crate::{
     arch::{
@@ -11,6 +10,7 @@ use crate::{
         mem::{Cr3Flags, PhysFrame, Size4KiB, VirtAddr},
     },
     kernel::{mem::paging::create_new_pagedir, threading::trampoline::TaskExitInfo},
+    locks::thread_safe::{RwLockReadGuard, RwLockWriteGuard},
     serial_println,
 };
 use core::{

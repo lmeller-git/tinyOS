@@ -1,2 +1,5 @@
-pub mod mutex;
-pub mod rwlock;
+mod mutex;
+mod rwlock;
+
+pub use mutex::*;
+pub use rwlock::*;

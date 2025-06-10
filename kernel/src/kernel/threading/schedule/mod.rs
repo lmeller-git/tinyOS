@@ -2,6 +2,7 @@ use super::{
     ProcessEntry, ThreadingError,
     task::{SimpleTask, Task, TaskBuilder, TaskID, TaskPtr, TaskRepr},
 };
+use crate::locks::thread_safe::{Mutex, MutexGuard, RwLock};
 use crate::{
     arch::{
         self,
@@ -13,7 +14,6 @@ use crate::{
 };
 use alloc::{string::String, sync::Arc};
 use conquer_once::spin::OnceCell;
-use spin::{Mutex, MutexGuard, RwLock};
 
 #[cfg(feature = "test_run")]
 pub mod testing;
