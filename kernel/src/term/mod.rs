@@ -6,6 +6,7 @@ use crate::{
         graphics::{GLOBAL_FRAMEBUFFER, framebuffers::GlobalFrameBuffer},
         keyboard::{KEYBOARD_BUFFER, parse_scancode},
     },
+    locks::thread_safe::Mutex,
     print,
     services::graphics,
 };
@@ -13,7 +14,6 @@ use conquer_once::spin::OnceCell;
 use core::fmt::{Arguments, Write};
 use os_macros::tests;
 use render::BasicTermRender;
-use spin::Mutex;
 
 mod logic;
 mod parse;
@@ -80,9 +80,5 @@ pub fn synced_keyboard_listener() {
 #[doc(hidden)]
 pub fn _print(args: Arguments) {
     // SAFETY must make sure that this is not calles prior to init_term()
-    unsafe {
-        arch::interrupt::without_interrupts(|| {
-            _ = write!(FOOBAR.get_unchecked().lock(), "{}", args)
-        });
-    }
+    unsafe { _ = write!(FOOBAR.get_unchecked().lock(), "{}", args) }
 }

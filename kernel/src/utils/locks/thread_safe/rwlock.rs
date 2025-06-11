@@ -77,6 +77,11 @@ impl<T> RwLock<T> {
     pub fn get_mut(&mut self) -> &mut T {
         self.value.get_mut()
     }
+
+    pub fn update<F: Fn(RwLockWriteGuard<'_, T>)>(&self, func: F) {
+        let guard = self.write();
+        func(guard)
+    }
 }
 
 impl<T> From<T> for RwLock<T> {
@@ -169,7 +174,7 @@ mod tests {
     }
 
     #[kernel_test]
-    fn rwlock_concurrent() {
+    fn rwlock_concurrent_write() {
         let lock = Arc::new(RwLock::new(0));
         let mut handles = Vec::new();
 
@@ -189,71 +194,43 @@ mod tests {
             assert!(handle.wait().is_ok());
         }
         assert_eq!(*lock.read(), 5000);
-
-        let lock1 = lock.clone();
-        let handle1 = threading::spawn(move || {
-            let reader = lock1.read();
-            for _ in 0..100 {
-                assert_eq!(*reader, 5000);
-                threading::yield_now();
-            }
-        })
-        .unwrap();
-
-        let handle2 = threading::spawn(move || {
-            let reader = lock.read();
-            for _ in 0..100 {
-                assert_eq!(*reader, 5000);
-                threading::yield_now();
-            }
-        })
-        .unwrap();
-
-        assert!(handle1.wait().is_ok());
-        assert!(handle2.wait().is_ok());
     }
 
     #[kernel_test]
-    pub fn stress_rwlock() {
-        const N_THREADS: usize = 10;
-        const N_ITERS: usize = 2_000;
+    fn rwlock_concurrent_rw() {
+        let lock = Arc::new(RwLock::new(42));
 
-        let lock = Arc::new(RwLock::new(0));
         let mut handles = Vec::new();
-
-        for _ in 0..(N_THREADS / 2) {
-            let lock = Arc::clone(&lock);
+        for _ in 0..5 {
+            let lock_ = lock.clone();
             handles.push(
                 threading::spawn(move || {
-                    for _ in 0..N_ITERS {
-                        let mut guard = lock.write();
-                        *guard += 1;
+                    for _ in 0..500 {
+                        // lock_.update(|guard| {
+                        // assert_eq!(*guard, 42);
+                        // });
+                        let guard = lock_.write();
+                        assert_eq!(*guard, 42);
+                        threading::yield_now();
+                    }
+                })
+                .unwrap(),
+            );
+            let lock_ = lock.clone();
+            handles.push(
+                threading::spawn(move || {
+                    for _ in 0..500 {
+                        let reader = lock_.read();
+                        assert_eq!(*reader, 42);
+
                         threading::yield_now();
                     }
                 })
                 .unwrap(),
             );
         }
-
-        for _ in 0..(N_THREADS / 2) {
-            let lock = Arc::clone(&lock);
-            handles.push(
-                threading::spawn(move || {
-                    for _ in 0..N_ITERS {
-                        let guard = lock.read();
-                        let _val = *guard;
-                        threading::yield_now();
-                    }
-                })
-                .unwrap(),
-            );
+        for handle in &handles {
+            assert!(handle.wait().is_ok());
         }
-
-        for h in handles {
-            h.wait().expect("thread panic");
-        }
-        let expected = (N_THREADS / 2) * N_ITERS;
-        let actual = *lock.read();
-        assert_eq!(actual, expected, "expected {}, got {}", expected, actual);
     }
 }

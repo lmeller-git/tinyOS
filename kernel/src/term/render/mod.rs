@@ -1,6 +1,14 @@
 #![allow(dead_code, unused_variables)]
 #![cfg_attr(feature = "test_run", allow(static_mut_refs))]
 
+use crate::{
+    drivers::graphics::{
+        colors::{ColorCode, RGBColor},
+        text::CharRenderer,
+    },
+    locks::thread_safe::Mutex,
+    services::graphics::GraphicsError,
+};
 use core::{
     fmt::{Debug, Write},
     ops::{Add, Range},
@@ -12,16 +20,7 @@ use embedded_graphics::{
     text::Baseline,
 };
 use os_macros::{kernel_test, tests};
-use spin::Mutex;
 use thiserror::Error;
-
-use crate::{
-    drivers::graphics::{
-        colors::{ColorCode, RGBColor},
-        text::CharRenderer,
-    },
-    services::graphics::GraphicsError,
-};
 
 mod layout;
 mod text;

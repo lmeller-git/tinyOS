@@ -1,7 +1,9 @@
-use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-
-use crate::locks::thread_safe::RwLock;
+use crate::{arch, args, locks::thread_safe::RwLock, serial_println};
 use alloc::{format, string::String, sync::Arc};
+use core::{
+    hint,
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+};
 use os_macros::kernel_test;
 use schedule::{
     GLOBAL_SCHEDULER, GlobalTaskPtr, OneOneScheduler, add_built_task, add_ktask, add_task_ptr__,
@@ -9,8 +11,6 @@ use schedule::{
 };
 use task::{Arg, Args, ExitInfo, TaskBuilder, TaskState};
 use trampoline::{TaskExitInfo, closure_trampoline};
-
-use crate::{arch, args, serial_println};
 
 pub mod context;
 pub mod schedule;
@@ -34,8 +34,12 @@ pub enum ThreadingError {
 
 pub fn yield_now() {
     //TODO
-    // serial_println!("hello");
-    arch::timer();
+    use crate::arch::interrupt;
+    if interrupt::are_enabled() {
+        arch::timer();
+    } else {
+        hint::spin_loop();
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -173,11 +177,9 @@ where
 
 #[cfg(feature = "test_run")]
 mod tests {
-    use os_macros::with_default_args;
-
-    use crate::args;
-
     use super::*;
+    use crate::args;
+    use os_macros::with_default_args;
 
     #[kernel_test]
     fn join_handle() {

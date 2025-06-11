@@ -4,7 +4,6 @@ use core::{
     ops::{Deref, DerefMut},
     sync::atomic::{AtomicBool, Ordering},
 };
-
 use os_macros::kernel_test;
 
 pub struct Mutex<T> {

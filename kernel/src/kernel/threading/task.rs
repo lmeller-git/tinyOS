@@ -1,5 +1,4 @@
-use alloc::{boxed::Box, string::String, sync::Arc};
-
+use super::{ProcessEntry, ThreadingError, schedule::TaskPtr_};
 use crate::{
     arch::{
         context::{
@@ -13,14 +12,13 @@ use crate::{
     locks::thread_safe::{RwLockReadGuard, RwLockWriteGuard},
     serial_println,
 };
+use alloc::{boxed::Box, string::String, sync::Arc};
 use core::{
     fmt::{Debug, LowerHex},
     marker::PhantomData,
     pin::Pin,
     sync::atomic::{AtomicU64, Ordering},
 };
-
-use super::{ProcessEntry, ThreadingError, schedule::TaskPtr_};
 
 pub trait TaskRepr: Debug {
     fn krsp(&mut self) -> &mut VirtAddr;

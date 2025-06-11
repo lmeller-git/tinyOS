@@ -2,7 +2,6 @@ use super::{
     ProcessEntry, ThreadingError,
     task::{SimpleTask, Task, TaskBuilder, TaskID, TaskPtr, TaskRepr},
 };
-use crate::locks::thread_safe::{Mutex, MutexGuard, RwLock};
 use crate::{
     arch::{
         self,
@@ -10,6 +9,7 @@ use crate::{
         mem::VirtAddr,
     },
     kernel::threading::task::Uninit,
+    locks::thread_safe::{Mutex, MutexGuard, RwLock},
     serial_println,
 };
 use alloc::{string::String, sync::Arc};

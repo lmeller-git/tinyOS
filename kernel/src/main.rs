@@ -4,7 +4,6 @@
 extern crate tiny_os;
 
 use core::arch::global_asm;
-
 use embedded_graphics::mono_font;
 use embedded_graphics::primitives::PrimitiveStyle;
 use embedded_graphics::primitives::StyledDrawable;
@@ -60,7 +59,6 @@ unsafe extern "C" fn kmain() -> ! {
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
     add_named_ktask(idle, "idle".into());
-    // spawn_fn(task1, args!("hello"));
     enable_threading_interrupts();
     threading::yield_now();
     unreachable!()
@@ -234,7 +232,7 @@ fn random_stuff() -> ! {
     cross_println!("finished");
     cross_println!("finished2");
     cross_println!("finished3");
-    panic!("random panic");
+    panic!("task random end");
     hcf();
 }
 
