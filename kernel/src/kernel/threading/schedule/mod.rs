@@ -45,6 +45,7 @@ pub trait OneOneScheduler {
     fn num_tasks(&self) -> usize;
     fn reschedule(&mut self, order: ScheduleOrder);
     fn current_mut(&mut self) -> &mut Option<GlobalTaskPtr>;
+    fn wake(&mut self, id: &TaskID);
 }
 
 pub enum ScheduleOrder {}
@@ -75,6 +76,14 @@ where
     let guard = get()?;
     let task = guard.current()?;
     Some(f(task))
+}
+
+pub fn current_task() -> Result<GlobalTaskPtr, ThreadingError> {
+    let guard = get().ok_or(ThreadingError::Unknown("could not get schduler".into()))?;
+    let task = guard.current().ok_or(ThreadingError::Unknown(
+        "no task runnign but requested".into(),
+    ))?;
+    Ok(task.clone())
 }
 
 #[allow(unsafe_op_in_unsafe_fn)]

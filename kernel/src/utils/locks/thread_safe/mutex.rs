@@ -5,13 +5,19 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
+use crossbeam::queue::SegQueue;
 use os_macros::kernel_test;
 
-use crate::kernel::threading;
+use crate::kernel::threading::{
+    self,
+    schedule::{self, GlobalTaskPtr, OneOneScheduler, current_task},
+    task::TaskRepr,
+};
 
 pub struct Mutex<T> {
     lock: AtomicBool,
     value: UnsafeCell<T>,
+    waker_queue: SegQueue<GlobalTaskPtr>,
 }
 unsafe impl<T> Sync for Mutex<T> {}
 unsafe impl<T> Send for Mutex<T> {}
@@ -20,6 +26,10 @@ unsafe impl<T> Send for Mutex<T> {}
 impl<T> Mutex<T> {
     pub fn lock(&self) -> MutexGuard<'_, T> {
         while self.lock.swap(true, Ordering::Acquire) {
+            if let Ok(current) = current_task() {
+                current.with_inner_mut(|inner| inner.block());
+                self.waker_queue.push(current);
+            }
             threading::yield_now();
         }
         MutexGuard { inner: self }
@@ -34,13 +44,21 @@ impl<T> Mutex<T> {
     }
 
     fn unlock(&self) {
-        self.lock.store(false, Ordering::Release)
+        self.lock.store(false, Ordering::Release);
+        if let Some(task) = self.waker_queue.pop() {
+            if let Some(mut sched) = schedule::get() {
+                // gives a potential writer the chance to acquire the lock
+                task.with_inner_mut(|inner| inner.wake());
+                sched.wake(&task.read_inner().pid);
+            }
+        }
     }
 
     pub fn new(value: T) -> Self {
         Self {
             lock: AtomicBool::new(false),
             value: UnsafeCell::new(value),
+            waker_queue: SegQueue::new(),
         }
     }
 
@@ -50,6 +68,13 @@ impl<T> Mutex<T> {
 
     pub unsafe fn force_unlock(&self) {
         self.lock.store(false, Ordering::Release);
+        if let Some(task) = self.waker_queue.pop() {
+            if let Some(mut sched) = schedule::get() {
+                // gives a potential writer the chance to acquire the lock
+                task.with_inner_mut(|inner| inner.wake());
+                sched.wake(&task.read_inner().pid);
+            }
+        }
     }
 }
 
@@ -87,9 +112,15 @@ impl<T> Drop for MutexGuard<'_, T> {
     }
 }
 
-impl<T> Debug for Mutex<T> {
+impl<T: Debug> Debug for MutexGuard<'_, T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Mutex, locked: {:#?}", self.lock)?;
+        write!(f, "MutexGuard {:#?}", *self)
+    }
+}
+
+impl<T: Debug> Debug for Mutex<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Mutex {:#?}, locked: {:#?}", self.try_lock(), self.lock)?;
         Ok(())
     }
 }

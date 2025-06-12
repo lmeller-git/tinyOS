@@ -32,6 +32,7 @@ use tiny_os::kernel::threading::task::Arg;
 use tiny_os::kernel::threading::task::Args;
 use tiny_os::kernel::threading::task::TaskRepr;
 use tiny_os::println;
+use tiny_os::serial_print;
 use tiny_os::serial_println;
 use tiny_os::services::graphics::Glyph;
 use tiny_os::services::graphics::Simplegraphics;
@@ -73,11 +74,12 @@ extern "C" fn idle() -> usize {
     .unwrap();
     serial_println!("{:#?}", h.wait());
     add_named_ktask(rand, "random".into());
+    serial_println!("random");
     add_named_ktask(listen, "term".into());
+    serial_println!("listen");
     loop {
         threading::yield_now();
     }
-    hcf();
     0
 }
 

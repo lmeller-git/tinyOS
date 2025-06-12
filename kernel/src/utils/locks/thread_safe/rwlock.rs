@@ -5,9 +5,14 @@ use core::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
+use crossbeam::queue::SegQueue;
 use os_macros::kernel_test;
 
-use crate::kernel::threading;
+use crate::kernel::threading::{
+    self,
+    schedule::{self, GlobalTaskPtr, OneOneScheduler, current_task, with_current_task},
+    task::TaskRepr,
+};
 
 const WRITER_LOCK: usize = usize::MAX;
 
@@ -15,6 +20,7 @@ const WRITER_LOCK: usize = usize::MAX;
 pub struct RwLock<T> {
     lock: AtomicUsize,
     value: UnsafeCell<T>,
+    waker_queue: SegQueue<GlobalTaskPtr>,
 }
 unsafe impl<T> Sync for RwLock<T> {}
 unsafe impl<T> Send for RwLock<T> {}
@@ -25,6 +31,7 @@ impl<T> RwLock<T> {
         Self {
             lock: AtomicUsize::new(0),
             value: UnsafeCell::new(value),
+            waker_queue: SegQueue::new(),
         }
     }
 
@@ -32,6 +39,10 @@ impl<T> RwLock<T> {
         loop {
             if let Ok(writer) = self.try_write() {
                 return writer;
+            }
+            if let Ok(current) = current_task() {
+                current.with_inner_mut(|inner| inner.block());
+                self.waker_queue.push(current);
             }
             threading::yield_now();
         }
@@ -49,6 +60,10 @@ impl<T> RwLock<T> {
             if let Ok(guard) = self.try_read() {
                 return guard;
             }
+            if let Ok(current) = current_task() {
+                current.with_inner_mut(|inner| inner.block());
+                self.waker_queue.push(current);
+            }
             threading::yield_now();
         }
     }
@@ -64,10 +79,26 @@ impl<T> RwLock<T> {
 
     pub fn drop_read(&self) {
         self.lock.fetch_sub(1, Ordering::Release);
+        if self.lock.load(Ordering::Acquire) == 0 {
+            if let Some(task) = self.waker_queue.pop() {
+                if let Some(mut sched) = schedule::get() {
+                    // gives a potential writer the chance to acquire the lock
+                    task.with_inner_mut(|inner| inner.wake());
+                    sched.wake(&task.read_inner().pid);
+                }
+            }
+        }
     }
 
     pub fn drop_write(&self) {
         self.lock.store(0, Ordering::Release);
+        if let Some(task) = self.waker_queue.pop() {
+            if let Some(mut sched) = schedule::get() {
+                // gives a potential writer/reader the chance to acquire the lock
+                task.with_inner_mut(|inner| inner.wake());
+                sched.wake(&task.read_inner().pid);
+            }
+        }
     }
 
     pub fn into_inner(self) -> T {
@@ -137,9 +168,27 @@ impl<T> Drop for RwLockReadGuard<'_, T> {
     }
 }
 
-impl<T> Debug for RwLock<T> {
+// impl<T> Debug for RwLock<T> {
+//     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+//         write!(f, "RwLock, lock count: {:#?}", self.lock)?;
+//         Ok(())
+//     }
+// }
+
+impl<T: Debug> Debug for RwLockReadGuard<'_, T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "RwLock, lock count: {:#?}", self.lock)?;
+        write!(f, "RwLockReadGuard {:#?}", *self)
+    }
+}
+
+impl<T: Debug> Debug for RwLock<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "RwLock {:#?}, lock count: {:#?}",
+            self.try_read(),
+            self.lock
+        )?;
         Ok(())
     }
 }
@@ -184,7 +233,7 @@ mod tests {
                 threading::spawn(move || {
                     for _ in 0..1000 {
                         *lock.write() += 1;
-                        threading::yield_now();
+                        // threading::yield_now();
                     }
                 })
                 .unwrap(),
@@ -211,7 +260,7 @@ mod tests {
                         // });
                         let guard = lock_.write();
                         assert_eq!(*guard, 42);
-                        threading::yield_now();
+                        // threading::yield_now();
                     }
                 })
                 .unwrap(),
@@ -223,7 +272,7 @@ mod tests {
                         let reader = lock_.read();
                         assert_eq!(*reader, 42);
 
-                        threading::yield_now();
+                        // threading::yield_now();
                     }
                 })
                 .unwrap(),

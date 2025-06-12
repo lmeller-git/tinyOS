@@ -26,6 +26,8 @@ pub trait TaskRepr: Debug {
     fn kill_with_code(&mut self, code: usize);
     fn exit_info(&self) -> &TaskExitInfo;
     fn get_mut_exit_info(&mut self) -> &mut TaskExitInfo;
+    fn block(&mut self) {}
+    fn wake(&mut self) {}
 }
 
 #[repr(C)]
@@ -87,6 +89,16 @@ impl TaskRepr for SimpleTask {
 
     fn get_mut_exit_info(&mut self) -> &mut TaskExitInfo {
         self.exit_info.as_mut().get_mut()
+    }
+
+    fn block(&mut self) {
+        self.state = TaskState::Blocking;
+    }
+
+    fn wake(&mut self) {
+        if self.state == TaskState::Blocking {
+            self.state = TaskState::Ready;
+        }
     }
 }
 
@@ -425,7 +437,7 @@ pub struct ExitInfo {
     pub signal: Option<u8>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct TaskID {
     inner: u64,
 }
