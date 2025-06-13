@@ -8,17 +8,20 @@ use crate::{
         current_page_tbl,
         mem::{Cr3Flags, PhysFrame, Size4KiB, VirtAddr},
     },
-    kernel::{mem::paging::create_new_pagedir, threading::trampoline::TaskExitInfo},
+    kernel::{
+        devices::TaskDevices, mem::paging::create_new_pagedir, threading::trampoline::TaskExitInfo,
+    },
     locks::thread_safe::{RwLockReadGuard, RwLockWriteGuard},
     serial_println,
 };
-use alloc::{boxed::Box, string::String, sync::Arc};
+use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
 use core::{
     fmt::{Debug, LowerHex},
     marker::PhantomData,
     pin::Pin,
     sync::atomic::{AtomicU64, Ordering},
 };
+use hashbrown::HashMap;
 
 pub trait TaskRepr: Debug {
     fn krsp(&mut self) -> &mut VirtAddr;
@@ -28,6 +31,8 @@ pub trait TaskRepr: Debug {
     fn get_mut_exit_info(&mut self) -> &mut TaskExitInfo;
     fn block(&mut self) {}
     fn wake(&mut self) {}
+    fn get_devices(&self) -> &TaskDevices;
+    fn get_devices_mut(&mut self) -> &mut TaskDevices;
 }
 
 #[repr(C)]
@@ -42,6 +47,7 @@ pub struct SimpleTask {
     pub name: Option<String>,
     pub state: TaskState,
     pub exit_info: Pin<Box<TaskExitInfo>>,
+    pub devices: TaskDevices,
     private_marker: PhantomData<u8>,
 }
 
@@ -59,6 +65,7 @@ impl SimpleTask {
             name: None,
             state: TaskState::Ready,
             private_marker: PhantomData,
+            devices: TaskDevices::new(),
             exit_info: Box::pin(TaskExitInfo::default()),
         })
     }
@@ -99,6 +106,14 @@ impl TaskRepr for SimpleTask {
         if self.state == TaskState::Blocking {
             self.state = TaskState::Ready;
         }
+    }
+
+    fn get_devices(&self) -> &TaskDevices {
+        &self.devices
+    }
+
+    fn get_devices_mut(&mut self) -> &mut TaskDevices {
+        &mut self.devices
     }
 }
 
@@ -412,6 +427,20 @@ impl TaskRepr for Task {
         todo!()
     }
     fn get_mut_exit_info(&mut self) -> &mut TaskExitInfo {
+        todo!()
+    }
+    fn block(&mut self) {
+        todo!()
+    }
+
+    fn wake(&mut self) {
+        todo!()
+    }
+
+    fn get_devices(&self) -> &TaskDevices {
+        todo!()
+    }
+    fn get_devices_mut(&mut self) -> &mut TaskDevices {
         todo!()
     }
 }
