@@ -18,6 +18,7 @@ use tiny_os::cross_println;
 use tiny_os::drivers::graphics::colors::ColorCode;
 use tiny_os::drivers::graphics::framebuffers::LimineFrameBuffer;
 use tiny_os::drivers::graphics::text::draw_str;
+use tiny_os::drivers::start_drivers;
 use tiny_os::exit_qemu;
 use tiny_os::kernel;
 use tiny_os::kernel::threading;
@@ -53,7 +54,7 @@ unsafe extern "C" fn kmain() -> ! {
     cross_println!("heap set up");
     arch::init();
     cross_println!("interrupts set up");
-    kernel::threading::init();
+    kernel::init_kernel();
     cross_println!("scheduler initialized");
     cross_println!("OS booted succesfullly");
 
@@ -67,14 +68,10 @@ unsafe extern "C" fn kmain() -> ! {
 
 #[with_default_args]
 extern "C" fn idle() -> usize {
-    let h = spawn(|| {
-        serial_println!("hello from closure");
-        42
-    })
-    .unwrap();
-    serial_println!("{:#?}", h.wait());
-    add_named_ktask(rand, "random".into());
-    serial_println!("random");
+    start_drivers();
+
+    // add_named_ktask(rand, "random".into());
+    // serial_println!("random");
     add_named_ktask(listen, "term".into());
     serial_println!("listen");
     loop {

@@ -125,6 +125,16 @@ impl<T: Debug> Debug for Mutex<T> {
     }
 }
 
+impl<T: PartialEq> PartialEq for Mutex<T> {
+    fn eq(&self, other: &Self) -> bool {
+        let lock = self.lock();
+        let other_lock = other.try_lock(); // assuming other == self. if not and this fails, this migtj lead to problems
+        self.value.get() == other.value.get()
+    }
+}
+
+impl<T: PartialEq + Eq> Eq for Mutex<T> {}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum MutexError {
     IsLocked,

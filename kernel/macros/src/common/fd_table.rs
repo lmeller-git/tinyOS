@@ -13,13 +13,19 @@ pub fn derive_fd_table(input: DeriveInput) -> TokenStream {
         let tag_ident = syn::Ident::new(&format!("{}Tag", var_ident), var_ident.span());
         quote! {
             pub trait #var_ident {}
-            #[derive(Clone)]
+            #[derive(Clone, Copy, PartialEq, Eq, Debug)]
             pub struct #tag_ident;
             impl #var_ident for #tag_ident {}
+            impl FdTag for #tag_ident {}
 
             impl Attacheable for FdEntry<#tag_ident> {
                 fn attach_to(self, devices: &mut TaskDevices) {
-                    todo!()
+                    let v = devices.get_mut(FdEntryType::#var_ident);
+                    if let Some(inner) = v.as_mut() {
+                        inner.add(self.inner);
+                    } else {
+                        *v = Some(self.inner);
+                    }
                 }
             }
         }
@@ -69,8 +75,9 @@ pub fn derive_composite_fd_tag(attr: CompositeTagAttrs, input: ItemStruct) -> To
     });
 
     quote! {
-        #[derive(Clone)]
+        #[derive(Clone, Copy, PartialEq, Eq, Debug)]
         #input
+        impl FdTag for #struct_name {}
         #(#trait_bounds)*
         #(#from_impls)*
         #attacheable
