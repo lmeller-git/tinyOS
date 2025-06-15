@@ -24,7 +24,7 @@ pub(super) extern "x86-interrupt" fn double_fault_handler(
 
 #[unsafe(no_mangle)]
 pub fn timer_interrupt_handler_local_(rsp: u64) {
-    // serial_println!("timer");
+    serial_println!("timer");
     unsafe { context_switch_local(rsp) }
 }
 
@@ -127,5 +127,5 @@ pub(super) const SPURIOUS_VECTOR: u8 = 0xFF;
 
 pub(super) extern "x86-interrupt" fn spurious_interrupt_handler(_stack_frame: InterruptStackFrame) {
     // nothing to do
-    serial_println!("spurious interrupt");
+    // serial_println!("spurious interrupt");
 }

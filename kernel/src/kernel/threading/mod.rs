@@ -20,8 +20,18 @@ pub mod trampoline;
 pub type ProcessReturn = usize;
 pub type ProcessEntry = extern "C" fn(Arg, Arg, Arg, Arg, Arg, Arg) -> ProcessReturn;
 
+static IS_INITIALIZED: AtomicBool = AtomicBool::new(false);
+
 pub fn init() {
     schedule::init();
+}
+
+pub fn finalize() {
+    IS_INITIALIZED.store(true, Ordering::Relaxed);
+}
+
+pub fn is_running() -> bool {
+    IS_INITIALIZED.load(Ordering::Relaxed)
 }
 
 #[derive(Debug, PartialEq, Eq)]

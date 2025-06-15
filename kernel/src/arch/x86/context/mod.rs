@@ -380,7 +380,7 @@ pub struct KTaskInfo {
 impl KTaskInfo {
     pub fn new(addr: VirtAddr, kstack: VirtAddr) -> Self {
         #[cfg(not(feature = "test_run"))]
-        serial_println!("tramp stub at: {:#x}", return_trampoline_stub as usize);
+        // serial_println!("tramp stub at: {:#x}", return_trampoline_stub as usize);
         let (cs, ss) = get_kernel_selectors();
         let rflags = RFlags::INTERRUPT_FLAG | RFlags::from_bits_truncate(0x2);
         Self {

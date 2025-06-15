@@ -3,7 +3,7 @@ pub mod x86;
 #[cfg(target_arch = "x86_64")]
 pub use x86::{context, interrupt, mem};
 
-use core::arch::asm;
+use core::{arch::asm, fmt::Arguments};
 
 pub fn init() {
     #[cfg(target_arch = "x86_64")]
@@ -44,7 +44,7 @@ pub fn current_page_tbl() -> (x86::mem::PhysFrame<x86::mem::Size4KiB>, x86::mem:
 }
 
 #[doc(hidden)]
-pub fn _serial_print(args: ::core::fmt::Arguments) {
+pub fn _serial_print(args: Arguments) {
     #[cfg(target_arch = "x86_64")]
     x86::serial::_print(args);
     #[cfg(not(any(target_arch = "x86_64")))]
