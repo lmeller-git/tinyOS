@@ -5,7 +5,7 @@ use super::{
 use crate::{
     arch::{
         self,
-        context::{TaskCtx, switch_and_apply},
+        context::{TaskCtx, TaskState, switch_and_apply},
         mem::VirtAddr,
     },
     kernel::threading::task::Uninit,
@@ -104,7 +104,8 @@ pub unsafe extern "C" fn context_switch_local(rsp: u64) {
         // serial_println!("new task, {:#?}", new);
         unsafe { GLOBAL_SCHEDULER.get_unchecked().force_unlock() };
         let guard = new.raw().read();
-        let task: *const GlobalTask = &*guard as *const _;
+        // let task: *const GlobalTask = &*guard as *const _;
+        let task = TaskState::from_task(&*guard);
         drop(guard);
         switch_and_apply(task);
         unreachable!()

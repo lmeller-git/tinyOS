@@ -25,6 +25,7 @@ use hashbrown::HashMap;
 
 pub trait TaskRepr: Debug {
     fn krsp(&mut self) -> &mut VirtAddr;
+    fn get_krsp(&self) -> &VirtAddr;
     fn kill(&mut self);
     fn kill_with_code(&mut self, code: usize);
     fn exit_info(&self) -> &TaskExitInfo;
@@ -74,6 +75,10 @@ impl SimpleTask {
 impl TaskRepr for SimpleTask {
     fn krsp(&mut self) -> &mut VirtAddr {
         &mut self.krsp
+    }
+
+    fn get_krsp(&self) -> &VirtAddr {
+        &self.krsp
     }
 
     fn kill(&mut self) {
@@ -407,6 +412,10 @@ impl Task {
 
 impl TaskRepr for Task {
     fn krsp(&mut self) -> &mut VirtAddr {
+        todo!()
+    }
+
+    fn get_krsp(&self) -> &VirtAddr {
         todo!()
     }
 

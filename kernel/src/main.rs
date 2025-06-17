@@ -70,8 +70,8 @@ unsafe extern "C" fn kmain() -> ! {
 extern "C" fn idle() -> usize {
     start_drivers();
 
-    // add_named_ktask(rand, "random".into());
-    // serial_println!("random");
+    add_named_ktask(rand, "random".into());
+    serial_println!("random");
     add_named_ktask(listen, "term".into());
     serial_println!("listen");
     loop {
