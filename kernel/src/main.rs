@@ -86,10 +86,11 @@ extern "C" fn idle() -> usize {
 
     // add_named_ktask(task1, "task1".into());
 
-    // add_named_ktask(rand, "random".into());
-    // serial_println!("random");
-    // add_named_ktask(listen, "term".into());
-    // serial_println!("listen");
+    add_named_ktask(rand, "random".into());
+    serial_println!("random");
+    add_named_ktask(listen, "term".into());
+    serial_println!("listen");
+
     loop {
         threading::yield_now();
     }

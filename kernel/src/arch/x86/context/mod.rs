@@ -14,7 +14,7 @@ use crate::{
         mem::paging::{GLOBAL_FRAME_ALLOCATOR, PAGETABLE, TaskPageTable},
         threading::{
             ThreadingError,
-            task::{SimpleTask, TaskData},
+            task::{SimpleTask, TaskData, TaskRepr},
             trampoline::TaskExitInfo,
         },
     },
@@ -202,7 +202,7 @@ global_asm!(
             /// clean up the interrupt
             /// iretq
 
-            mov rsp, [rdi]
+            mov rsp, rdi
            
             call end_interrupt
             // now on tasks kstack, with state on stack
@@ -356,7 +356,7 @@ pub fn serial_stub__(v1: u64, v2: u64) {
 }
 
 unsafe extern "C" {
-    pub fn switch_and_apply(task: *const SimpleTask);
+    pub fn switch_and_apply(task: TaskState);
     pub fn init_kernel_task(
         info: &KTaskInfo,
         exit_info: &TaskExitInfo,
@@ -365,6 +365,19 @@ unsafe extern "C" {
     pub fn init_usr_task(info: &UsrTaskInfo, exit_info: &TaskExitInfo, data: &TaskData)
     -> VirtAddr;
     pub fn return_trampoline_stub();
+}
+
+#[repr(C)]
+pub struct TaskState {
+    pub rsp: u64,
+}
+
+impl TaskState {
+    pub fn from_task<T: TaskRepr>(task: &T) -> Self {
+        Self {
+            rsp: task.get_krsp().as_u64(),
+        }
+    }
 }
 
 #[repr(C)]
