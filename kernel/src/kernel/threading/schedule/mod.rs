@@ -116,16 +116,16 @@ pub unsafe extern "C" fn context_switch_local(rsp: u64) {
     let mut lock = GLOBAL_SCHEDULER.get_unchecked().lock();
     if let Some(current) = lock.current_mut() {
         // #[cfg(not(feature = "test_run"))]
-        serial_println!(
-            "old krsp: {:#x}, new krsp: {:#x}",
-            current.read_inner().krsp,
-            rsp
-        );
+        // serial_println!(
+        //     "old krsp: {:#x}, new krsp: {:#x}",
+        //     current.read_inner().krsp,
+        //     rsp
+        // );
         current.write_inner().krsp = VirtAddr::new(rsp);
     }
     if let Some(new) = lock.switch() {
         // #[cfg(not(feature = "test_run"))]
-        serial_println!("new task, {:#?}", new);
+        // serial_println!("new task, {:#?}", new);
         unsafe { GLOBAL_SCHEDULER.get_unchecked().force_unlock() };
         let guard = new.raw().read();
         // let task: *const GlobalTask = &*guard as *const _;

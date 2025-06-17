@@ -27,6 +27,7 @@ use tiny_os::kernel::threading::schedule::OneOneScheduler;
 use tiny_os::kernel::threading::schedule::add_ktask;
 use tiny_os::kernel::threading::schedule::add_named_ktask;
 use tiny_os::kernel::threading::schedule::add_named_usr_task;
+use tiny_os::kernel::threading::schedule::with_current_task;
 use tiny_os::kernel::threading::spawn;
 use tiny_os::kernel::threading::spawn_fn;
 use tiny_os::kernel::threading::task::Arg;
@@ -71,30 +72,21 @@ unsafe extern "C" fn kmain() -> ! {
 
 #[with_default_args]
 extern "C" fn idle() -> usize {
-    serial_println!("finalizing threads");
-    threading::finalize();
-    serial_println!("hello");
-    println!("hello2");
-    serial_println!("threads finalized");
     start_drivers();
-    serial_println!("drivers started up");
-    println!("contnue1");
-    println!("continue2");
-
-    threading::spawn(move || println!("hello from thread2"));
-    spawn_fn(task1, args!());
-
-    // add_named_ktask(task1, "task1".into());
+    threading::finalize();
+    cross_println!("threads finalized");
 
     add_named_ktask(rand, "random".into());
-    serial_println!("random");
     add_named_ktask(listen, "term".into());
-    serial_println!("listen");
+    cross_println!("startup tasks started");
+
+    // just block forever, as there is nothing left to do
+    with_current_task(|task| task.write_inner().block());
 
     loop {
         threading::yield_now();
     }
-    0
+    unreachable!()
 }
 
 global_asm!(

@@ -325,13 +325,13 @@ impl TaskBuilder<SimpleTask, Init> {
 
 impl<T: TaskRepr> TaskBuilder<T, Ready<UsrTaskInfo>> {
     pub fn build(mut self) -> T {
-        serial_println!("data: {:#?}", self._marker.inner);
-        serial_println!("task: {:#?}", self.inner);
+        // serial_println!("data: {:#?}", self._marker.inner);
+        // serial_println!("task: {:#?}", self.inner);
 
         let next_top =
             unsafe { init_usr_task(&self._marker.inner, self.inner.exit_info(), &self.data) };
 
-        serial_println!("krsp after pushes: {:#x}", next_top);
+        // serial_println!("krsp after pushes: {:#x}", next_top);
         *self.inner.krsp() = next_top;
         self.inner
     }
@@ -339,19 +339,18 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<UsrTaskInfo>> {
 
 impl<T: TaskRepr> TaskBuilder<T, Ready<KTaskInfo>> {
     pub fn build(mut self) -> T {
-        serial_println!("spawnning task");
+        // serial_println!("spawnning task");
         // #[cfg(not(feature = "test_run"))]
-        serial_println!("krsp: {:#x}", self.inner.krsp());
-        serial_println!("huhu");
+        // serial_println!("krsp: {:#x}", self.inner.krsp());
         // #[cfg(not(feature = "test_run"))]
-        serial_println!("task info: {:#?}", self._marker.inner);
+        // serial_println!("task info: {:#?}", self._marker.inner);
 
-        serial_println!("task data: {:#?}", self.data.args);
+        // serial_println!("task data: {:#?}", self.data.args);
         let next_top =
             unsafe { init_kernel_task(&self._marker.inner, self.inner.exit_info(), &self.data) };
 
         // #[cfg(not(feature = "test_run"))]
-        serial_println!("krsp after pushes: {:#x}", next_top);
+        // serial_println!("krsp after pushes: {:#x}", next_top);
         *self.inner.krsp() = next_top;
         self.inner
     }
