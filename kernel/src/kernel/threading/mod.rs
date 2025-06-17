@@ -24,6 +24,12 @@ pub fn init() {
     schedule::init();
 }
 
+const IS_INITIALIZED: AtomicBool = AtomicBool::new(false);
+
+pub fn is_running() -> bool {
+    IS_INITIALIZED.load(Ordering::Relaxed)
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum ThreadingError {
     StackNotBuilt,

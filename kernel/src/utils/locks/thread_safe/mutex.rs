@@ -10,7 +10,10 @@ use os_macros::kernel_test;
 
 use crate::kernel::threading::{
     self,
-    schedule::{self, GlobalTaskPtr, OneOneScheduler, current_task},
+    schedule::{
+        self, GLOBAL_SCHEDULER, GlobalTaskPtr, OneOneScheduler, current_task,
+        with_scheduler_unckecked,
+    },
     task::TaskRepr,
 };
 
@@ -26,9 +29,15 @@ unsafe impl<T> Send for Mutex<T> {}
 impl<T> Mutex<T> {
     pub fn lock(&self) -> MutexGuard<'_, T> {
         while self.lock.swap(true, Ordering::Acquire) {
-            if let Ok(current) = current_task() {
-                current.with_inner_mut(|inner| inner.block());
-                self.waker_queue.push(current);
+            if GLOBAL_SCHEDULER.is_initialized() {
+                unsafe {
+                    with_scheduler_unckecked(|sched| {
+                        if let Some(current) = sched.current_mut().as_mut() {
+                            _ = current.raw().try_write().map(|mut t| t.block());
+                            self.waker_queue.push(current.clone());
+                        }
+                    })
+                }
             }
             threading::yield_now();
         }
@@ -75,6 +84,9 @@ impl<T> Mutex<T> {
                 sched.wake(&task.read_inner().pid);
             }
         }
+    }
+    pub unsafe fn force_lock(&self) {
+        self.lock.store(true, Ordering::Release);
     }
 }
 

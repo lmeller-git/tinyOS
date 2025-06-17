@@ -6,6 +6,7 @@ use source::{KEYBOARDBACKEND, KeyboardBackend, TTYInput};
 
 use super::{FdEntry, FdTag, RawFdEntry};
 
+mod io;
 pub mod sink;
 pub mod source;
 

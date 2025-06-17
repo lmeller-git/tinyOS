@@ -69,6 +69,30 @@ pub unsafe fn get_unchecked<'a>() -> MutexGuard<'a, GlobalScheduler> {
     GLOBAL_SCHEDULER.get_unchecked().lock()
 }
 
+//SAFETY This function is EXTREMELY unsafe and the caller must ensure that no other function runs in parallel to this one, as well as keeping the state of sched consistent
+pub unsafe fn with_scheduler_unckecked<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut GlobalScheduler) -> R,
+{
+    use crate::arch::interrupt::without_interrupts;
+    without_interrupts(|| {
+        let mut was_locked = false;
+        let mut sched = if let Ok(s) = GLOBAL_SCHEDULER.get_unchecked().try_lock() {
+            s
+        } else {
+            was_locked = true;
+            GLOBAL_SCHEDULER.get_unchecked().force_unlock();
+            GLOBAL_SCHEDULER.get_unchecked().lock()
+        };
+        let res = f(&mut *sched);
+        drop(sched);
+        if was_locked {
+            GLOBAL_SCHEDULER.get_unchecked().force_lock();
+        }
+        res
+    })
+}
+
 pub fn with_current_task<F, R>(f: F) -> Option<R>
 where
     F: FnOnce(GlobalTaskPtr) -> R,
