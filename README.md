@@ -1,6 +1,6 @@
 # TinyOS
 
-a tiny OS
+yet another OS kernel written for fun  
 
 ## How to use this?
 
@@ -30,6 +30,22 @@ Running `make run` will build the kernel and a bootable ISO (equivalent to make 
 
 Running `make run-hdd` will build the kernel and a raw HDD image (equivalent to make all-hdd) and then run it using `qemu` (if installed).
 
-The `run-uefi` and `run-hdd-uefi` targets are equivalent to their non `-uefi` counterparts except that they boot `qemu` using a UEFI-compatible firmware.
-
 Running `make test` will build the kernel with test_run features and run the tests
+
+### Makefile Variables
+
+qemu flags can be passed via QEMUFLAGS  
+cargo flags can be passed via CARGO_FLAGS  
+file names can be changed via CARGO_TARGET_DIR, KERNEL_BIN and IMAGE_NAME  
+the rust profile can be changed with RUST_PROFILE  
+
+## Supported architectures
+
+x86-64 (default)
+
+currently no real hardware is supported  
+
+## References
+
+OsDev wiki: https://wiki.osdev.org/
+Phillip Oppermans blog series: https://os.phil-opp.com/
