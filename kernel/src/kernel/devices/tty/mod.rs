@@ -6,7 +6,7 @@ use source::{KEYBOARDBACKEND, KeyboardBackend, TTYInput};
 
 use super::{FdEntry, FdTag, RawFdEntry};
 
-mod io;
+pub mod io;
 pub mod sink;
 pub mod source;
 
@@ -43,18 +43,19 @@ pub fn init() {
     source::init_source_tty();
 }
 
-// #[macro_export]
+#[macro_export]
 macro_rules! print {
     () => {};
-    ($($arg:tt)*) => { $crate::kernel::devices::tty::sink::__write_stdout(format_args!($($arg)*).as_str().unwrap()) };
+    ($($arg:tt)*) => { $crate::kernel::devices::tty::io::__write_stdout(format_args!($($arg)*)) };
 }
 
-// #[macro_export]
+#[macro_export]
 macro_rules! println {
     () => { $crate::print!("\n")};
     ($($arg:tt)*) => { $crate::print!("{}\n", format_args!($($arg)*))};
 }
 
+#[macro_export]
 macro_rules! dbg {
     () => {};
     ($($arg:tt)*) => {
@@ -62,6 +63,7 @@ macro_rules! dbg {
     };
 }
 
+#[macro_export]
 macro_rules! eprint {
     () => {};
     ($($arg:tt)*) => {
@@ -69,11 +71,46 @@ macro_rules! eprint {
     };
 }
 
+#[macro_export]
 macro_rules! eprintln {
     () => {
         $crate::eprint!("\n")
     };
     ($($arg:tt)*) => {
-        todo!()
+        $crate::eprint!("{}\n", format_args!($($arg)*))
+    };
+}
+
+#[macro_export]
+macro_rules! serial_println {
+    () => {
+        $crate::serial_print!("\n")
+    };
+    ($($arg:tt)*) => {
+        $crate::serial_print!("{}\n", format_args!($($arg)*))
+    };
+}
+#[macro_export]
+macro_rules! serial_print {
+    () => {};
+    ($($arg:tt)*) => {
+        $crate::kernel::devices::tty::io::__serial_stub(format_args!($($arg)*))
+    };
+}
+#[macro_export]
+macro_rules! cross_println {
+    () => {
+        $crate::cross_print!("\n")
+    };
+    ($($arg:tt)*) => {
+        $crate::cross_print!("{}\n", format_args!($($arg)*))
+    };
+}
+#[macro_export]
+macro_rules! cross_print {
+    () => {};
+    ($($arg:tt)*) => {
+        $crate::print!("{}", format_args!($($arg)*));
+        $crate::serial_print!("{}", format_args!($($arg)*))
     };
 }

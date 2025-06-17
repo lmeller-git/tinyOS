@@ -34,7 +34,7 @@ impl TaskDevices {
     }
 
     pub fn init_default(mut self) -> Self {
-        let sink: FdEntry<SinkTag> = DeviceBuilder::tty().serial();
+        let sink: FdEntry<SinkTag> = DeviceBuilder::tty().fb();
         self.attach_composite(sink);
         let input: FdEntry<StdInTag> = DeviceBuilder::tty().keyboard();
         self.attach(input);

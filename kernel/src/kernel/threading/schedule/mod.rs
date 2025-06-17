@@ -113,26 +113,27 @@ pub fn current_task() -> Result<GlobalTaskPtr, ThreadingError> {
 #[allow(unsafe_op_in_unsafe_fn)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn context_switch_local(rsp: u64) {
-    let mut lock = GLOBAL_SCHEDULER.get_unchecked().lock();
-    if let Some(current) = lock.current_mut() {
-        // #[cfg(not(feature = "test_run"))]
-        // serial_println!(
-        //     "old krsp: {:#x}, new krsp: {:#x}",
-        //     current.read_inner().krsp,
-        //     rsp
-        // );
-        current.write_inner().krsp = VirtAddr::new(rsp);
-    }
-    if let Some(new) = lock.switch() {
-        // #[cfg(not(feature = "test_run"))]
-        // serial_println!("new task, {:#?}", new);
-        unsafe { GLOBAL_SCHEDULER.get_unchecked().force_unlock() };
-        let guard = new.raw().read();
-        // let task: *const GlobalTask = &*guard as *const _;
-        let task = TaskState::from_task(&*guard);
-        drop(guard);
-        switch_and_apply(task);
-        unreachable!()
+    if let Ok(mut lock) = GLOBAL_SCHEDULER.get().unwrap().try_lock() {
+        if let Some(current) = lock.current_mut() {
+            // #[cfg(not(feature = "test_run"))]
+            // serial_println!(
+            //     "old krsp: {:#x}, new krsp: {:#x}",
+            //     current.read_inner().krsp,
+            //     rsp
+            // );
+            current.write_inner().krsp = VirtAddr::new(rsp);
+        }
+        if let Some(new) = lock.switch() {
+            // #[cfg(not(feature = "test_run"))]
+            // serial_println!("new task, {:#?}", new);
+            unsafe { GLOBAL_SCHEDULER.get_unchecked().force_unlock() };
+            let guard = new.raw().read();
+            // let task: *const GlobalTask = &*guard as *const _;
+            let task = TaskState::from_task(&*guard);
+            drop(guard);
+            switch_and_apply(task);
+            unreachable!()
+        }
     }
 }
 
@@ -156,13 +157,13 @@ pub fn add_built_task(task: GlobalTask) {
 }
 
 pub fn add_named_ktask(func: ProcessEntry, name: String) -> Result<(), ThreadingError> {
-    #[cfg(not(feature = "test_run"))]
-    serial_println!("spawning task {} at {:#x}", name, func as usize);
+    // #[cfg(not(feature = "test_run"))]
+    // serial_println!("spawning task {} at {:#x}", name, func as usize);
     let task = TaskBuilder::from_fn(func)?
         .with_name(name)
         .as_kernel()?
         .build();
-    serial_println!("task built");
+    // serial_println!("task built");
     add_built_task(task);
     Ok(())
 }

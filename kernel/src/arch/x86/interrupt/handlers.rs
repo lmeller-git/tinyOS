@@ -127,5 +127,5 @@ pub(super) const SPURIOUS_VECTOR: u8 = 0xFF;
 
 pub(super) extern "x86-interrupt" fn spurious_interrupt_handler(_stack_frame: InterruptStackFrame) {
     // nothing to do
-    serial_println!("spurious interrupt");
+    // serial_println!("spurious interrupt");
 }

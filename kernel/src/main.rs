@@ -27,6 +27,7 @@ use tiny_os::kernel::threading::schedule::OneOneScheduler;
 use tiny_os::kernel::threading::schedule::add_ktask;
 use tiny_os::kernel::threading::schedule::add_named_ktask;
 use tiny_os::kernel::threading::schedule::add_named_usr_task;
+use tiny_os::kernel::threading::schedule::with_current_task;
 use tiny_os::kernel::threading::spawn;
 use tiny_os::kernel::threading::spawn_fn;
 use tiny_os::kernel::threading::task::Arg;
@@ -46,6 +47,7 @@ use tiny_os::term;
 #[unsafe(no_mangle)]
 unsafe extern "C" fn kmain() -> ! {
     bootinfo::get();
+    serial_println!("starting up...");
     kernel::mem::init_paging();
     serial_println!("paging set up");
     term::init_term();
@@ -61,6 +63,8 @@ unsafe extern "C" fn kmain() -> ! {
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
     add_named_ktask(idle, "idle".into());
+    serial_println!("idle task started");
+
     enable_threading_interrupts();
     threading::yield_now();
     unreachable!()
@@ -69,15 +73,20 @@ unsafe extern "C" fn kmain() -> ! {
 #[with_default_args]
 extern "C" fn idle() -> usize {
     start_drivers();
+    threading::finalize();
+    cross_println!("threads finalized");
 
     add_named_ktask(rand, "random".into());
-    serial_println!("random");
     add_named_ktask(listen, "term".into());
-    serial_println!("listen");
+    cross_println!("startup tasks started");
+
+    // just block forever, as there is nothing left to do
+    with_current_task(|task| task.write_inner().block());
+
     loop {
         threading::yield_now();
     }
-    0
+    unreachable!()
 }
 
 global_asm!(
@@ -134,11 +143,11 @@ extern "C" fn listen() -> usize {
 
 #[with_default_args]
 extern "C" fn task1() -> usize {
-    serial_println!("a1: {:#?}", _arg0);
-    let val = unsafe { _arg0.as_val::<&str>() };
-    serial_println!("v: {}", val);
-    serial_println!("hello from task 1");
-    panic!("end task1");
+    // println!("a1: {:#?}", _arg0);
+    // let val = unsafe { _arg0.as_val::<&str>() };
+    // println!("v: {}", val);
+    println!("hello from task 1");
+    // panic!("end task1");
     0
 }
 
@@ -228,9 +237,9 @@ fn random_stuff() -> ! {
         )
         .unwrap();
     }
-    cross_println!("finished");
-    cross_println!("finished2");
-    cross_println!("finished3");
+    println!("finished");
+    println!("finished2");
+    println!("finished3");
     panic!("task random end");
     hcf();
 }
@@ -248,5 +257,6 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
             }
         }
     }
+
     arch::hcf()
 }

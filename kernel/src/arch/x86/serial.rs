@@ -1,3 +1,5 @@
+use core::fmt::Arguments;
+
 use crate::locks::thread_safe::Mutex;
 use lazy_static::lazy_static;
 use uart_16550::SerialPort;
@@ -11,7 +13,7 @@ lazy_static! {
 }
 
 #[doc(hidden)]
-pub fn _print(args: ::core::fmt::Arguments) {
+pub fn _print(args: Arguments) {
     use core::fmt::Write;
     SERIAL1
         .lock()
