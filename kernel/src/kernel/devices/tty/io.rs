@@ -20,8 +20,6 @@ pub fn __write_stdout(input: Arguments) {
     if !threading::is_running() {
         term::_print(input);
     } else {
-        serial_print!("huhu: {}", format!("{}", input));
-        return;
         let bytes = format!("{}", input);
         let bytes = bytes.as_bytes();
         with_current_device_list(|devices| {
@@ -68,8 +66,6 @@ pub fn __write_debug(input: &str) {
 pub fn __serial_stub(input: Arguments) {
     without_interrupts(|| {
         if threading::is_running() {
-            arch::_serial_print(input);
-            return;
             let backend = SERIALBACKEND.get_or_init(SerialBackend::new);
             backend.write(format!("{}", input).as_bytes());
             backend.flush();
