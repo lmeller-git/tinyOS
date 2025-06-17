@@ -47,5 +47,5 @@ currently no real hardware is supported
 
 ## References
 
-OsDev wiki: https://wiki.osdev.org/
+OsDev wiki: https://wiki.osdev.org/  
 Phillip Oppermans blog series: https://os.phil-opp.com/
