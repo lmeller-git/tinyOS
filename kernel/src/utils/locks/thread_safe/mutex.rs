@@ -5,7 +5,7 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use crossbeam::queue::SegQueue;
+use crossbeam::queue::{ArrayQueue, SegQueue};
 use os_macros::kernel_test;
 
 use crate::kernel::threading::{
@@ -20,7 +20,7 @@ use crate::kernel::threading::{
 pub struct Mutex<T> {
     lock: AtomicBool,
     value: UnsafeCell<T>,
-    waker_queue: SegQueue<GlobalTaskPtr>,
+    waker_queue: ArrayQueue<GlobalTaskPtr>,
 }
 unsafe impl<T> Sync for Mutex<T> {}
 unsafe impl<T> Send for Mutex<T> {}
@@ -67,7 +67,7 @@ impl<T> Mutex<T> {
         Self {
             lock: AtomicBool::new(false),
             value: UnsafeCell::new(value),
-            waker_queue: SegQueue::new(),
+            waker_queue: ArrayQueue::new(10),
         }
     }
 

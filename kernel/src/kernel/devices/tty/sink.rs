@@ -42,14 +42,12 @@ impl TTYSink for SerialBackend {
 
     fn flush(&self) {
         // let all_bytes = self.buffer.lock().drain(..).collect::<Vec<u8>>();
-        without_interrupts(|| {
-            let mut all_bytes = Vec::new();
-            while let Some(byte) = self.buffer.pop() {
-                all_bytes.push(byte);
-            }
-            let out = str::from_utf8(&all_bytes).unwrap();
-            arch::_serial_print(format_args!("{}", out));
-        })
+        let mut all_bytes = Vec::new();
+        while let Some(byte) = self.buffer.pop() {
+            all_bytes.push(byte);
+        }
+        let out = str::from_utf8(&all_bytes).unwrap();
+        arch::_serial_print(format_args!("{}", out));
     }
 }
 

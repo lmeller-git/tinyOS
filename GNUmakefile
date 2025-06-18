@@ -28,6 +28,10 @@ all-hdd: $(IMAGE_NAME).hdd
 run:
 	$(MAKE) run-$(KARCH) IMAGE_NAME=$(IMAGE_NAME) CARGO_TARGET_DIR=$(CARGO_TARGET_DIR) CARGO_FLAGS=$(CARGO_FLAGS) RUST_PROFILE=$(RUST_PROFILE) KERNEL_BIN=$(KERNEL_BIN)
 
+.PHONY: debug
+debug:
+	$(MAKE) run QEMUFLAGS="$(QEMUFLAGS) -s -S -d int,guest_errors"
+
 .PHONY: run-hdd
 run-hdd: run-hdd-$(KARCH)
 

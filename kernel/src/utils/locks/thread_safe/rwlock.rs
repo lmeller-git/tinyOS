@@ -5,7 +5,7 @@ use core::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use crossbeam::queue::SegQueue;
+use crossbeam::queue::{ArrayQueue, SegQueue};
 use os_macros::kernel_test;
 
 use crate::kernel::threading::{
@@ -19,11 +19,10 @@ use crate::kernel::threading::{
 
 const WRITER_LOCK: usize = usize::MAX;
 
-#[derive(Default)]
 pub struct RwLock<T> {
     lock: AtomicUsize,
     value: UnsafeCell<T>,
-    waker_queue: SegQueue<GlobalTaskPtr>,
+    waker_queue: ArrayQueue<GlobalTaskPtr>,
 }
 unsafe impl<T> Sync for RwLock<T> {}
 unsafe impl<T> Send for RwLock<T> {}
@@ -34,7 +33,7 @@ impl<T> RwLock<T> {
         Self {
             lock: AtomicUsize::new(0),
             value: UnsafeCell::new(value),
-            waker_queue: SegQueue::new(),
+            waker_queue: ArrayQueue::new(10),
         }
     }
 
@@ -207,6 +206,16 @@ impl<T: Debug> Debug for RwLock<T> {
             self.lock
         )?;
         Ok(())
+    }
+}
+
+impl<T: Default> Default for RwLock<T> {
+    fn default() -> Self {
+        Self {
+            lock: AtomicUsize::new(0),
+            value: UnsafeCell::default(),
+            waker_queue: ArrayQueue::new(10),
+        }
     }
 }
 

@@ -126,11 +126,13 @@ pub unsafe extern "C" fn context_switch_local(rsp: u64) {
         if let Some(new) = lock.switch() {
             // #[cfg(not(feature = "test_run"))]
             // serial_println!("new task, {:#?}", new);
-            unsafe { GLOBAL_SCHEDULER.get_unchecked().force_unlock() };
+            // unsafe { GLOBAL_SCHEDULER.get_unchecked().force_unlock() };
             let guard = new.raw().read();
             // let task: *const GlobalTask = &*guard as *const _;
             let task = TaskState::from_task(&*guard);
             drop(guard);
+            drop(new);
+            drop(lock);
             switch_and_apply(task);
             unreachable!()
         }

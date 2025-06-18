@@ -1,6 +1,6 @@
 use core::fmt::Arguments;
 
-use crate::locks::thread_safe::Mutex;
+use crate::locks::primitive::Mutex;
 use lazy_static::lazy_static;
 use uart_16550::SerialPort;
 

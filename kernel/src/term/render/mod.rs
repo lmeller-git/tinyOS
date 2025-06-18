@@ -6,7 +6,7 @@ use crate::{
         colors::{ColorCode, RGBColor},
         text::CharRenderer,
     },
-    locks::thread_safe::Mutex,
+    locks::primitive::Mutex,
     services::graphics::GraphicsError,
 };
 use core::{

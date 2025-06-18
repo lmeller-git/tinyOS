@@ -11,6 +11,7 @@ use embedded_graphics::text::renderer::TextRenderer;
 use os_macros::with_default_args;
 use tiny_os::arch;
 use tiny_os::arch::hcf;
+use tiny_os::arch::interrupt;
 use tiny_os::arch::interrupt::enable_threading_interrupts;
 use tiny_os::args;
 use tiny_os::bootinfo;
@@ -66,6 +67,7 @@ unsafe extern "C" fn kmain() -> ! {
     serial_println!("idle task started");
 
     enable_threading_interrupts();
+    serial_println!("int: {}", interrupt::are_enabled());
     threading::yield_now();
     unreachable!()
 }
@@ -248,7 +250,7 @@ fn random_stuff() -> ! {
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     #[cfg(feature = "test_run")]
     tiny_os::test_panic_handler(info);
-    serial_println!("{:#?}", info);
+    serial_println!("{:#?}, {}", info, interrupt::are_enabled());
     if GLOBAL_SCHEDULER.is_initialized() {
         if let Some(ref mut sched) = GLOBAL_SCHEDULER.get().map(|sched| sched.lock()) {
             if let Some(current) = sched.current_mut() {

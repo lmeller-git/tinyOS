@@ -5,7 +5,7 @@ use super::{
     sink::{FBBACKEND, FbBackend, SERIALBACKEND, SerialBackend},
 };
 use crate::{
-    arch,
+    arch::{self, interrupt},
     kernel::{
         devices::{FdEntryType, RawFdEntry, with_current_device_list},
         threading::{self, schedule::current_task},
@@ -66,15 +66,13 @@ pub fn __write_debug(input: &str) {
 }
 
 pub fn __serial_stub(input: Arguments) {
-    without_interrupts(|| {
-        if threading::is_running() {
-            // arch::_serial_print(input);
-            // return;
-            let backend = SERIALBACKEND.get_or_init(SerialBackend::new);
-            backend.write(format!("{}", input).as_bytes());
-            backend.flush();
-        } else {
-            arch::_serial_print(input);
-        }
-    })
+    if threading::is_running() && interrupt::are_enabled() {
+        // arch::_serial_print(input);
+        // return;
+        let backend = SERIALBACKEND.get_or_init(SerialBackend::new);
+        backend.write(format!("{}", input).as_bytes());
+        backend.flush();
+    } else {
+        arch::_serial_print(input);
+    }
 }

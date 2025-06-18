@@ -6,7 +6,7 @@ use crate::{
         graphics::{GLOBAL_FRAMEBUFFER, framebuffers::GlobalFrameBuffer},
         keyboard::{KEYBOARD_BUFFER, parse_scancode},
     },
-    locks::thread_safe::Mutex,
+    locks::primitive::Mutex,
     print,
     services::graphics,
 };
