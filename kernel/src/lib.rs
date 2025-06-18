@@ -11,7 +11,7 @@ use alloc::vec::Vec;
 use arch::hcf;
 #[cfg(feature = "test_run")]
 use core::panic::PanicInfo;
-use kernel::threading::task::Arg;
+use kernel::threading::task::{Arg, TaskRepr};
 #[cfg(feature = "test_run")]
 use kernel::threading::{self, JoinHandle, schedule::add_named_ktask, spawn_fn, yield_now};
 use os_macros::{kernel_test, tests, with_default_args};
@@ -31,6 +31,9 @@ pub mod term;
 mod utils;
 
 #[cfg(feature = "test_run")]
+const MAX_TEST_TIME: u64 = 100;
+
+#[cfg(feature = "test_run")]
 struct TestLogger {}
 #[cfg(feature = "test_run")]
 impl tiny_os_common::logging::Logger for TestLogger {
@@ -48,9 +51,16 @@ pub fn test_main() {
 
 #[cfg(feature = "test_run")]
 pub fn test_test_main() {
+    use arch::interrupt::enable_threading_interrupts;
+    use drivers::start_drivers;
+    use kernel::threading;
+
     threading::init();
     testing::init();
     add_named_ktask(kernel_test_runner, "test runner".into());
+    // start_drivers();
+    // threading::finalize();
+    enable_threading_interrupts();
     yield_now();
     // let tests = unsafe { get_kernel_tests() };
     // serial_println!("huhu");
@@ -64,8 +74,9 @@ use kernel::threading::ProcessReturn;
 #[cfg(feature = "test_run")]
 #[with_default_args]
 extern "C" fn kernel_test_runner() -> ProcessReturn {
+    use arch::interrupt::handlers::current_tick;
     use common::get_kernel_tests;
-
+    use kernel::threading::spawn_fn;
     let tests = unsafe { get_kernel_tests() };
     serial_println!("running {} tests...", tests.len());
     let mut tests_failed = false;
@@ -73,10 +84,25 @@ extern "C" fn kernel_test_runner() -> ProcessReturn {
     for test in tests {
         let dots = ".".repeat(max_len - test.name().len() + 3);
         serial_print!("{}{} ", test.name(), dots);
-        match spawn_fn(test.func, args!())
-            .map(|handle| handle.wait())
-            .flatten()
-        {
+
+        let handle = spawn_fn(test.func, args!()).expect("test spawn failed");
+        let start_time = current_tick();
+        match handle.wait_while(|handle| {
+            let now = current_tick();
+            if now - start_time >= MAX_TEST_TIME {
+                arch::interrupt::without_interrupts(|| {
+                    serial_print!("\x1b[31m[TASK TIMEOUT] \x1b[0m");
+                    handle
+                        .get_task()
+                        .expect("no task attached to handle")
+                        .raw()
+                        .write()
+                        .kill();
+                })
+            } else {
+                threading::yield_now();
+            }
+        }) {
             Ok(v) => {
                 if v == 0 && !test.config.should_panic {
                     serial_println!("\x1b[32m[OK]\x1b[0m");
@@ -214,4 +240,12 @@ fn arg_expansion() {
         Arg::default(),
         Arg::default(),
     );
+}
+
+#[kernel_test(should_panic)]
+fn timeout() {
+    loop {
+        threading::yield_now();
+    }
+    unreachable!()
 }

@@ -83,6 +83,17 @@ impl<R> JoinHandle<R> {
         Ok(r)
     }
 
+    pub fn wait_while<F>(&self, f: F) -> Result<R, ThreadingError>
+    where
+        F: Fn(&JoinHandle<R>),
+    {
+        while !(self.inner.finished() || !self.is_task_alive().is_some_and(|v| v)) {
+            f(self)
+        }
+        // this will finish immediately
+        self.wait()
+    }
+
     fn is_task_alive(&self) -> Option<bool> {
         self.task
             .as_ref()
@@ -91,6 +102,10 @@ impl<R> JoinHandle<R> {
 
     pub fn attach(&mut self, ptr: GlobalTaskPtr) {
         self.task.replace(ptr);
+    }
+
+    pub fn get_task(&self) -> Option<GlobalTaskPtr> {
+        self.task.clone()
     }
 }
 

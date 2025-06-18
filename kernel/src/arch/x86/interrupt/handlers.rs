@@ -3,12 +3,17 @@ use crate::{
     kernel::threading::schedule::{context_switch, context_switch_local},
     serial_println,
 };
-use core::arch::global_asm;
+use core::{
+    arch::global_asm,
+    sync::atomic::{AtomicU64, Ordering},
+};
 use x86_64::instructions::interrupts::without_interrupts;
 pub use x86_64::{
     instructions::port::Port,
     structures::idt::{InterruptStackFrame, PageFaultErrorCode},
 };
+
+static TOTAL_TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
 
 pub(super) extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
     // println!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
@@ -25,7 +30,13 @@ pub(super) extern "x86-interrupt" fn double_fault_handler(
 #[unsafe(no_mangle)]
 pub fn timer_interrupt_handler_local_(rsp: u64) {
     // serial_println!("timer");
+    assert!(TOTAL_TIMER_TICKS.load(Ordering::Relaxed) < u64::MAX);
+    TOTAL_TIMER_TICKS.fetch_add(1, Ordering::Release);
     unsafe { context_switch_local(rsp) }
+}
+
+pub fn current_tick() -> u64 {
+    TOTAL_TIMER_TICKS.load(Ordering::Acquire)
 }
 
 //TODO cleanup

@@ -31,6 +31,10 @@ run:
 .PHONY: debug
 debug:
 	$(MAKE) run QEMUFLAGS="$(QEMUFLAGS) -s -S -d int,guest_errors"
+	
+.PHONY: debug-test
+debug-test:
+	$(MAKE) test QEMUFLAGS="$(QEMUFLAGS) -s -S -d int,guest_errors"
 
 .PHONY: run-hdd
 run-hdd: run-hdd-$(KARCH)
@@ -264,5 +268,5 @@ distclean: clean
 
 .PHONY: test
 test:
-	$(MAKE) run-$(KARCH) IMAGE_NAME=tiny_os-test-$(KARCH) CARGO_TARGET_DIR=target/test KERNEL_BIN=kernel CARGO_FLAGS="--features test_run" QEMUFLAGS="-display none"
+	$(MAKE) run-$(KARCH) IMAGE_NAME=tiny_os-test-$(KARCH) CARGO_TARGET_DIR=target/test KERNEL_BIN=kernel CARGO_FLAGS="--features test_run" QEMUFLAGS="$(QEMUFLAGS) -display none"
 # KERNEL_BIN needs to be kernel, as limine needs to know how its called in limine.conf
