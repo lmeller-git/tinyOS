@@ -73,6 +73,7 @@ pub fn __serial_stub(input: Arguments) {
         backend.write(format!("{}", input).as_bytes());
         backend.flush();
     } else if !interrupt::are_enabled() {
+        // the following two MUST NOT ALLOCATE/LOCK
         arch::_raw_serial_print(input);
     } else {
         arch::_serial_print(input);

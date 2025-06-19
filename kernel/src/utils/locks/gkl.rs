@@ -4,7 +4,7 @@ use core::{
     sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 };
 
-use crate::kernel::threading::schedule::current_pid;
+use crate::{arch::interrupt, kernel::threading::schedule::current_pid};
 
 #[derive(Debug)]
 pub struct Gkl {
@@ -31,6 +31,7 @@ impl Gkl {
             if let Ok(guard) = self.try_lock() {
                 return guard;
             }
+            assert!(interrupt::are_enabled());
             spin_loop();
         }
         unreachable!()

@@ -102,6 +102,10 @@ impl<T> Mutex<T> {
     pub unsafe fn force_lock(&self) {
         self.lock.store(true, Ordering::Release);
     }
+
+    pub fn is_locked(&self) -> bool {
+        self.lock.load(Ordering::Acquire)
+    }
 }
 
 impl<T> From<T> for Mutex<T> {

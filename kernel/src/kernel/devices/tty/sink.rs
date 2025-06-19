@@ -51,27 +51,33 @@ impl TTYSink for SerialBackend {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct FbBackend {
-    buffer: Mutex<VecDeque<u8>>,
+    buffer: SegQueue<u8>,
 }
 
 impl FbBackend {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
-            buffer: Mutex::new(VecDeque::new()),
+            buffer: SegQueue::new(),
         })
     }
 }
 
 impl TTYSink for FbBackend {
     fn write(&self, bytes: &[u8]) {
-        self.buffer.lock().extend(bytes.iter());
+        for byte in bytes {
+            self.buffer.push(*byte);
+        }
     }
 
     fn flush(&self) {
-        let all_bytes = self.buffer.lock().drain(..).collect::<Vec<u8>>();
+        let mut all_bytes = Vec::new();
+        while let Some(byte) = self.buffer.pop() {
+            all_bytes.push(byte);
+        }
         let out = str::from_utf8(&all_bytes).unwrap();
+        arch::_serial_print(format_args!("{}", out));
         _print(format_args!("{}", out));
     }
 }
