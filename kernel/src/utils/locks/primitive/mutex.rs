@@ -1,5 +1,6 @@
 use core::{
     cell::UnsafeCell,
+    fmt::Debug,
     hint::spin_loop,
     ops::{Deref, DerefMut},
     sync::atomic::{AtomicBool, Ordering},
@@ -37,6 +38,14 @@ impl<T> Mutex<T> {
             value: UnsafeCell::new(value),
         }
     }
+
+    pub unsafe fn force_unlock(&self) {
+        self.unlock();
+    }
+
+    pub unsafe fn force_lock(&self) {
+        self.lock.store(true, Ordering::Release);
+    }
 }
 
 pub struct MutexGuard<'a, T> {
@@ -55,6 +64,20 @@ impl<T> Deref for MutexGuard<'_, T> {
 impl<T> DerefMut for MutexGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { &mut *(self.inner.value.get()) }
+    }
+}
+
+impl<T: Debug> Debug for MutexGuard<'_, T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "MutexGuard {:#?}", unsafe {
+            self.inner.value.get().as_ref()
+        })
+    }
+}
+
+impl<T: Debug> Debug for Mutex<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "MutexGuard {:#?}", self.try_lock())
     }
 }
 

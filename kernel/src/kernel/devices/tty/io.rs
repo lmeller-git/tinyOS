@@ -72,6 +72,8 @@ pub fn __serial_stub(input: Arguments) {
         let backend = SERIALBACKEND.get_or_init(SerialBackend::new);
         backend.write(format!("{}", input).as_bytes());
         backend.flush();
+    } else if !interrupt::are_enabled() {
+        arch::_raw_serial_print(input);
     } else {
         arch::_serial_print(input);
     }

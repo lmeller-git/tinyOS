@@ -20,7 +20,7 @@ use crate::kernel::threading::{
 pub struct Mutex<T> {
     lock: AtomicBool,
     value: UnsafeCell<T>,
-    waker_queue: ArrayQueue<GlobalTaskPtr>,
+    // waker_queue: ArrayQueue<GlobalTaskPtr>,
 }
 unsafe impl<T> Sync for Mutex<T> {}
 unsafe impl<T> Send for Mutex<T> {}
@@ -29,16 +29,17 @@ unsafe impl<T> Send for Mutex<T> {}
 impl<T> Mutex<T> {
     pub fn lock(&self) -> MutexGuard<'_, T> {
         while self.lock.swap(true, Ordering::Acquire) {
-            if GLOBAL_SCHEDULER.is_initialized() {
-                unsafe {
-                    with_scheduler_unckecked(|sched| {
-                        if let Some(current) = sched.current_mut().as_mut() {
-                            _ = current.raw().try_write().map(|mut t| t.block());
-                            self.waker_queue.push(current.clone());
-                        }
-                    })
-                }
-            }
+            // if GLOBAL_SCHEDULER.is_initialized() {
+            //     unsafe {
+            //         with_scheduler_unckecked(|sched| {
+            //             if let Some(current) = sched.current_mut().as_mut() {
+            //                 if current.raw().try_write().map(|mut t| t.block()).is_ok() {
+            //                     self.waker_queue.push(current.clone());
+            //                 }
+            //             }
+            //         })
+            //     }
+            // }
             threading::yield_now();
         }
         MutexGuard { inner: self }
@@ -54,20 +55,20 @@ impl<T> Mutex<T> {
 
     fn unlock(&self) {
         self.lock.store(false, Ordering::Release);
-        if let Some(task) = self.waker_queue.pop() {
-            if let Some(mut sched) = schedule::get() {
-                // gives a potential writer the chance to acquire the lock
-                task.with_inner_mut(|inner| inner.wake());
-                sched.wake(&task.read_inner().pid);
-            }
-        }
+        // if let Some(task) = self.waker_queue.pop() {
+        //     if let Some(mut sched) = schedule::get() {
+        //         // gives a potential writer the chance to acquire the lock
+        //         task.with_inner_mut(|inner| inner.wake());
+        //         sched.wake(&task.read_inner().pid);
+        //     }
+        // }
     }
 
     pub fn new(value: T) -> Self {
         Self {
             lock: AtomicBool::new(false),
             value: UnsafeCell::new(value),
-            waker_queue: ArrayQueue::new(10),
+            // waker_queue: ArrayQueue::new(10),
         }
     }
 
@@ -77,13 +78,13 @@ impl<T> Mutex<T> {
 
     pub unsafe fn force_unlock(&self) {
         self.lock.store(false, Ordering::Release);
-        if let Some(task) = self.waker_queue.pop() {
-            if let Some(mut sched) = schedule::get() {
-                // gives a potential writer the chance to acquire the lock
-                task.with_inner_mut(|inner| inner.wake());
-                sched.wake(&task.read_inner().pid);
-            }
-        }
+        // if let Some(task) = self.waker_queue.pop() {
+        //     if let Some(mut sched) = schedule::get() {
+        //         // gives a potential writer the chance to acquire the lock
+        //         task.with_inner_mut(|inner| inner.wake());
+        //         sched.wake(&task.read_inner().pid);
+        //     }
+        // }
     }
     pub unsafe fn force_lock(&self) {
         self.lock.store(true, Ordering::Release);
@@ -126,7 +127,9 @@ impl<T> Drop for MutexGuard<'_, T> {
 
 impl<T: Debug> Debug for MutexGuard<'_, T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "MutexGuard {:#?}", *self)
+        write!(f, "MutexGuard {:#?}", unsafe {
+            self.inner.value.get().as_ref()
+        })
     }
 }
 

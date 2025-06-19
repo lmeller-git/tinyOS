@@ -7,7 +7,7 @@ use core::{
 use os_macros::kernel_test;
 use schedule::{
     GLOBAL_SCHEDULER, GlobalTaskPtr, OneOneScheduler, add_built_task, add_ktask, add_task_ptr__,
-    context_switch_local, get_unchecked,
+    context_switch_local, current_task, get, get_unchecked,
 };
 use task::{Arg, Args, ExitInfo, TaskBuilder, TaskState};
 use trampoline::{TaskExitInfo, closure_trampoline};
@@ -46,6 +46,8 @@ pub fn yield_now() {
     //TODO
     use crate::arch::interrupt;
     if interrupt::are_enabled() {
+        // assert!(current_task().unwrap().raw().try_write().is_ok());
+        // assert!(GLOBAL_SCHEDULER.get().unwrap().try_lock().is_ok());
         arch::timer();
     } else {
         hint::spin_loop();

@@ -96,6 +96,8 @@ impl OneOneScheduler for OneOneRoundRobin {
     }
 
     fn switch(&mut self) -> Option<GlobalTaskPtr> {
+        // serial_println!("current tasks: {:#?}", self.lookup);
+        // serial_println!("hello 3");
         while let Some(next) = self.ready.pop_front() {
             if next.read_inner().state != TaskState::Ready {
                 // TODO do something with these tasks, instead of just ignoring
@@ -111,6 +113,7 @@ impl OneOneScheduler for OneOneRoundRobin {
             return self.current();
         }
         // serial_println!("now running: {:#?}", self.current());
+        // serial_println!("hello 4");
         None
     }
 

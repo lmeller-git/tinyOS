@@ -22,7 +22,7 @@ const WRITER_LOCK: usize = usize::MAX;
 pub struct RwLock<T> {
     lock: AtomicUsize,
     value: UnsafeCell<T>,
-    waker_queue: ArrayQueue<GlobalTaskPtr>,
+    // waker_queue: ArrayQueue<GlobalTaskPtr>,
 }
 unsafe impl<T> Sync for RwLock<T> {}
 unsafe impl<T> Send for RwLock<T> {}
@@ -33,7 +33,7 @@ impl<T> RwLock<T> {
         Self {
             lock: AtomicUsize::new(0),
             value: UnsafeCell::new(value),
-            waker_queue: ArrayQueue::new(10),
+            // waker_queue: ArrayQueue::new(10),
         }
     }
 
@@ -42,16 +42,17 @@ impl<T> RwLock<T> {
             if let Ok(writer) = self.try_write() {
                 return writer;
             }
-            if GLOBAL_SCHEDULER.is_initialized() {
-                unsafe {
-                    with_scheduler_unckecked(|sched| {
-                        if let Some(current) = sched.current_mut().as_mut() {
-                            _ = current.raw().try_write().map(|mut t| t.block());
-                            self.waker_queue.push(current.clone());
-                        }
-                    })
-                }
-            }
+            // if GLOBAL_SCHEDULER.is_initialized() {
+            //     unsafe {
+            //         with_scheduler_unckecked(|sched| {
+            //             if let Some(current) = sched.current_mut().as_mut() {
+            //                 if current.raw().try_write().map(|mut t| t.block()).is_ok() {
+            //                     self.waker_queue.push(current.clone());
+            //                 }
+            //             }
+            //         })
+            //     }
+            // }
             threading::yield_now();
         }
     }
@@ -68,16 +69,16 @@ impl<T> RwLock<T> {
             if let Ok(guard) = self.try_read() {
                 return guard;
             }
-            if GLOBAL_SCHEDULER.is_initialized() {
-                unsafe {
-                    with_scheduler_unckecked(|sched| {
-                        if let Some(current) = sched.current_mut().as_mut() {
-                            _ = current.raw().try_write().map(|mut t| t.block());
-                            self.waker_queue.push(current.clone());
-                        }
-                    })
-                }
-            }
+            // if GLOBAL_SCHEDULER.is_initialized() {
+            //     unsafe {
+            //         with_scheduler_unckecked(|sched| {
+            //             if let Some(current) = sched.current_mut().as_mut() {
+            //                 _ = current.raw().try_write().map(|mut t| t.block());
+            //                 self.waker_queue.push(current.clone());
+            //             }
+            //         })
+            //     }
+            // }
             threading::yield_now();
         }
     }
@@ -93,26 +94,26 @@ impl<T> RwLock<T> {
 
     pub fn drop_read(&self) {
         self.lock.fetch_sub(1, Ordering::Release);
-        if self.lock.load(Ordering::Acquire) == 0 {
-            if let Some(task) = self.waker_queue.pop() {
-                if let Some(mut sched) = schedule::get() {
-                    // gives a potential writer the chance to acquire the lock
-                    task.with_inner_mut(|inner| inner.wake());
-                    sched.wake(&task.read_inner().pid);
-                }
-            }
-        }
+        // if self.lock.load(Ordering::Acquire) == 0 {
+        //     if let Some(task) = self.waker_queue.pop() {
+        //         if let Some(mut sched) = schedule::get() {
+        //             // gives a potential writer the chance to acquire the lock
+        //             task.with_inner_mut(|inner| inner.wake());
+        //             sched.wake(&task.read_inner().pid);
+        //         }
+        //     }
+        // }
     }
 
     pub fn drop_write(&self) {
         self.lock.store(0, Ordering::Release);
-        if let Some(task) = self.waker_queue.pop() {
-            if let Some(mut sched) = schedule::get() {
-                // gives a potential writer/reader the chance to acquire the lock
-                task.with_inner_mut(|inner| inner.wake());
-                sched.wake(&task.read_inner().pid);
-            }
-        }
+        // if let Some(task) = self.waker_queue.pop() {
+        //     if let Some(mut sched) = schedule::get() {
+        //         // gives a potential writer/reader the chance to acquire the lock
+        //         task.with_inner_mut(|inner| inner.wake());
+        //         sched.wake(&task.read_inner().pid);
+        //     }
+        // }
     }
 
     pub fn into_inner(self) -> T {
@@ -214,7 +215,7 @@ impl<T: Default> Default for RwLock<T> {
         Self {
             lock: AtomicUsize::new(0),
             value: UnsafeCell::default(),
-            waker_queue: ArrayQueue::new(10),
+            // waker_queue: ArrayQueue::new(10),
         }
     }
 }

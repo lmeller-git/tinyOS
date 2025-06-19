@@ -113,6 +113,11 @@ pub fn current_task() -> Result<GlobalTaskPtr, ThreadingError> {
 #[allow(unsafe_op_in_unsafe_fn)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn context_switch_local(rsp: u64) {
+    // TODO currently this simply returns if a) scheduler is locked or b) current task is locked
+    // this is a bad thing
+    //
+    // further allocations during context_switch/ in interrupt free ctx may lead to deadlocks/double faults
+    // need to fix/ find workaround
     if let Ok(mut lock) = GLOBAL_SCHEDULER.get().unwrap().try_lock() {
         if let Some(current) = lock.current_mut() {
             // #[cfg(not(feature = "test_run"))]
@@ -121,11 +126,17 @@ pub unsafe extern "C" fn context_switch_local(rsp: u64) {
             //     current.read_inner().krsp,
             //     rsp
             // );
+            //
+            // serial_println!("hello");
+            if current.raw().try_write().is_err() {
+                return;
+            }
             current.write_inner().krsp = VirtAddr::new(rsp);
         }
         if let Some(new) = lock.switch() {
             // #[cfg(not(feature = "test_run"))]
             // serial_println!("new task, {:#?}", new);
+            // serial_println!("hello 2");
             // unsafe { GLOBAL_SCHEDULER.get_unchecked().force_unlock() };
             let guard = new.raw().read();
             // let task: *const GlobalTask = &*guard as *const _;

@@ -50,3 +50,11 @@ pub fn _serial_print(args: Arguments) {
     #[cfg(not(any(target_arch = "x86_64")))]
     compile_error!("arch not supported")
 }
+
+#[doc(hidden)]
+pub fn _raw_serial_print(args: Arguments) {
+    #[cfg(target_arch = "x86_64")]
+    x86::serial::_raw_print(args);
+    #[cfg(not(any(target_arch = "x86_64")))]
+    compile_error!("arch not supported")
+}

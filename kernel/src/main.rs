@@ -252,7 +252,11 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     tiny_os::test_panic_handler(info);
     serial_println!("{:#?}, {}", info, interrupt::are_enabled());
     if GLOBAL_SCHEDULER.is_initialized() {
-        if let Some(ref mut sched) = GLOBAL_SCHEDULER.get().map(|sched| sched.lock()) {
+        if let Some(ref mut sched) = GLOBAL_SCHEDULER
+            .get()
+            .map(|sched| sched.try_lock().ok())
+            .flatten()
+        {
             if let Some(current) = sched.current_mut() {
                 //TODO kill with info
                 current.write_inner().kill_with_code(1);
