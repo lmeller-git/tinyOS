@@ -8,13 +8,16 @@ use core::{
 use crossbeam::queue::{ArrayQueue, SegQueue};
 use os_macros::kernel_test;
 
-use crate::kernel::threading::{
-    self,
-    schedule::{
-        self, GLOBAL_SCHEDULER, GlobalTaskPtr, OneOneScheduler, current_task, with_current_task,
-        with_scheduler_unckecked,
+use crate::{
+    kernel::threading::{
+        self,
+        schedule::{
+            self, GLOBAL_SCHEDULER, GlobalTaskPtr, OneOneScheduler, current_task,
+            with_current_task, with_scheduler_unckecked,
+        },
+        task::TaskRepr,
     },
-    task::TaskRepr,
+    locks::{GKL, GklGuard},
 };
 
 const WRITER_LOCK: usize = usize::MAX;
@@ -58,10 +61,13 @@ impl<T> RwLock<T> {
     }
 
     pub fn try_write(&self) -> Result<RwLockWriteGuard<'_, T>, RwLockError> {
+        let Ok(gkl) = GKL.try_lock() else {
+            return Err(RwLockError::IsLocked);
+        };
         self.lock
             .compare_exchange(0, WRITER_LOCK, Ordering::Acquire, Ordering::Relaxed)
             .map_err(|_| RwLockError::IsLocked)
-            .map(|_| RwLockWriteGuard { inner: self })
+            .map(|_| RwLockWriteGuard { inner: self, gkl })
     }
 
     pub fn read(&self) -> RwLockReadGuard<'_, T> {
@@ -84,12 +90,15 @@ impl<T> RwLock<T> {
     }
 
     pub fn try_read(&self) -> Result<RwLockReadGuard<'_, T>, RwLockError> {
+        let Ok(gkl) = GKL.try_lock() else {
+            return Err(RwLockError::IsLocked);
+        };
         self.lock
             .fetch_update(Ordering::Acquire, Ordering::Relaxed, |lock| {
                 lock.checked_add(1)
             })
             .map_err(|_| RwLockError::IsLocked)
-            .map(|_| RwLockReadGuard { inner: self })
+            .map(|_| RwLockReadGuard { inner: self, gkl })
     }
 
     pub fn drop_read(&self) {
@@ -138,6 +147,7 @@ impl<T> From<T> for RwLock<T> {
 
 pub struct RwLockWriteGuard<'a, T> {
     inner: &'a RwLock<T>,
+    gkl: GklGuard<'a>,
 }
 
 impl<T> RwLockWriteGuard<'_, T> {}
@@ -166,6 +176,7 @@ impl<T> Drop for RwLockWriteGuard<'_, T> {
 
 pub struct RwLockReadGuard<'a, T> {
     inner: &'a RwLock<T>,
+    gkl: GklGuard<'a>,
 }
 
 impl<T> RwLockReadGuard<'_, T> {}
@@ -179,7 +190,7 @@ impl<T> Deref for RwLockReadGuard<'_, T> {
 
 impl<T> Drop for RwLockReadGuard<'_, T> {
     fn drop(&mut self) {
-        self.inner.drop_read()
+        self.inner.drop_read();
     }
 }
 

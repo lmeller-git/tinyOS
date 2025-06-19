@@ -34,6 +34,7 @@ use tiny_os::kernel::threading::spawn_fn;
 use tiny_os::kernel::threading::task::Arg;
 use tiny_os::kernel::threading::task::Args;
 use tiny_os::kernel::threading::task::TaskRepr;
+use tiny_os::locks::GKL;
 use tiny_os::println;
 use tiny_os::serial_print;
 use tiny_os::serial_println;
@@ -68,6 +69,8 @@ unsafe extern "C" fn kmain() -> ! {
 
     enable_threading_interrupts();
     serial_println!("int: {}", interrupt::are_enabled());
+    serial_println!("gkl: {:#?}", GKL);
+    assert!(!GKL.is_locked());
     threading::yield_now();
     unreachable!()
 }

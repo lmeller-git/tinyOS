@@ -7,6 +7,8 @@ use core::{
 };
 use os_macros::kernel_test;
 
+use crate::locks::{GKL, GklGuard};
+
 pub struct Mutex<T> {
     lock: AtomicBool,
     value: UnsafeCell<T>,
@@ -17,16 +19,20 @@ unsafe impl<T> Send for Mutex<T> {}
 #[allow(dead_code)]
 impl<T> Mutex<T> {
     pub fn lock(&self) -> MutexGuard<'_, T> {
+        let gkl = GKL.lock();
         while self.lock.swap(true, Ordering::Acquire) {
             spin_loop()
         }
-        MutexGuard { inner: self }
+        MutexGuard { inner: self, gkl }
     }
     pub fn try_lock(&self) -> Result<MutexGuard<'_, T>, MutexError> {
+        let Ok(gkl) = GKL.try_lock() else {
+            return Err(MutexError::IsLocked);
+        };
         if self.lock.swap(true, Ordering::Acquire) {
             Err(MutexError::IsLocked)
         } else {
-            Ok(MutexGuard { inner: self })
+            Ok(MutexGuard { inner: self, gkl })
         }
     }
     fn unlock(&self) {
@@ -50,6 +56,7 @@ impl<T> Mutex<T> {
 
 pub struct MutexGuard<'a, T> {
     inner: &'a Mutex<T>,
+    gkl: GklGuard<'a>,
 }
 
 impl<T> MutexGuard<'_, T> {}

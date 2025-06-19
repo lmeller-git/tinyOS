@@ -523,10 +523,11 @@ where
 }
 
 mod tests {
+    use crate::kernel::threading;
+
     use super::*;
     #[kernel_test]
     fn print_to_buffer() {
-        return;
         // SAFETY This is safe, as long it is not run parallely to some other functionality accessing FOOBAR / BAR, and init_term() was run in the same execution context
         use crate::{print, println};
         unsafe { super::super::BAR.clear() };
@@ -536,6 +537,7 @@ mod tests {
             super::super::FOOBAR.get_unchecked().lock().cursor.col.inner = 0;
         };
         println!("test");
+        threading::yield_now();
         let mut row = [None; super::super::MAX_CHARS_X];
         row[0].replace('t');
         row[1].replace('e');
@@ -555,6 +557,7 @@ mod tests {
             )
         };
         print!("test2");
+        threading::yield_now();
         unsafe { assert_eq!(row, super::super::BAR.inner[0]) };
         row[4].replace('2');
         unsafe { assert_eq!(row, super::super::BAR.inner[1]) };
@@ -571,6 +574,7 @@ mod tests {
             )
         };
         print!("hey");
+        threading::yield_now();
         row[5].replace('h');
         row[6].replace('e');
         row[7].replace('y');
@@ -591,7 +595,6 @@ mod tests {
 
     #[kernel_test]
     fn buf_shifts() {
-        return;
         // SAFETY This is safe, as long it is not run parallely to some other functionality accessing FOOBAR / BAR, and init_term() was run in the same execution context
         use crate::println;
         unsafe { super::super::BAR.clear() };
@@ -605,6 +608,7 @@ mod tests {
         println!("test");
         println!("42");
         println!("world");
+        threading::yield_now();
 
         unsafe { super::super::BAR.shift_up() };
 

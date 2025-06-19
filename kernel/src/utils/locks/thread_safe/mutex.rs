@@ -8,13 +8,16 @@ use core::{
 use crossbeam::queue::{ArrayQueue, SegQueue};
 use os_macros::kernel_test;
 
-use crate::kernel::threading::{
-    self,
-    schedule::{
-        self, GLOBAL_SCHEDULER, GlobalTaskPtr, OneOneScheduler, current_task,
-        with_scheduler_unckecked,
+use crate::{
+    kernel::threading::{
+        self,
+        schedule::{
+            self, GLOBAL_SCHEDULER, GlobalTaskPtr, OneOneScheduler, current_task,
+            with_scheduler_unckecked,
+        },
+        task::TaskRepr,
     },
-    task::TaskRepr,
+    locks::{GKL, GklGuard},
 };
 
 pub struct Mutex<T> {
@@ -28,6 +31,13 @@ unsafe impl<T> Send for Mutex<T> {}
 #[allow(dead_code)]
 impl<T> Mutex<T> {
     pub fn lock(&self) -> MutexGuard<'_, T> {
+        let gkl = loop {
+            if let Ok(gkl) = GKL.try_lock() {
+                break gkl;
+            } else {
+                threading::yield_now();
+            }
+        };
         while self.lock.swap(true, Ordering::Acquire) {
             // if GLOBAL_SCHEDULER.is_initialized() {
             //     unsafe {
@@ -42,14 +52,17 @@ impl<T> Mutex<T> {
             // }
             threading::yield_now();
         }
-        MutexGuard { inner: self }
+        MutexGuard { inner: self, gkl }
     }
 
     pub fn try_lock(&self) -> Result<MutexGuard<'_, T>, MutexError> {
+        let Ok(gkl) = GKL.try_lock() else {
+            return Err(MutexError::IsLocked);
+        };
         if self.lock.swap(true, Ordering::Acquire) {
             Err(MutexError::IsLocked)
         } else {
-            Ok(MutexGuard { inner: self })
+            Ok(MutexGuard { inner: self, gkl })
         }
     }
 
@@ -99,6 +112,7 @@ impl<T> From<T> for Mutex<T> {
 
 pub struct MutexGuard<'a, T> {
     inner: &'a Mutex<T>,
+    gkl: GklGuard<'a>,
 }
 
 unsafe impl<T: Send> Send for MutexGuard<'_, T> {}

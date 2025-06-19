@@ -1,3 +1,5 @@
+use core::sync::atomic::{AtomicU64, Ordering};
+
 use super::{
     ProcessEntry, ThreadingError,
     task::{SimpleTask, Task, TaskBuilder, TaskID, TaskPtr, TaskRepr},
@@ -9,7 +11,10 @@ use crate::{
         mem::VirtAddr,
     },
     kernel::threading::task::Uninit,
-    locks::thread_safe::{Mutex, MutexGuard, RwLock},
+    locks::{
+        GKL,
+        thread_safe::{Mutex, MutexGuard, RwLock},
+    },
     serial_println,
 };
 use alloc::{string::String, sync::Arc};
@@ -57,6 +62,8 @@ pub type GlobalTaskPtr = TaskPtr<GlobalTask>;
 
 pub static GLOBAL_SCHEDULER: OnceCell<Mutex<GlobalScheduler>> = OnceCell::uninit();
 
+static CURRENT_PID: AtomicU64 = AtomicU64::new(0);
+
 pub fn init() {
     _ = GLOBAL_SCHEDULER.try_init_once(|| Mutex::new(GlobalScheduler::new()));
 }
@@ -93,6 +100,14 @@ where
     })
 }
 
+pub fn current_pid() -> u64 {
+    CURRENT_PID.load(Ordering::Acquire)
+}
+
+pub fn set_current_pid(v: u64) {
+    CURRENT_PID.store(v, Ordering::Release);
+}
+
 pub fn with_current_task<F, R>(f: F) -> Option<R>
 where
     F: FnOnce(GlobalTaskPtr) -> R,
@@ -118,6 +133,10 @@ pub unsafe extern "C" fn context_switch_local(rsp: u64) {
     //
     // further allocations during context_switch/ in interrupt free ctx may lead to deadlocks/double faults
     // need to fix/ find workaround
+    if GKL.is_locked() {
+        return;
+    }
+    assert!(!GKL.is_locked());
     if let Ok(mut lock) = GLOBAL_SCHEDULER.get().unwrap().try_lock() {
         if let Some(current) = lock.current_mut() {
             // #[cfg(not(feature = "test_run"))]
