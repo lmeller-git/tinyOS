@@ -77,7 +77,6 @@ impl TTYSink for FbBackend {
             all_bytes.push(byte);
         }
         let out = str::from_utf8(&all_bytes).unwrap();
-        arch::_serial_print(format_args!("{}", out));
         _print(format_args!("{}", out));
     }
 }

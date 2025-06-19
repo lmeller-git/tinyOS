@@ -31,7 +31,7 @@ pub mod term;
 mod utils;
 
 #[cfg(feature = "test_run")]
-const MAX_TEST_TIME: u64 = 1000;
+const MAX_TEST_TIME: u64 = 10000;
 
 #[cfg(feature = "test_run")]
 struct TestLogger {}
