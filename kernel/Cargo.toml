@@ -14,6 +14,7 @@ members = [
 [features]
 default = []
 test_run = []
+gkl = []
 
 [dependencies]
 limine = "0.5"

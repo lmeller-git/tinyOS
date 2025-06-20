@@ -27,6 +27,8 @@ impl Gkl {
     }
 
     pub fn lock(&self) -> GklGuard {
+        #[cfg(not(feature = "gkl"))]
+        return GklGuard { inner: self };
         loop {
             if let Ok(guard) = self.try_lock() {
                 return guard;
@@ -38,6 +40,8 @@ impl Gkl {
     }
 
     pub fn try_lock(&self) -> Result<GklGuard, GklErr> {
+        #[cfg(not(feature = "gkl"))]
+        return Ok(GklGuard { inner: self });
         if self.lock.swap(true, Ordering::Acquire) {
             let pid = self.currently_held.load(Ordering::Acquire);
             if pid == current_pid() {
@@ -54,6 +58,8 @@ impl Gkl {
     }
 
     pub fn unlock(&self) {
+        #[cfg(not(feature = "gkl"))]
+        return;
         let count = self.count.fetch_sub(1, Ordering::Release);
         // as the value pre sub is fetch, need to check if it WAS 1
         if count == 1 {

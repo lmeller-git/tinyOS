@@ -1,5 +1,9 @@
 use core::{
+    array,
     cell::UnsafeCell,
+    fmt::Debug,
+    mem::MaybeUninit,
+    ptr,
     sync::atomic::{AtomicUsize, Ordering},
     usize,
 };
@@ -10,25 +14,29 @@ use crate::{kernel::threading, serial_println};
 //TODO use my thread safe mutex, however this currently does not work due to gkl policy
 use spin::Mutex;
 
-pub struct ChunkedArrayQueue<const N: usize> {
+pub struct ChunkedArrayQueue<const N: usize, T>
+where
+    T: Copy,
+{
     /// this queue assumes n producers and 1 consumer
+    /// currently T must be Copy to allow safely copying it into the buffer from &[T]. Might get changed later
     head: AtomicUsize, // consumer
-    tail: AtomicUsize, // producer
+    tail: AtomicUsize, // producers
     lock: Mutex<()>,
-    buffer: UnsafeCell<[u8; N]>,
+    buffer: UnsafeCell<[MaybeUninit<T>; N]>,
 }
 
-impl<const N: usize> ChunkedArrayQueue<N> {
+impl<const N: usize, T: Copy> ChunkedArrayQueue<N, T> {
     pub fn new() -> Self {
         Self {
             head: AtomicUsize::new(0),
             tail: AtomicUsize::new(0),
             lock: Mutex::new(()),
-            buffer: UnsafeCell::new([0; N]),
+            buffer: UnsafeCell::new(array::from_fn(|_| MaybeUninit::uninit())),
         }
     }
 
-    pub fn push(&self, chunk: &[u8]) {
+    pub fn push(&self, chunk: &[T]) {
         while self.lock.is_locked() {
             threading::yield_now();
         }
@@ -52,7 +60,7 @@ impl<const N: usize> ChunkedArrayQueue<N> {
         self.tail.load(Ordering::Acquire) % N
     }
 
-    fn push_locked(&self, chunk: &[u8]) {
+    fn push_locked(&self, chunk: &[T]) {
         let lock = self.lock.lock();
         for chunk in chunk.chunks(N) {
             loop {
@@ -63,7 +71,7 @@ impl<const N: usize> ChunkedArrayQueue<N> {
         }
     }
 
-    pub fn read(&self, buf: &mut [u8]) -> Result<usize, QueueErr> {
+    pub fn read(&self, buf: &mut [T]) -> Result<usize, QueueErr> {
         let current_tail = self.tail.load(Ordering::Acquire);
         let current_head = self.head.load(Ordering::Acquire);
 
@@ -80,13 +88,34 @@ impl<const N: usize> ChunkedArrayQueue<N> {
 
         let buffer = unsafe { self.get_buf() };
 
+        // SAFETY: buffer can only be mutated thorugh push and if push is sound, all copied data must be initialized
+        // n_read is <= min (buf.len(), buffer.len())
         if tail_idx <= head_idx && next_head_idx <= tail_idx {
             // need to wrap around
             let first_n = N - head_idx;
-            buf[..first_n].copy_from_slice(&buffer[head_idx..]);
-            buf[first_n..n_read].copy_from_slice(&buffer[..next_head_idx]);
+
+            unsafe {
+                ptr::copy_nonoverlapping(
+                    buffer[head_idx..].as_ptr() as *const T,
+                    buf[..first_n].as_mut_ptr(),
+                    first_n,
+                );
+            }
+            unsafe {
+                ptr::copy_nonoverlapping(
+                    buffer[..next_head_idx].as_ptr() as *const T,
+                    buf[first_n..n_read].as_mut_ptr(),
+                    n_read - first_n,
+                );
+            }
         } else {
-            buf[..n_read].copy_from_slice(&buffer[head_idx..tail_idx])
+            unsafe {
+                ptr::copy_nonoverlapping(
+                    buffer[head_idx..tail_idx].as_ptr() as *const T,
+                    buf[..n_read].as_mut_ptr(),
+                    n_read,
+                );
+            }
         }
         if self.head.swap(current_head + n_read, Ordering::Release) != current_head {
             panic!("mpsc ChunkedArrayQueue was used with multiple consumers");
@@ -94,47 +123,14 @@ impl<const N: usize> ChunkedArrayQueue<N> {
         Ok(n_read)
     }
 
-    pub fn peek_chunk(&self) -> &[u8] {
-        /// reads from head..tail without wrapping
-        let current_tail = self.tail.load(Ordering::Acquire);
-        let current_head = self.head.load(Ordering::Acquire);
-
-        if current_head == current_tail {
-            return &[];
-        }
-
-        let tail_idx = Self::to_idx(current_tail);
-        let head_idx = Self::to_idx(current_head);
-
-        let buffer = unsafe { self.get_buf() };
-        if tail_idx <= head_idx {
-            &buffer[head_idx..]
-        } else {
-            &buffer[head_idx..tail_idx]
-        }
-    }
-
-    pub fn use_chunk(&self, size: usize) -> Result<(), QueueErr> {
-        /// commits a chunk (likely from peek_chunk) as having been used
-        /// here we assume a single consumer
-        let head = self.head.load(Ordering::Acquire);
-        let tail = self.tail.load(Ordering::Acquire);
-
-        if size >= N || head + size > tail {
-            return Err(QueueErr::InvalidCommit);
-        }
-        self.head.fetch_add(size, Ordering::Release);
-        Ok(())
-    }
-
-    pub fn try_push(&self, chunk: &[u8]) -> Result<(), QueueErr> {
+    pub fn try_push(&self, chunk: &[T]) -> Result<(), QueueErr> {
         if self.lock.is_locked() {
             return Err(QueueErr::IsLocked);
         }
         self._try_push_internal(chunk)
     }
 
-    pub fn _try_push_internal(&self, chunk: &[u8]) -> Result<(), QueueErr> {
+    pub fn _try_push_internal(&self, chunk: &[T]) -> Result<(), QueueErr> {
         assert!(self.tail.load(Ordering::Acquire) <= usize::MAX - chunk.len());
         if chunk.is_empty() {
             return Ok(());
@@ -146,8 +142,8 @@ impl<const N: usize> ChunkedArrayQueue<N> {
             .tail
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |mut tail| {
                 tail += chunk.len();
-                if (tail - self.head.load(Ordering::Acquire)) > N {
-                    // could probably use Relaxed here, as it does not matter if head is increased in the meantime
+                if (tail - self.head.load(Ordering::Relaxed)) > N {
+                    // Relaxed should be fine here, as it does not matter if head is increased in the meantime
                     return None;
                 }
                 Some(tail)
@@ -159,14 +155,33 @@ impl<const N: usize> ChunkedArrayQueue<N> {
 
         let mut buffer = unsafe { self.get_mut_buf() };
 
+        // SAFETY: we copy <= chunk.len() Ts into buffer with chunk.len() <= buffer.len()
         if end <= start {
             let first_part = N - start;
             // end part
-            buffer[start..N].copy_from_slice(&chunk[..first_part]);
-            buffer[..end].copy_from_slice(&chunk[first_part..]);
+            unsafe {
+                ptr::copy_nonoverlapping(
+                    chunk[..first_part].as_ptr(),
+                    buffer[start..N].as_mut_ptr() as *mut T,
+                    first_part,
+                );
+            }
+            unsafe {
+                ptr::copy_nonoverlapping(
+                    chunk[first_part..].as_ptr(),
+                    buffer[..end].as_mut_ptr() as *mut T,
+                    chunk.len() - first_part,
+                );
+            }
         } else {
             // no wraparound
-            buffer[start..end].copy_from_slice(chunk);
+            unsafe {
+                ptr::copy_nonoverlapping(
+                    chunk.as_ptr(),
+                    buffer[start..end].as_mut_ptr() as *mut T,
+                    chunk.len(),
+                );
+            }
         }
         Ok(())
     }
@@ -175,11 +190,11 @@ impl<const N: usize> ChunkedArrayQueue<N> {
         val % N
     }
 
-    unsafe fn get_buf(&self) -> &[u8] {
+    unsafe fn get_buf(&self) -> &[MaybeUninit<T>] {
         unsafe { &*self.buffer.get() }
     }
 
-    unsafe fn get_mut_buf(&self) -> &mut [u8] {
+    unsafe fn get_mut_buf(&self) -> &mut [MaybeUninit<T>] {
         unsafe { &mut *self.buffer.get() }
     }
 
@@ -201,8 +216,24 @@ impl<const N: usize> ChunkedArrayQueue<N> {
     }
 }
 
-unsafe impl<const N: usize> Sync for ChunkedArrayQueue<N> {}
-unsafe impl<const N: usize> Send for ChunkedArrayQueue<N> {}
+unsafe impl<const N: usize, T: Copy> Sync for ChunkedArrayQueue<N, T> {}
+unsafe impl<const N: usize, T: Copy> Send for ChunkedArrayQueue<N, T> {}
+
+impl<const N: usize, T: Copy + Debug> Debug for ChunkedArrayQueue<N, T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "ChunkedArrayQueue {{lock:{:#?}\tbuffer: {:#?}\tcap: {}}}",
+            self.lock, self.buffer, N
+        )
+    }
+}
+
+impl<const N: usize, T: Copy> Default for ChunkedArrayQueue<N, T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QueueErr {
@@ -220,13 +251,11 @@ mod tests {
 
     #[kernel_test]
     fn spsc() {
-        let queue: ChunkedArrayQueue<10> = ChunkedArrayQueue::new();
+        let queue: ChunkedArrayQueue<10, u8> = ChunkedArrayQueue::new();
 
         assert!(queue.try_push(&[0; 11]).is_err());
         assert!(queue.try_push(&[42, 42]).is_ok());
-        assert_eq!(*queue.peek_chunk(), [42, 42]);
         assert!(queue.try_push(&[42; 9]).is_err());
-
         queue.push(&[42; 4]);
         let mut buffer = [0; 10];
         assert_eq!(queue.read(&mut buffer).unwrap(), 6);
@@ -246,7 +275,7 @@ mod tests {
 
     #[kernel_test]
     fn mpsc() {
-        let queue: Arc<ChunkedArrayQueue<10>> = Arc::new(ChunkedArrayQueue::new());
+        let queue: Arc<ChunkedArrayQueue<10, u8>> = Arc::new(ChunkedArrayQueue::new());
 
         let handle1 = {
             let queue = queue.clone();

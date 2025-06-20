@@ -36,18 +36,9 @@ pub enum SerialErr {
 }
 
 #[doc(hidden)]
-pub fn _raw_print(args: Arguments) {
-    //TODO
-    // assert!(SERIAL1.try_lock().is_ok());
-    _ = _try_print(args);
-    return;
-    use core::fmt::Write;
-    assert!(!interrupt::are_enabled());
-    if let Ok(mut s) = SERIAL1.try_lock() {
-        s.write_fmt(args).expect("Printing to serial failed")
-    } else {
-        unsafe { SERIAL1.force_unlock() }
-        _print(args);
-        unsafe { SERIAL1.force_lock() }
+pub fn _raw_print(slice: &[u8]) {
+    let mut lock = SERIAL1.lock();
+    for byte in slice {
+        lock.send(*byte);
     }
 }

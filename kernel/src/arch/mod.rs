@@ -52,9 +52,9 @@ pub fn _serial_print(args: Arguments) {
 }
 
 #[doc(hidden)]
-pub fn _raw_serial_print(args: Arguments) {
+pub fn _raw_serial_print(slice: &[u8]) {
     #[cfg(target_arch = "x86_64")]
-    x86::serial::_raw_print(args);
+    x86::serial::_raw_print(slice);
     #[cfg(not(any(target_arch = "x86_64")))]
     compile_error!("arch not supported")
 }
