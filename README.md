@@ -32,6 +32,8 @@ Running `make run-hdd` will build the kernel and a raw HDD image (equivalent to 
 
 Running `make test` will build the kernel with test_run features and run the tests
 
+Running `make debug-test` or `make debug` will run the kernel with -s -S -d int,guest_errors qemu flags and are intended for use with a debugger
+
 ### Makefile Variables
 
 qemu flags can be passed via QEMUFLAGS  
