@@ -1,6 +1,15 @@
 #![no_std]
 #![no_main]
-
+#![allow(
+    unused_imports,
+    unreachable_code,
+    unsafe_op_in_unsafe_fn,
+    dead_code,
+    unused_doc_comments,
+    unused_must_use,
+    unused_variables,
+    private_interfaces
+)]
 extern crate tiny_os;
 
 use core::arch::global_asm;

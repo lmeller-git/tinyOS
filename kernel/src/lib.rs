@@ -1,7 +1,17 @@
 #![no_std]
 #![feature(abi_x86_interrupt)]
 #![feature(result_flattening)]
-#![allow(unused_imports, unreachable_code, unsafe_op_in_unsafe_fn)]
+#![feature(lazy_type_alias)]
+#![allow(
+    unused_imports,
+    unreachable_code,
+    unsafe_op_in_unsafe_fn,
+    dead_code,
+    unused_doc_comments,
+    unused_must_use,
+    unused_variables,
+    private_interfaces
+)]
 pub extern crate alloc;
 
 #[cfg(feature = "test_run")]

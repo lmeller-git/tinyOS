@@ -7,6 +7,15 @@ use super::threading::schedule::current_task;
 
 pub mod tty;
 
+// TODO rewrite using cgp from start
+//
+// currently:
+// Visitor:
+// FdEntry<T> implements Attacheable or CompositeAttacheable, which gets called by Taskdevices::attach/attach_composite
+//
+// want:
+// FdEntry<T> has method attach, which calls the method of its cgpprovider
+
 #[derive(Debug)]
 pub struct TaskDevices {
     // could use HashMap instead for sparse FdEntryTypes

@@ -1,5 +1,6 @@
 use super::{ProcessEntry, ThreadingError, schedule::TaskPtr_};
 use crate::{
+    add_device,
     arch::{
         context::{
             KTaskInfo, TaskCtx, UsrTaskInfo, allocate_kstack, allocate_userkstack,
@@ -9,7 +10,9 @@ use crate::{
         mem::{Cr3Flags, PhysFrame, Size4KiB, VirtAddr},
     },
     kernel::{
-        devices::TaskDevices, mem::paging::create_new_pagedir, threading::trampoline::TaskExitInfo,
+        devices::{Attacheable, CompositeAttacheable, FdEntry, FdTag, TaskDevices},
+        mem::paging::create_new_pagedir,
+        threading::trampoline::TaskExitInfo,
     },
     locks::thread_safe::{RwLockReadGuard, RwLockWriteGuard},
     serial_println,
@@ -262,6 +265,14 @@ impl<S> TaskBuilder<SimpleTask, S> {
 
     pub fn with_exit_info(mut self, exit_info: TaskExitInfo) -> TaskBuilder<SimpleTask, S> {
         *self.inner.get_mut_exit_info() = exit_info;
+        self
+    }
+
+    pub fn with_device<T>(mut self, device: FdEntry<T>) -> TaskBuilder<SimpleTask, S>
+    where
+        T: FdTag,
+    {
+        // add_device!(self.inner.get_devices_mut(), device);
         self
     }
 }
