@@ -21,7 +21,8 @@ where
     /// this queue assumes n producers and 1 consumer
     /// currently T must be Copy to allow safely copying it into the buffer from &[T]. Might get changed later
     head: AtomicUsize, // consumer
-    tail: AtomicUsize, // producers
+    tail: AtomicUsize,            // producers
+    reservated_tail: AtomicUsize, // producers
     lock: Mutex<()>,
     buffer: UnsafeCell<[MaybeUninit<T>; N]>,
 }
@@ -31,6 +32,7 @@ impl<const N: usize, T: Copy> ChunkedArrayQueue<N, T> {
         Self {
             head: AtomicUsize::new(0),
             tail: AtomicUsize::new(0),
+            reservated_tail: AtomicUsize::new(0),
             lock: Mutex::new(()),
             buffer: UnsafeCell::new(array::from_fn(|_| MaybeUninit::uninit())),
         }
@@ -131,6 +133,7 @@ impl<const N: usize, T: Copy> ChunkedArrayQueue<N, T> {
     }
 
     pub fn _try_push_internal(&self, chunk: &[T]) -> Result<(), QueueErr> {
+        /// tries to push data and update tail. !This method (and thus all methods depending on it) may block / yield if another queue has reserved a slot beforehand and we must wait for it to update tail!
         assert!(self.tail.load(Ordering::Acquire) <= usize::MAX - chunk.len());
         if chunk.is_empty() {
             return Ok(());
@@ -138,8 +141,9 @@ impl<const N: usize, T: Copy> ChunkedArrayQueue<N, T> {
         if chunk.len() > N {
             return Err(QueueErr::SliceToLarge);
         }
+
         let old_tail = self
-            .tail
+            .reservated_tail
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |mut tail| {
                 tail += chunk.len();
                 if (tail - self.head.load(Ordering::Relaxed)) > N {
@@ -150,8 +154,10 @@ impl<const N: usize, T: Copy> ChunkedArrayQueue<N, T> {
             })
             .map_err(|_| QueueErr::IsFull)?;
 
+        // space is reserved and we do have enough space
+        // can now copy data
         let start = Self::to_idx(old_tail);
-        let end = Self::to_idx(start + chunk.len());
+        let end = Self::to_idx(old_tail + chunk.len());
 
         let mut buffer = unsafe { self.get_mut_buf() };
 
@@ -183,6 +189,23 @@ impl<const N: usize, T: Copy> ChunkedArrayQueue<N, T> {
                 );
             }
         }
+
+        // data is now copied and we must wait to update tail to reserved_tail + chunk.len()
+        // another thread may be copying data in earlier slots and will update tail when it is done
+        // this is necessary to ensure correctness of read()
+        while self
+            .tail
+            .compare_exchange(
+                old_tail,
+                old_tail + chunk.len(),
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .is_err()
+        {
+            threading::yield_now();
+        }
+
         Ok(())
     }
 

@@ -22,12 +22,14 @@ pub fn init_tty_sinks() {
 #[derive(Debug)]
 pub struct SerialBackend {
     buffer: ChunkedArrayQueue<50, u8>,
+    read_lock: Mutex<()>,
 }
 
 impl SerialBackend {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             buffer: ChunkedArrayQueue::new(),
+            read_lock: Mutex::new(()),
         })
     }
 }
@@ -40,21 +42,27 @@ impl TTYSink for SerialBackend {
 
     fn flush(&self) {
         let mut buf = [0; 50];
-        if let Ok(n) = self.buffer.read(&mut buf) {
-            arch::_raw_serial_print(&buf[..n]);
-        }
+        let lock = self.read_lock.lock();
+        let Ok(n) = self.buffer.read(&mut buf) else {
+            //TODO: handle
+            panic!("cannot handle buf read err")
+        };
+        drop(lock);
+        arch::_raw_serial_print(&buf[..n]);
     }
 }
 
 #[derive(Debug)]
 pub struct FbBackend {
     buffer: ChunkedArrayQueue<50, u8>,
+    read_lock: Mutex<()>,
 }
 
 impl FbBackend {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             buffer: ChunkedArrayQueue::new(),
+            read_lock: Mutex::new(()),
         })
     }
 }
@@ -67,10 +75,14 @@ impl TTYSink for FbBackend {
 
     fn flush(&self) {
         let mut buf = [0; 50];
-        if let Ok(n) = self.buffer.read(&mut buf) {
-            if let Ok(out) = str::from_utf8(&buf[..n]) {
-                _print(format_args!("{}", out));
-            }
+        let lock = self.read_lock.lock();
+        let Ok(n) = self.buffer.read(&mut buf) else {
+            //TODO: handle
+            panic!("Cannot handle buf read err")
+        };
+        drop(lock);
+        if let Ok(out) = str::from_utf8(&buf[..n]) {
+            _print(format_args!("{}", out));
         }
     }
 }
