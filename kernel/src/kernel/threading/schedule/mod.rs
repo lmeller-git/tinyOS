@@ -13,7 +13,7 @@ use crate::{
     kernel::threading::task::Uninit,
     locks::{
         GKL,
-        thread_safe::{Mutex, MutexGuard, RwLock},
+        reentrant::{Mutex, MutexGuard, RwLock},
     },
     serial_println,
 };
@@ -133,10 +133,23 @@ pub unsafe extern "C" fn context_switch_local(rsp: u64) {
     //
     // further allocations during context_switch/ in interrupt free ctx may lead to deadlocks/double faults
     // need to fix/ find workaround
+
+    // GKL (in particular sched + the current running task) need to be completely unlocked, as even reentrancy would lead to deadlock
+    // (task n holds lock to itself -> switch -> goes through due to reentrancy -> task n+1 runs -> switch -> we try to lock. But does not work as lock is still held by task n -> repeat)
     if GKL.is_locked() {
         return;
     }
-    assert!(!GKL.is_locked());
+    #[cfg(not(feature = "gkl"))]
+    {
+        let Ok(sched) = GLOBAL_SCHEDULER.get().unwrap().try_lock() else {
+            return;
+        };
+        if let Some(task) = sched.current() {
+            if task.raw().try_read().is_err() || task.raw().try_write().is_err() {
+                return;
+            }
+        }
+    }
     if let Ok(mut lock) = GLOBAL_SCHEDULER.get().unwrap().try_lock() {
         if let Some(current) = lock.current_mut() {
             // #[cfg(not(feature = "test_run"))]
@@ -147,19 +160,22 @@ pub unsafe extern "C" fn context_switch_local(rsp: u64) {
             // );
             //
             // serial_println!("hello");
-            if current.raw().try_write().is_err() {
+            let Ok(mut current) = current.raw().try_write() else {
                 return;
-            }
-            current.write_inner().krsp = VirtAddr::new(rsp);
+            };
+            current.krsp = VirtAddr::new(rsp);
         }
         if let Some(new) = lock.switch() {
             // #[cfg(not(feature = "test_run"))]
             // serial_println!("new task, {:#?}", new);
             // serial_println!("hello 2");
             // unsafe { GLOBAL_SCHEDULER.get_unchecked().force_unlock() };
-            let guard = new.raw().read();
+            let Ok(guard) = new.raw().try_read() else {
+                panic!("task we wanted to switch to is write locked");
+            };
             // let task: *const GlobalTask = &*guard as *const _;
             let task = TaskState::from_task(&*guard);
+            set_current_pid(guard.pid.get_inner());
             drop(guard);
             drop(new);
             drop(lock);

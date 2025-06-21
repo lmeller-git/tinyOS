@@ -14,7 +14,7 @@ use crate::{
         mem::paging::create_new_pagedir,
         threading::trampoline::TaskExitInfo,
     },
-    locks::thread_safe::{RwLockReadGuard, RwLockWriteGuard},
+    locks::reentrant::{RwLockReadGuard, RwLockWriteGuard},
     serial_println,
 };
 use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
@@ -492,8 +492,15 @@ pub struct TaskID {
     inner: u64,
 }
 
+impl TaskID {
+    pub fn get_inner(&self) -> u64 {
+        self.inner
+    }
+}
+
 pub fn get_pid() -> TaskID {
-    static CURRENT_PID: AtomicU64 = AtomicU64::new(0);
+    // PIDs start at 1 since locks use 0 as default value for "held by thread x"
+    static CURRENT_PID: AtomicU64 = AtomicU64::new(1);
     let current = CURRENT_PID.fetch_add(1, Ordering::Relaxed);
     TaskID { inner: current }
 }
