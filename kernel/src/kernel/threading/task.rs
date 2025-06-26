@@ -271,8 +271,14 @@ impl<S> TaskBuilder<SimpleTask, S> {
     pub fn with_device<T>(mut self, device: FdEntry<T>) -> TaskBuilder<SimpleTask, S>
     where
         T: FdTag,
+        FdEntry<T>: Attacheable,
     {
-        // add_device!(self.inner.get_devices_mut(), device);
+        self.inner.get_devices_mut().attach(device);
+        self
+    }
+
+    pub fn with_default_devices(mut self) -> TaskBuilder<SimpleTask, S> {
+        self.inner.devices = self.inner.devices.add_default();
         self
     }
 }

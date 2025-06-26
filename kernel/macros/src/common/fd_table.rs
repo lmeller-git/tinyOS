@@ -58,6 +58,12 @@ pub fn derive_composite_fd_tag(attr: CompositeTagAttrs, input: ItemStruct) -> To
                 #(#attach_impls)*
             }
         }
+
+        impl Attacheable for FdEntry<#struct_name> {
+            fn attach_to(self, devices: &mut TaskDevices) {
+                self.attach_all(devices)
+            }
+        }
     };
 
     let from_impls = attr.traits.iter().map(|trait_bound| {

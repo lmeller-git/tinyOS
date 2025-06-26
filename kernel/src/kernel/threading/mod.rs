@@ -155,6 +155,7 @@ pub fn spawn_fn(
     let raw = handle.inner.clone();
     let task: GlobalTaskPtr = TaskBuilder::from_fn(func)?
         .with_args(args)
+        .with_default_devices()
         .as_kernel()?
         .with_exit_info(TaskExitInfo::new_with_default_trampoline(
             move |v: usize| {

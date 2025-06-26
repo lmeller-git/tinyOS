@@ -1,5 +1,5 @@
 use alloc::{sync::Arc, vec::Vec};
-use core::{array, fmt::Debug, marker::PhantomData};
+use core::{array, fmt::Debug, marker::PhantomData, sync::atomic::AtomicPtr};
 use os_macros::{FDTable, fd_composite_tag};
 use tty::{TTYBuilder, TTYSink, TTYSource};
 
@@ -38,11 +38,10 @@ impl TaskDevices {
     }
 
     pub fn new() -> Self {
-        // init default should likely be split out here
-        Self::empty().init_default()
+        Self::empty()
     }
 
-    pub fn init_default(mut self) -> Self {
+    pub fn add_default(mut self) -> Self {
         let sink: FdEntry<SinkTag> = DeviceBuilder::tty().fb();
         self.attach_composite(sink);
         let input: FdEntry<StdInTag> = DeviceBuilder::tty().keyboard();
@@ -172,7 +171,7 @@ pub fn foo() {
     devices.attach(keyboard_entry);
 
     let serial: FdEntry<SinkTag> = DeviceBuilder::tty().serial();
-    devices.attach_composite(serial);
+    devices.attach(serial);
 
     let fb: FdEntry<StdInTag> = DeviceBuilder::tty().fb();
     devices.attach(fb);

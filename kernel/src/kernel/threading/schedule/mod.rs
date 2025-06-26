@@ -209,6 +209,7 @@ pub fn add_named_ktask(func: ProcessEntry, name: String) -> Result<(), Threading
     // serial_println!("spawning task {} at {:#x}", name, func as usize);
     let task = TaskBuilder::from_fn(func)?
         .with_name(name)
+        .with_default_devices()
         .as_kernel()?
         .build();
     // serial_println!("task built");
@@ -218,7 +219,10 @@ pub fn add_named_ktask(func: ProcessEntry, name: String) -> Result<(), Threading
 
 pub fn add_ktask(func: ProcessEntry) -> Result<(), ThreadingError> {
     serial_println!("spawning task {:#x}", func as usize);
-    let task = TaskBuilder::from_fn(func)?.as_kernel()?.build();
+    let task = TaskBuilder::from_fn(func)?
+        .with_default_devices()
+        .as_kernel()?
+        .build();
     serial_println!("task built");
     add_built_task(task);
     Ok(())
@@ -226,7 +230,9 @@ pub fn add_ktask(func: ProcessEntry) -> Result<(), ThreadingError> {
 
 pub fn add_named_usr_task(func: ProcessEntry, name: String) -> Result<(), ThreadingError> {
     serial_println!("spawning user task {} at {:#x}", name, func as usize);
-    let task = TaskBuilder::from_fn(func)?.with_name(name);
+    let task = TaskBuilder::from_fn(func)?
+        .with_name(name)
+        .with_default_devices();
     serial_println!("task created");
     let task = task.as_usr()?;
     serial_println!("task setup");
@@ -244,7 +250,7 @@ pub unsafe fn add_named_usr_task_from_addr(
     serial_println!("spawning user task {} at {:#x}", name, addr);
     let task: TaskBuilder<SimpleTask, crate::kernel::threading::task::Init> =
         TaskBuilder::<SimpleTask, Uninit>::from_addr(addr)?;
-    let task = task.with_name(name);
+    let task = task.with_name(name).with_default_devices();
     serial_println!("task created");
     let task = task.as_usr()?;
     serial_println!("task setup");
