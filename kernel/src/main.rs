@@ -10,6 +10,7 @@
     unused_variables,
     private_interfaces
 )]
+#![feature(abi_x86_interrupt)]
 extern crate tiny_os;
 
 use core::arch::global_asm;
