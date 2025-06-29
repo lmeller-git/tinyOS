@@ -44,7 +44,6 @@ pub trait TaskRepr: Debug {
 pub struct SimpleTask {
     pub krsp: VirtAddr,
     pub frame_flags: Cr3Flags,
-    // pub ktop: VirtAddr,
     pub parent: Option<TaskID>,
     pub root_frame: PhysFrame<Size4KiB>,
     pub pid: TaskID,
@@ -57,12 +56,10 @@ pub struct SimpleTask {
 
 impl SimpleTask {
     fn new() -> Result<Self, ThreadingError> {
-        // let stack_top = allocate_kstack()?;
         let (tbl, flags) = current_page_tbl();
         Ok(Self {
             krsp: VirtAddr::zero(),
             frame_flags: flags,
-            // ktop: stack_top,
             parent: None,
             root_frame: tbl,
             pid: get_pid(),

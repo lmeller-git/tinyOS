@@ -3,8 +3,6 @@ use core::{array, fmt::Debug, marker::PhantomData, sync::atomic::AtomicPtr};
 use os_macros::{FDTable, fd_composite_tag};
 use tty::{TTYBuilder, TTYSink, TTYSource};
 
-use super::threading::schedule::current_task;
-
 pub mod tty;
 
 // TODO rewrite using cgp from start
@@ -185,7 +183,7 @@ pub fn with_current_device_list<F, R>(f: F) -> Option<R>
 where
     F: FnOnce(&TaskDevices) -> R,
 {
-    let binding = current_task().ok()?;
+    let binding = crate::kernel::threading::schedule::current_task().ok()?;
     let tasks = &binding.read_inner().devices;
     Some(f(tasks))
 }
@@ -198,6 +196,31 @@ macro_rules! add_device {
 #[macro_export]
 macro_rules! set_device {
     () => {};
+}
+
+#[macro_export]
+macro_rules! get_device {
+    // get device and use it
+    ($device_type:expr, $device:pat => $body:block) => {
+        crate::kernel::devices::with_current_device_list(|devices| {
+            if let Some(devices) = devices.get($device_type) {
+                let $device = devices else { unreachable!() };
+                $body
+            }
+        })
+    };
+
+    // get device with fallback if no device available
+    ($device_type:expr, $device:pat => $body:block | $fallback:block) => {
+        crate::kernel::devices::with_current_device_list(|devices| {
+            if let Some(devices) = devices.get($device_type) {
+                let $device = devices else { unreachable!() };
+                $body
+            } else {
+                $fallback
+            }
+        })
+    };
 }
 
 mod tests {
