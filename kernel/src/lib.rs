@@ -21,9 +21,12 @@ use alloc::vec::Vec;
 use arch::hcf;
 #[cfg(feature = "test_run")]
 use core::panic::PanicInfo;
-use kernel::threading::task::{Arg, TaskRepr};
 #[cfg(feature = "test_run")]
 use kernel::threading::{self, JoinHandle, schedule::add_named_ktask, spawn_fn, yield_now};
+use kernel::{
+    devices::{DeviceBuilder, FdEntry, SinkTag},
+    threading::task::{Arg, TaskRepr},
+};
 use os_macros::{kernel_test, tests, with_default_args};
 use thiserror::Error;
 use tiny_os_common::testing::TestCase;
@@ -82,7 +85,7 @@ pub fn test_test_main() {
 }
 
 use kernel::threading::ProcessReturn;
-#[cfg(feature = "test_run")]
+// #[cfg(feature = "test_run")]
 #[with_default_args]
 extern "C" fn kernel_test_runner() -> ProcessReturn {
     use arch::interrupt::handlers::current_tick;
@@ -96,7 +99,21 @@ extern "C" fn kernel_test_runner() -> ProcessReturn {
         let dots = ".".repeat(max_len - test.name().len() + 3);
         serial_print!("{}{} ", test.name(), dots);
 
-        let handle = spawn_fn(test.func, args!()).expect("test spawn failed");
+        let handle = if test.config.verbose {
+            with_devices!(
+                |devices| {
+                    // let sink: FdEntry<SinkTag> = DeviceBuilder::tty().serial();
+                    let sink2: FdEntry<SinkTag> = DeviceBuilder::tty().fb();
+                    // devices.attach(sink);
+                    devices.attach(sink2);
+                },
+                || { spawn_fn(test.func, args!()).expect("test spawn failed") }
+            )
+        } else {
+            with_devices!(|| { spawn_fn(test.func, args!()).expect("test spawn failed") })
+        }
+        .unwrap();
+
         let start_time = current_tick();
         match handle.wait_while(|handle| {
             let now = current_tick();

@@ -1,7 +1,10 @@
-use alloc::{sync::Arc, vec::Vec};
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
+use conquer_once::spin::OnceCell;
 use core::{array, fmt::Debug, marker::PhantomData, sync::atomic::AtomicPtr};
 use os_macros::{FDTable, fd_composite_tag};
 use tty::{TTYBuilder, TTYSink, TTYSource};
+
+use crate::locks::reentrant::Mutex;
 
 pub mod tty;
 
@@ -13,6 +16,8 @@ pub mod tty;
 //
 // want:
 // FdEntry<T> has method attach, which calls the method of its cgpprovider
+
+static DEFAULT_DEVICES: OnceCell<Mutex<Box<dyn Fn(&mut TaskDevices)>>> = OnceCell::uninit();
 
 #[derive(Debug)]
 pub struct TaskDevices {
@@ -40,10 +45,8 @@ impl TaskDevices {
     }
 
     pub fn add_default(mut self) -> Self {
-        let sink: FdEntry<SinkTag> = DeviceBuilder::tty().fb();
-        self.attach_composite(sink);
-        let input: FdEntry<StdInTag> = DeviceBuilder::tty().keyboard();
-        self.attach(input);
+        let func = DEFAULT_DEVICES.get().unwrap().lock();
+        func(&mut self);
         self
     }
 
@@ -149,7 +152,7 @@ pub enum FdEntryType {
 }
 
 #[fd_composite_tag(DebugSink, StdErr, StdOut)]
-struct SinkTag;
+pub struct SinkTag;
 
 #[fd_composite_tag(StdErr, StdOut)]
 struct SinkTagCopy;
@@ -177,6 +180,22 @@ pub fn foo() {
 
 pub fn init() {
     tty::init();
+    init_default();
+}
+
+fn init_default() {
+    DEFAULT_DEVICES.init_once(|| {
+        Mutex::new(Box::new(|devices| {
+            let sink: FdEntry<SinkTag> = DeviceBuilder::tty().fb();
+            let source: FdEntry<StdInTag> = DeviceBuilder::tty().serial();
+            devices.attach(sink);
+            devices.attach(source);
+        }))
+    });
+}
+
+pub fn get_default_device_init() -> Option<&'static Mutex<Box<dyn Fn(&mut TaskDevices)>>> {
+    DEFAULT_DEVICES.get()
 }
 
 pub fn with_current_device_list<F, R>(f: F) -> Option<R>
@@ -186,6 +205,19 @@ where
     let binding = crate::kernel::threading::schedule::current_task().ok()?;
     let tasks = &binding.read_inner().devices;
     Some(f(tasks))
+}
+pub fn with_device_init<F, R>(init: Box<dyn Fn(&mut TaskDevices)>, f: F) -> Option<R>
+where
+    F: FnOnce() -> R,
+{
+    use core::mem;
+    let mut guard = get_default_device_init()?.lock();
+    let old = mem::replace(&mut *guard, init);
+
+    let r = f();
+
+    *guard = old;
+    Some(r)
 }
 
 #[macro_export]
@@ -220,6 +252,16 @@ macro_rules! get_device {
                 $fallback
             }
         })
+    };
+}
+
+#[macro_export]
+macro_rules! with_devices {
+    ($func:expr) => {
+        crate::kernel::devices::with_device_init(alloc::boxed::Box::new(|_| {}), $func)
+    };
+    ($init:expr, $func:expr) => {
+        crate::kernel::devices::with_device_init(alloc::boxed::Box::new($init), $func)
     };
 }
 

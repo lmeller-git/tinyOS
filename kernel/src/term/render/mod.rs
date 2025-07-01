@@ -526,7 +526,7 @@ mod tests {
     use crate::kernel::threading;
 
     use super::*;
-    #[kernel_test]
+    #[kernel_test(verbose)]
     fn print_to_buffer() {
         // SAFETY This is safe, as long it is not run parallely to some other functionality accessing FOOBAR / BAR, and init_term() was run in the same execution context
         use crate::{print, println};
@@ -593,7 +593,7 @@ mod tests {
         };
     }
 
-    #[kernel_test]
+    #[kernel_test(verbose)]
     fn buf_shifts() {
         // SAFETY This is safe, as long it is not run parallely to some other functionality accessing FOOBAR / BAR, and init_term() was run in the same execution context
         use crate::println;
