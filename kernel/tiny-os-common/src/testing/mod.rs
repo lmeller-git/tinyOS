@@ -1,4 +1,4 @@
-#[cfg(not(feature = "std"))]
+// #[cfg(not(feature = "std"))]
 pub mod kernel;
 
 pub trait TestCase {

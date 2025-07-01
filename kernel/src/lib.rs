@@ -85,7 +85,7 @@ pub fn test_test_main() {
 }
 
 use kernel::threading::ProcessReturn;
-// #[cfg(feature = "test_run")]
+#[cfg(feature = "test_run")]
 #[with_default_args]
 extern "C" fn kernel_test_runner() -> ProcessReturn {
     use arch::interrupt::handlers::current_tick;

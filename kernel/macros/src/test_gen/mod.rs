@@ -1,9 +1,12 @@
+use std::{env, fs, path::Path};
+
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, ToTokens};
+use serde::Deserialize;
 use syn::{
     parse::{Parse, Parser},
     token::Extern,
-    Ident, ItemFn, LitStr,
+    Expr, Ident, ItemFn, Lit, LitStr,
 };
 use tiny_os_common::testing::TestConfig;
 
@@ -152,6 +155,7 @@ pub fn kernel_test_handler(
         .parse(attr)
         .expect("malformed attrs");
     let config: TestConfigParser = attrs.into();
+    // let owned_config = &config.inner;
     let name = func.name.clone();
     let static_name = format_ident!("__STATIC_{}", name);
     let get_name_name = format_ident!("__GET_NAME_{}", name);
@@ -165,6 +169,8 @@ pub fn kernel_test_handler(
         #[allow(non_upper_case_globals)]
         const #get_name_name: &'static str = concat!(module_path!(), "::", stringify!(#name));
 
+        // this will generate all statics referenced by the TestConfig
+        // #owned_config
 
         #[cfg(feature = "test_run")]
         #[allow(non_upper_case_globals)]
@@ -184,18 +190,55 @@ struct TestConfigParser {
     inner: TestConfig,
 }
 
+// #[derive(Default, Deserialize)]
+// struct OwnedTestConfig {
+//     should_panic: bool,
+//     verbose: bool,
+//     devices: Vec<DeviceConfig>,
+// }
+
+// #[derive(Default, Deserialize)]
+// struct DeviceConfig {
+//     kind: String,
+//     tags: Vec<String>,
+// }
+
 impl From<syn::punctuated::Punctuated<syn::Meta, syn::Token![,]>> for TestConfigParser {
     fn from(value: syn::punctuated::Punctuated<syn::Meta, syn::Token![,]>) -> Self {
         let mut self_ = Self::default();
-        if value
-            .iter()
-            .any(|attr| attr.path().is_ident("should_panic"))
-        {
-            self_.inner.should_panic = true;
+        for attr in value.iter() {
+            match attr {
+                syn::Meta::Path(p) => match p {
+                    p if p.is_ident("should_panic") => self_.inner.should_panic = true,
+                    p if p.is_ident("verbose") => self_.inner.verbose = true,
+                    _ => panic!("option not supported"),
+                },
+                syn::Meta::NameValue(v) => match &v.path {
+                    p if p.is_ident("config") => {
+                        let Expr::Lit(syn::ExprLit {
+                            lit: Lit::Str(lit_str),
+                            ..
+                        }) = &v.value
+                        else {
+                            panic!("wrong value for config")
+                        };
+                        let config_str = if lit_str.value().ends_with(".toml") {
+                            let parent_path =
+                                env::var("CARGO_MANIFEST_DIR").expect("cargo manifest dir unset");
+                            let path = Path::new(&parent_path).join(lit_str.value());
+                            fs::read_to_string(path).expect("could not read config file")
+                        } else {
+                            lit_str.value()
+                        };
+
+                        // let config: OwnedTestConfig = toml::from_str(&config_str).unwrap();
+                    }
+                    _ => panic!("not supported"),
+                },
+                _ => panic!("not supported"),
+            }
         }
-        if value.iter().any(|attr| attr.path().is_ident("verbose")) {
-            self_.inner.verbose = true;
-        }
+
         self_
     }
 }
@@ -213,3 +256,9 @@ impl ToTokens for TestConfigParser {
         tokens.extend(tokens_);
     }
 }
+
+// impl ToTokens for OwnedTestConfig {
+//     fn to_tokens(&self, tokens: &mut TokenStream) {
+//         todo!()
+//     }
+// }
