@@ -5,8 +5,9 @@ use quote::{format_ident, quote, ToTokens};
 use serde::Deserialize;
 use syn::{
     parse::{Parse, Parser},
+    punctuated::Punctuated,
     token::Extern,
-    Expr, Ident, ItemFn, Lit, LitStr,
+    Expr, Ident, ItemFn, Lit, LitStr, PathSegment,
 };
 use tiny_os_common::testing::TestConfig;
 
@@ -154,13 +155,15 @@ pub fn kernel_test_handler(
     let attrs = syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated
         .parse(attr)
         .expect("malformed attrs");
-    let config: TestConfigParser = attrs.into();
-    // let owned_config = &config.inner;
     let name = func.name.clone();
+    let (config, tokens) = TestConfigParser::parse(attrs, &name);
     let static_name = format_ident!("__STATIC_{}", name);
     let get_name_name = format_ident!("__GET_NAME_{}", name);
 
     quote! {
+        #[cfg(feature = "test_run")]
+        #tokens
+
         #[cfg(feature = "test_run")]
         #func
 
@@ -169,8 +172,6 @@ pub fn kernel_test_handler(
         #[allow(non_upper_case_globals)]
         const #get_name_name: &'static str = concat!(module_path!(), "::", stringify!(#name));
 
-        // this will generate all statics referenced by the TestConfig
-        // #owned_config
 
         #[cfg(feature = "test_run")]
         #[allow(non_upper_case_globals)]
@@ -188,20 +189,161 @@ pub fn kernel_test_handler(
 #[derive(Default)]
 struct TestConfigParser {
     inner: TestConfig,
+    device_inits: Vec<Ident>,
 }
 
-// #[derive(Default, Deserialize)]
-// struct OwnedTestConfig {
-//     should_panic: bool,
-//     verbose: bool,
-//     devices: Vec<DeviceConfig>,
-// }
+impl TestConfigParser {
+    fn parse(value: Punctuated<syn::Meta, syn::Token![,]>, name: &Ident) -> (Self, TokenStream) {
+        let mut self_ = Self::default();
+        let mut funcs: Vec<TokenStream> = Vec::new();
+        for attr in value.iter() {
+            match attr {
+                syn::Meta::Path(p) => match p {
+                    p if p.is_ident("should_panic") => self_.inner.should_panic = true,
+                    p if p.is_ident("verbose") => {
+                        self_.inner.verbose = true;
+                        self_.configure_device(&get_verbose_config(), &mut funcs, name);
+                    }
+                    _ => panic!("option not supported"),
+                },
+                syn::Meta::NameValue(v) => match &v.path {
+                    #[allow(unreachable_code)]
+                    p if p.is_ident("config") => {
+                        todo!();
+                        let Expr::Lit(syn::ExprLit {
+                            lit: Lit::Str(lit_str),
+                            ..
+                        }) = &v.value
+                        else {
+                            panic!("wrong value for config")
+                        };
+                        let _config_str = if lit_str.value().ends_with(".toml") {
+                            let parent_path =
+                                env::var("CARGO_MANIFEST_DIR").expect("cargo manifest dir unset");
+                            let path = Path::new(&parent_path).join(lit_str.value());
+                            fs::read_to_string(path).expect("could not read config file")
+                        } else {
+                            lit_str.value()
+                        };
 
-// #[derive(Default, Deserialize)]
-// struct DeviceConfig {
-//     kind: String,
-//     tags: Vec<String>,
-// }
+                        // let config: OwnedTestConfig = toml::from_str(&config_str).unwrap();
+                    }
+                    p if p.is_ident("devices") => {
+                        let Expr::Array(syn::ExprArray { elems, .. }) = &v.value else {
+                            panic!("wrong value for devices")
+                        };
+                        for elem in elems {
+                            self_.configure_device(elem, &mut funcs, name);
+                        }
+                    }
+                    _ => panic!("arg not supported"),
+                },
+                _ => panic!("arg type not supported"),
+            }
+        }
+
+        (
+            self_,
+            quote! {
+                #(#funcs)*
+            },
+        )
+    }
+
+    fn configure_device(&mut self, device: &Expr, acc: &mut Vec<TokenStream>, name: &Ident) {
+        let Expr::Call(syn::ExprCall { func, args, .. }) = device else {
+            panic!("wrong value ffor device")
+        };
+
+        let device_name = if let Expr::Path(path) = func.as_ref() {
+            &path.path
+        } else {
+            panic!("wrong syntax")
+        };
+
+        let tag = if let Some(Expr::Path(path)) = args.first() {
+            &path.path
+        } else {
+            panic!("wrong syntax")
+        };
+
+        let (fn_name, device_builder) = match device_name {
+            device if device.is_ident("serial") => {
+                let fn_name = format_ident!("configure_serial_for_{}", name);
+                (
+                    fn_name,
+                    quote! {
+                        let device: crate::kernel::devices::FdEntry<#tag> = crate::kernel::devices::DeviceBuilder::tty().serial();
+                    },
+                )
+            }
+            device if device.is_ident("framebuffer") => {
+                let fn_name = format_ident!("configure_fb_for_{}", name);
+                (
+                    fn_name,
+                    quote! {
+                        let device: crate::kernel::devices::FdEntry<#tag> = crate::kernel::devices::DeviceBuilder::tty().fb();
+                    },
+                )
+            }
+
+            device if device.is_ident("keyboard") => {
+                let fn_name = format_ident!("configure_keyboard_for_{}", name);
+                (
+                    fn_name,
+                    quote! {
+                        let device: crate::kernel::devices::FdEntry<#tag> = crate::kernel::devices::DeviceBuilder::tty().keyboard();
+                    },
+                )
+            }
+            _ => panic!("device not supported"),
+        };
+        acc.push(quote! {
+            fn #fn_name(devices: *mut ()) {
+                let mut devices = unsafe { &mut *(devices as *mut crate::kernel::devices::TaskDevices)};
+                #device_builder
+                devices.attach(device);
+            }
+        });
+        self.device_inits.push(fn_name);
+    }
+}
+
+fn get_verbose_config() -> Expr {
+    Expr::Call(syn::ExprCall {
+        func: Box::new(Expr::Path(syn::ExprPath {
+            attrs: Vec::new(),
+            qself: None,
+            path: syn::Path {
+                leading_colon: None,
+                segments: [PathSegment {
+                    ident: format_ident!("serial"),
+                    arguments: syn::PathArguments::None,
+                }]
+                .into_iter()
+                .collect(),
+            },
+        })),
+        args: [Expr::Path(syn::ExprPath {
+            attrs: Vec::new(),
+            qself: None,
+            path: syn::Path {
+                leading_colon: None,
+                segments: ["crate", "kernel", "devices", "SinkTag"]
+                    .into_iter()
+                    .map(|seg| PathSegment {
+                        ident: format_ident!("{seg}"),
+                        arguments: syn::PathArguments::None,
+                    })
+                    .collect(),
+            },
+        })]
+        .into_iter()
+        .collect(),
+        attrs: Vec::new(),
+        paren_token: syn::token::Paren::default(),
+    })
+}
 
 impl From<syn::punctuated::Punctuated<syn::Meta, syn::Token![,]>> for TestConfigParser {
     fn from(value: syn::punctuated::Punctuated<syn::Meta, syn::Token![,]>) -> Self {
@@ -214,7 +356,9 @@ impl From<syn::punctuated::Punctuated<syn::Meta, syn::Token![,]>> for TestConfig
                     _ => panic!("option not supported"),
                 },
                 syn::Meta::NameValue(v) => match &v.path {
+                    #[allow(unreachable_code)]
                     p if p.is_ident("config") => {
+                        todo!();
                         let Expr::Lit(syn::ExprLit {
                             lit: Lit::Str(lit_str),
                             ..
@@ -222,7 +366,7 @@ impl From<syn::punctuated::Punctuated<syn::Meta, syn::Token![,]>> for TestConfig
                         else {
                             panic!("wrong value for config")
                         };
-                        let config_str = if lit_str.value().ends_with(".toml") {
+                        let _config_str = if lit_str.value().ends_with(".toml") {
                             let parent_path =
                                 env::var("CARGO_MANIFEST_DIR").expect("cargo manifest dir unset");
                             let path = Path::new(&parent_path).join(lit_str.value());
@@ -232,6 +376,24 @@ impl From<syn::punctuated::Punctuated<syn::Meta, syn::Token![,]>> for TestConfig
                         };
 
                         // let config: OwnedTestConfig = toml::from_str(&config_str).unwrap();
+                    }
+                    p if p.is_ident("devices") => {
+                        let Expr::Array(syn::ExprArray { elems, .. }) = &v.value else {
+                            panic!("wrong value for devices")
+                        };
+                        for elem in elems {
+                            let Expr::Call(syn::ExprCall { func, args: _, .. }) = elem else {
+                                panic!("wrong value ffor device")
+                            };
+
+                            let _device_name = if let Expr::Path(path) = func.as_ref() {
+                                path.path.get_ident().unwrap()
+                            } else {
+                                panic!("wrong syntax")
+                            };
+
+                            // match
+                        }
                     }
                     _ => panic!("not supported"),
                 },
@@ -247,18 +409,14 @@ impl ToTokens for TestConfigParser {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let should_panic = self.inner.should_panic;
         let verbose = self.inner.verbose;
+        let inits = &self.device_inits;
         let tokens_ = quote! {
             tiny_os_common::testing::TestConfig {
                 should_panic: #should_panic,
                 verbose: #verbose,
+                device_inits: &[#(#inits),*]
             }
         };
         tokens.extend(tokens_);
     }
 }
-
-// impl ToTokens for OwnedTestConfig {
-//     fn to_tokens(&self, tokens: &mut TokenStream) {
-//         todo!()
-//     }
-// }
