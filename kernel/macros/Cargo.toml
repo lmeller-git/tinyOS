@@ -9,5 +9,7 @@ proc-macro = true
 [dependencies]
 proc-macro2 = "1.0.94"
 quote = "1.0.40"
+serde = "1.0.219"
 syn = { version = "2.0.100", features = ["full"] }
-tiny_os_common = { path = "../tiny-os-common", features = ["std"] }
+tiny_os_common = { path = "../tiny-os-common", features = ["std", "serde"] }
+toml = "0.8.23"

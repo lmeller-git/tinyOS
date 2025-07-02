@@ -7,8 +7,10 @@ edition = "2021"
 default = []
 test_run = []
 std = []
+serde = ["dep:serde", "serde/derive"]
 
 [dependencies]
+serde = { version = "1.0.219", optional = true, features = ["derive"] }
 # core = { package = "core", optional = true }
 
 # [dependencies.std]

@@ -1,4 +1,4 @@
-#[cfg(not(feature = "std"))]
+// #[cfg(not(feature = "std"))]
 pub mod kernel;
 
 pub trait TestCase {
@@ -60,11 +60,13 @@ where
 }
 
 #[repr(C)]
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct TestConfig {
     pub should_panic: bool,
     pub verbose: bool,
+    pub device_inits: &'static [fn(*mut ())], // ptr to TaskDevices
 }
+
 #[allow(unused_imports)]
 #[cfg(feature = "test_run")]
 pub mod tests {
