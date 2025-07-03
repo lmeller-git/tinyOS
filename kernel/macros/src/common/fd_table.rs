@@ -28,6 +28,15 @@ pub fn derive_fd_table(input: DeriveInput) -> TokenStream {
                     }
                 }
             }
+
+            impl Detacheable for DeviceID<#tag_ident> {
+                fn detach(self, devices: &mut TaskDevices) {
+                    let v = devices.get_mut(FdEntryType::#var_ident);
+                    if let Some(inner) = v.as_mut() {
+                        inner.remove(self.inner);
+                    }
+                }
+            }
         }
     });
     quote! {
@@ -66,14 +75,41 @@ pub fn derive_composite_fd_tag(attr: CompositeTagAttrs, input: ItemStruct) -> To
         }
     };
 
+    let detach_impls = attr.traits.iter().map(|trait_bound| {
+        let tag_name = syn::Ident::new(&format!("{}Tag", trait_bound), trait_bound.span());
+        quote! {
+            let variant: DeviceID<#tag_name> = ::core::convert::From::<DeviceID<#struct_name>>::from(self.clone());
+            Detacheable::detach(variant, devices);
+        }
+    });
+
+    let detacheable = quote! {
+        impl Detacheable for DeviceID<#struct_name> {
+            fn detach(self, devices: &mut TaskDevices) {
+                #(#detach_impls)*
+            }
+        }
+    };
+
     let from_impls = attr.traits.iter().map(|trait_bound| {
         let tag_name = syn::Ident::new(&format!("{}Tag", trait_bound), trait_bound.span());
         quote! {
             impl From<FdEntry<#struct_name>> for FdEntry<#tag_name> {
                 fn from(value: FdEntry<#struct_name>) -> Self {
+                    let id: DeviceID<#tag_name> = ::core::convert::From::<DeviceID<#struct_name>>::from(value.id);
                     FdEntry {
                         inner: value.inner,
+                        id,
                         _phantom_type: ::core::marker::PhantomData::<#tag_name>
+                    }
+                }
+            }
+
+            impl From<DeviceID<#struct_name>> for DeviceID<#tag_name> {
+                fn from(value: DeviceID<#struct_name>) -> Self {
+                    DeviceID {
+                        inner: value.inner,
+                        _phantom_tag: ::core::marker::PhantomData::<#tag_name>
                     }
                 }
             }
@@ -87,6 +123,7 @@ pub fn derive_composite_fd_tag(attr: CompositeTagAttrs, input: ItemStruct) -> To
         #(#trait_bounds)*
         #(#from_impls)*
         #attacheable
+        #detacheable
 
     }
 }

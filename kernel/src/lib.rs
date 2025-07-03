@@ -24,7 +24,7 @@ use core::panic::PanicInfo;
 #[cfg(feature = "test_run")]
 use kernel::threading::{self, JoinHandle, schedule::add_named_ktask, spawn_fn, yield_now};
 use kernel::{
-    devices::{DeviceBuilder, FdEntry, SinkTag, TaskDevices},
+    devices::{DeviceBuilder, FdEntry, SinkTag, StdErrTag, TaskDevices},
     threading::task::{Arg, TaskRepr},
 };
 use os_macros::{kernel_test, tests, with_default_args};
@@ -105,10 +105,8 @@ extern "C" fn kernel_test_runner() -> ProcessReturn {
 
         let handle = with_devices!(
             |devices| {
-                // let sink: FdEntry<SinkTag> = DeviceBuilder::tty().serial();
-                // let sink2: FdEntry<SinkTag> = DeviceBuilder::tty().fb();
-                // devices.attach(sink);
-                // devices.attach(sink2);
+                let sink: FdEntry<StdErrTag> = DeviceBuilder::tty().serial();
+                devices.attach(sink);
                 for init in test.config.device_inits {
                     init(devices as *mut TaskDevices as *mut ());
                 }

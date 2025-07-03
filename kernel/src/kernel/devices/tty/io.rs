@@ -11,7 +11,7 @@ use crate::{
         devices::{FdEntryType, RawFdEntry, with_current_device_list},
         threading::{self, schedule::current_task},
     },
-    serial_print, term,
+    serial_print, serial_println, term,
 };
 use alloc::format;
 use x86_64::instructions::interrupts::without_interrupts;
@@ -25,7 +25,7 @@ pub fn __write_stdout(input: Arguments) {
         let bytes = bytes.as_bytes();
 
         get_device!(FdEntryType::StdOut, RawFdEntry::TTYSink(sinks) => {
-            for s in sinks {
+            for (k, s) in sinks {
                 s.write(bytes)
             }
         });
@@ -35,7 +35,7 @@ pub fn __write_stdout(input: Arguments) {
 pub fn __write_stderr(input: &str) {
     let bytes = input.as_bytes();
     get_device!(FdEntryType::StdErr, RawFdEntry::TTYSink(sinks) => {
-        for s in sinks {
+        for (k, s) in sinks {
             s.write(bytes);
         }
     });
@@ -44,7 +44,7 @@ pub fn __write_stderr(input: &str) {
 pub fn __write_debug(input: &str) {
     let bytes = input.as_bytes();
     get_device!(FdEntryType::DebugSink, RawFdEntry::TTYSink(sinks) => {
-        for s in sinks {
+        for (k, s) in sinks {
             s.write(bytes);
         }
     });

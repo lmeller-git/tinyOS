@@ -1,13 +1,11 @@
 use std::{env, fs, path::Path};
 
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::TokenStream;
 use quote::{format_ident, quote, ToTokens};
-use serde::Deserialize;
 use syn::{
     parse::{Parse, Parser},
     punctuated::Punctuated,
-    token::Extern,
-    Expr, Ident, ItemFn, Lit, LitStr, PathSegment,
+    Expr, Ident, ItemFn, Lit, PathSegment,
 };
 use tiny_os_common::testing::TestConfig;
 
@@ -329,7 +327,7 @@ fn get_verbose_config() -> Expr {
             qself: None,
             path: syn::Path {
                 leading_colon: None,
-                segments: ["crate", "kernel", "devices", "SinkTag"]
+                segments: ["crate", "kernel", "devices", "SuccessSinkTag"]
                     .into_iter()
                     .map(|seg| PathSegment {
                         ident: format_ident!("{seg}"),
@@ -343,66 +341,6 @@ fn get_verbose_config() -> Expr {
         attrs: Vec::new(),
         paren_token: syn::token::Paren::default(),
     })
-}
-
-impl From<syn::punctuated::Punctuated<syn::Meta, syn::Token![,]>> for TestConfigParser {
-    fn from(value: syn::punctuated::Punctuated<syn::Meta, syn::Token![,]>) -> Self {
-        let mut self_ = Self::default();
-        for attr in value.iter() {
-            match attr {
-                syn::Meta::Path(p) => match p {
-                    p if p.is_ident("should_panic") => self_.inner.should_panic = true,
-                    p if p.is_ident("verbose") => self_.inner.verbose = true,
-                    _ => panic!("option not supported"),
-                },
-                syn::Meta::NameValue(v) => match &v.path {
-                    #[allow(unreachable_code)]
-                    p if p.is_ident("config") => {
-                        todo!();
-                        let Expr::Lit(syn::ExprLit {
-                            lit: Lit::Str(lit_str),
-                            ..
-                        }) = &v.value
-                        else {
-                            panic!("wrong value for config")
-                        };
-                        let _config_str = if lit_str.value().ends_with(".toml") {
-                            let parent_path =
-                                env::var("CARGO_MANIFEST_DIR").expect("cargo manifest dir unset");
-                            let path = Path::new(&parent_path).join(lit_str.value());
-                            fs::read_to_string(path).expect("could not read config file")
-                        } else {
-                            lit_str.value()
-                        };
-
-                        // let config: OwnedTestConfig = toml::from_str(&config_str).unwrap();
-                    }
-                    p if p.is_ident("devices") => {
-                        let Expr::Array(syn::ExprArray { elems, .. }) = &v.value else {
-                            panic!("wrong value for devices")
-                        };
-                        for elem in elems {
-                            let Expr::Call(syn::ExprCall { func, args: _, .. }) = elem else {
-                                panic!("wrong value ffor device")
-                            };
-
-                            let _device_name = if let Expr::Path(path) = func.as_ref() {
-                                path.path.get_ident().unwrap()
-                            } else {
-                                panic!("wrong syntax")
-                            };
-
-                            // match
-                        }
-                    }
-                    _ => panic!("not supported"),
-                },
-                _ => panic!("not supported"),
-            }
-        }
-
-        self_
-    }
 }
 
 impl ToTokens for TestConfigParser {
