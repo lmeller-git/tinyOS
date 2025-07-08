@@ -32,8 +32,9 @@ pub fn __write_stdout(input: Arguments) {
     }
 }
 
-pub fn __write_stderr(input: &str) {
-    let bytes = input.as_bytes();
+pub fn __write_stderr(input: Arguments) {
+    let bytes = format!("{}", input);
+    let bytes = bytes.as_bytes();
     get_device!(FdEntryType::StdErr, RawFdEntry::TTYSink(sinks) => {
         for (k, s) in sinks {
             s.write(bytes);

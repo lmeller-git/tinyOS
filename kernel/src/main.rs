@@ -19,6 +19,7 @@ use embedded_graphics::primitives::PrimitiveStyle;
 use embedded_graphics::primitives::StyledDrawable;
 use embedded_graphics::text::renderer::TextRenderer;
 use os_macros::with_default_args;
+use tiny_os::alloc::string::String;
 use tiny_os::arch;
 use tiny_os::arch::hcf;
 use tiny_os::arch::interrupt;

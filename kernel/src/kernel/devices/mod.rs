@@ -7,12 +7,14 @@ use core::{
     ops::{Add, AddAssign},
     sync::atomic::{AtomicPtr, AtomicU64},
 };
+use graphics::GFXBuilder;
 use hashbrown::HashMap;
 use os_macros::{FDTable, fd_composite_tag, kernel_test};
 use tty::{TTYBuilder, TTYSink, TTYSource};
 
-use crate::locks::reentrant::Mutex;
+use crate::{locks::reentrant::Mutex, services::graphics::PrimitiveDrawTarget};
 
+pub mod graphics;
 pub mod tty;
 
 // TODO rewrite using cgp from start
@@ -228,6 +230,7 @@ impl<T: FdTag> FdEntry<T> {
 enum RawFdEntry {
     TTYSink(HashMap<RawDeviceID, Arc<dyn TTYSink>>),
     TTYSource(HashMap<RawDeviceID, Arc<dyn TTYSource>>),
+    GraphicsBackend(HashMap<RawDeviceID, Arc<dyn PrimitiveDrawTarget>>),
 }
 
 impl RawFdEntry {
@@ -245,6 +248,7 @@ impl RawFdEntry {
                 };
                 own.extend(s);
             }
+            _ => {}
         }
     }
 
@@ -252,6 +256,7 @@ impl RawFdEntry {
         match self {
             Self::TTYSink(own) => _ = own.remove(&id),
             Self::TTYSource(own) => _ = own.remove(&id),
+            _ => {}
         }
     }
 
@@ -263,11 +268,10 @@ impl RawFdEntry {
         match self {
             Self::TTYSink(sinks) => sinks.len(),
             Self::TTYSource(sources) => sources.len(),
+            _ => 0,
         }
     }
 }
-
-const DEVICE_NUM: usize = 4;
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, FDTable)]
 pub enum FdEntryType {
@@ -275,6 +279,7 @@ pub enum FdEntryType {
     StdOut,
     StdErr,
     DebugSink,
+    Graphics,
 }
 
 #[fd_composite_tag(DebugSink, StdErr, StdOut)]
@@ -291,6 +296,9 @@ pub struct DeviceBuilder {}
 impl DeviceBuilder {
     pub fn tty() -> TTYBuilder {
         TTYBuilder::new(next_device_id())
+    }
+    pub fn gfx() -> GFXBuilder {
+        GFXBuilder::new(next_device_id())
     }
 }
 
@@ -386,7 +394,7 @@ macro_rules! with_devices {
 }
 
 mod tests {
-    use alloc::format;
+    use alloc::{format, string::String};
     use os_macros::kernel_test;
 
     use crate::{println, serial_println};
@@ -419,15 +427,24 @@ mod tests {
         let keyboard_entry: FdEntry<StdInTag> = DeviceBuilder::tty().keyboard();
         let id = devices.attach(keyboard_entry);
 
+        let gfx: FdEntry<GraphicsTag> = DeviceBuilder::gfx().simple();
+        let gfx_id = devices.attach(gfx);
+
         let serial: FdEntry<SinkTag> = DeviceBuilder::tty().serial();
         let id2 = devices.attach(serial);
 
         let fb: FdEntry<SinkTag> = DeviceBuilder::tty().fb();
         let id3 = devices.attach(fb);
+        let mut s = String::new();
+        for _ in 0..200 {
+            s.push('_');
+        }
+        // println!("{}", s);
 
         id.detach(&mut devices);
         id2.detach(&mut devices);
         id3.detach(&mut devices);
+        gfx_id.detach(&mut devices);
         assert!(devices.is_empty())
     }
 

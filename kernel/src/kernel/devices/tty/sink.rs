@@ -21,7 +21,7 @@ pub fn init_tty_sinks() {
 
 #[derive(Debug)]
 pub struct SerialBackend {
-    buffer: ChunkedArrayQueue<50, u8>,
+    buffer: ChunkedArrayQueue<100, u8>,
     read_lock: Mutex<()>,
 }
 
@@ -54,7 +54,7 @@ impl TTYSink for SerialBackend {
 
 #[derive(Debug)]
 pub struct FbBackend {
-    buffer: ChunkedArrayQueue<50, u8>,
+    buffer: ChunkedArrayQueue<100, u8>,
     read_lock: Mutex<()>,
 }
 

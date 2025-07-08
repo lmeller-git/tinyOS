@@ -8,6 +8,9 @@ pub fn derive_fd_table(input: DeriveInput) -> TokenStream {
     let Data::Enum(DataEnum { variants, .. }) = &input.data else {
         panic!("derive FDTable only defined for enums");
     };
+
+    let n_variants = variants.len();
+
     let generated = variants.iter().map(|variant| {
         let var_ident = &variant.ident;
         let tag_ident = syn::Ident::new(&format!("{}Tag", var_ident), var_ident.span());
@@ -40,6 +43,7 @@ pub fn derive_fd_table(input: DeriveInput) -> TokenStream {
         }
     });
     quote! {
+        const DEVICE_NUM: usize = #n_variants;
         #(#generated)*
     }
 }

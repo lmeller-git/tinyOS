@@ -1,4 +1,12 @@
-use embedded_graphics::prelude::{DrawTarget, OriginDimensions};
+use core::fmt::Debug;
+
+use alloc::{boxed::Box, vec::Vec};
+use embedded_graphics::{
+    mono_font::MonoTextStyle,
+    prelude::{DrawTarget, OriginDimensions},
+    primitives::{self, StyledDrawable},
+    text::renderer::TextRenderer,
+};
 use shapes::Point;
 use thiserror::Error;
 
@@ -9,6 +17,77 @@ use crate::drivers::graphics::{
 
 pub mod shapes;
 pub mod text;
+
+pub trait PrimitiveDrawTarget: Debug {
+    fn draw_primitive(&mut self, item: &PrimitiveGlyph<'_>) -> Result<(), GraphicsError>;
+    fn clear(&mut self, color: RGBColor) -> Result<(), GraphicsError>;
+}
+
+pub enum PrimitiveGlyph<'a> {
+    Circle(primitives::Circle, primitives::PrimitiveStyle<RGBColor>),
+    Rect(primitives::Rectangle, primitives::PrimitiveStyle<RGBColor>),
+    Arc(primitives::Arc, primitives::PrimitiveStyle<RGBColor>),
+    RoundedRect(
+        primitives::RoundedRectangle,
+        primitives::PrimitiveStyle<RGBColor>,
+    ),
+    Ellipse(primitives::Ellipse, primitives::PrimitiveStyle<RGBColor>),
+    Line(primitives::Line, primitives::PrimitiveStyle<RGBColor>),
+    Polyline(
+        primitives::Polyline<'a>,
+        primitives::PrimitiveStyle<RGBColor>,
+    ),
+    Triangle(primitives::Triangle, primitives::PrimitiveStyle<RGBColor>),
+    ContiguousFilling(primitives::Rectangle, Vec<RGBColor>),
+    SolidFilling(primitives::Rectangle, RGBColor),
+    Text(
+        MonoTextStyle<'a, RGBColor>,
+        &'a str,
+        embedded_graphics::prelude::Point,
+    ),
+}
+
+impl PrimitiveGlyph<'_> {
+    fn render_in<D>(&self, target: &mut D) -> Result<(), GraphicsError>
+    where
+        D: DrawTarget<Color = RGBColor, Error = GraphicsError>,
+    {
+        match self {
+            Self::Circle(shape, style) => shape.draw_styled(style, target),
+            Self::Rect(shape, style) => shape.draw_styled(style, target),
+            Self::RoundedRect(shape, style) => shape.draw_styled(style, target),
+            Self::Arc(shape, style) => shape.draw_styled(style, target),
+            Self::Ellipse(shape, style) => shape.draw_styled(style, target),
+            Self::Line(shape, style) => shape.draw_styled(style, target),
+            Self::Polyline(shape, style) => shape.draw_styled(style, target),
+            Self::Triangle(shape, style) => shape.draw_styled(style, target),
+            Self::ContiguousFilling(shape, colors) => target.fill_contiguous(shape, colors.clone()),
+            Self::SolidFilling(shape, color) => target.fill_solid(shape, *color),
+            Self::Text(style, text, position) => style
+                .draw_string(
+                    text,
+                    *position,
+                    embedded_graphics::text::Baseline::Alphabetic,
+                    target,
+                )
+                .map(|_| ()),
+            _ => Err(GraphicsError::NotImplemented),
+        }
+    }
+}
+
+impl<T> PrimitiveDrawTarget for T
+where
+    T: Debug + DrawTarget<Color = RGBColor, Error = GraphicsError>,
+{
+    fn draw_primitive(&mut self, item: &PrimitiveGlyph<'_>) -> Result<(), GraphicsError> {
+        item.render_in(self)
+    }
+
+    fn clear(&mut self, color: RGBColor) -> Result<(), GraphicsError> {
+        DrawTarget::clear(self, color)
+    }
+}
 
 pub trait GraphicsBackend {
     fn draw_pixel(&self, p: &Point, color: &ColorCode);
@@ -31,6 +110,16 @@ where
 {
     pub fn new(fb: &'a B) -> Self {
         Self { fb }
+    }
+}
+
+impl<B> Debug for Simplegraphics<'_, B>
+where
+    B: FrameBuffer,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "SimpleGraphics")?;
+        Ok(())
     }
 }
 

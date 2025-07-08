@@ -174,6 +174,7 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
             signal: None,
         })
     });
+    eprintln!("test panicked with {}", info);
     threading::yield_now();
     hcf()
 }

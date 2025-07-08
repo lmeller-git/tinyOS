@@ -80,7 +80,7 @@ macro_rules! dbg {
 macro_rules! eprint {
     () => {};
     ($($arg:tt)*) => {
-        todo!()
+        $crate::kernel::devices::tty::io::__write_stderr(format_args!($($arg)*))
     };
 }
 
