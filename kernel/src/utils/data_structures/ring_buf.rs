@@ -7,11 +7,12 @@ use core::{
     sync::atomic::{AtomicUsize, Ordering},
     usize,
 };
-
 use linked_list_allocator::Heap;
 
 use crate::{kernel::threading, serial_println};
-//TODO use my thread safe mutex, however this currently does not work due to gkl policy
+// TODO use my thread safe mutex, however this currently does not work due to gkl policy
+// TODO the current implementation has a bug presumably in read() causing (index related?), potentially recursive panics -> deadlocks, double faults, ...
+// This NEEDS to be fixed before using it again. Should also rework tests, which do not currently catch this bug
 
 use spin::Mutex;
 pub struct ChunkedArrayQueue<const N: usize, T>
@@ -151,6 +152,7 @@ impl<const N: usize, T: Copy> ChunkedArrayQueue<N, T> {
                 tail += chunk.len();
                 if (tail - self.head.load(Ordering::Relaxed)) > N {
                     // Relaxed should be fine here, as it does not matter if head is increased in the meantime
+                    // open queue space is insufficient
                     return None;
                 }
                 Some(tail)

@@ -85,19 +85,19 @@ pub fn test_test_main() {
 }
 
 use kernel::threading::ProcessReturn;
-// #[cfg(feature = "test_run")]
+#[cfg(feature = "test_run")]
 #[with_default_args]
 extern "C" fn kernel_test_runner() -> ProcessReturn {
     use arch::interrupt::handlers::current_tick;
     use common::get_kernel_tests;
     use kernel::threading::spawn_fn;
     let tests = unsafe { get_kernel_tests() };
-    serial_println!("running {} tests...", tests.len());
+    println!("running {} tests...", tests.len());
     let mut tests_failed = false;
     let max_len = tests.iter().map(|t| t.name().len()).max().unwrap_or(0);
     for test in tests {
         let dots = ".".repeat(max_len - test.name().len() + 3);
-        serial_print!("{}{} ", test.name(), dots);
+        print!("{}{} ", test.name(), dots);
 
         let handle = with_devices!(
             |devices| {
@@ -118,7 +118,7 @@ extern "C" fn kernel_test_runner() -> ProcessReturn {
             let now = current_tick();
             if now - start_time >= MAX_TEST_TIME {
                 arch::interrupt::without_interrupts(|| {
-                    serial_print!("\x1b[31m[TASK TIMEOUT] \x1b[0m");
+                    print!("\x1b[31m[TASK TIMEOUT] \x1b[0m");
                     handle
                         .get_task()
                         .expect("no task attached to handle")
@@ -132,19 +132,19 @@ extern "C" fn kernel_test_runner() -> ProcessReturn {
         }) {
             Ok(v) => {
                 if v == 0 && !test.config.should_panic {
-                    serial_println!("\x1b[32m[OK]\x1b[0m");
+                    println!("\x1b[32m[OK]\x1b[0m");
                 } else if test.config.should_panic && v != 0 {
-                    serial_println!("\x1b[33m[OK]\x1b[0m");
+                    println!("\x1b[33m[OK]\x1b[0m");
                 } else {
-                    serial_println!("\x1b[31m[ERR]\x1b[0m");
+                    println!("\x1b[31m[ERR]\x1b[0m");
                     tests_failed = true;
                 }
             }
             Err(_) => {
                 if test.config.should_panic {
-                    serial_println!("\x1b[33m[OK]\x1b[0m");
+                    println!("\x1b[33m[OK]\x1b[0m");
                 } else {
-                    serial_println!("\x1b[1;31m[ERR]\x1b[0m");
+                    println!("\x1b[1;31m[ERR]\x1b[0m");
                     tests_failed = true;
                 }
             }
