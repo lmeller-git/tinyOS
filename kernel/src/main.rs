@@ -11,6 +11,7 @@
     private_interfaces
 )]
 #![feature(abi_x86_interrupt)]
+extern crate alloc;
 extern crate tiny_os;
 
 use core::arch::global_asm;
@@ -33,6 +34,13 @@ use tiny_os::drivers::graphics::text::draw_str;
 use tiny_os::drivers::start_drivers;
 use tiny_os::exit_qemu;
 use tiny_os::kernel;
+use tiny_os::kernel::devices::DeviceBuilder;
+use tiny_os::kernel::devices::EDebugSinkTag;
+use tiny_os::kernel::devices::FdEntry;
+use tiny_os::kernel::devices::GraphicsTag;
+use tiny_os::kernel::devices::SinkTag;
+use tiny_os::kernel::devices::StdInTag;
+use tiny_os::kernel::devices::with_device_init;
 use tiny_os::kernel::threading;
 use tiny_os::kernel::threading::schedule::GLOBAL_SCHEDULER;
 use tiny_os::kernel::threading::schedule::OneOneScheduler;
@@ -56,6 +64,7 @@ use tiny_os::services::graphics::shapes::Line;
 use tiny_os::services::graphics::shapes::Point;
 use tiny_os::services::graphics::shapes::Rect;
 use tiny_os::term;
+use tiny_os::with_devices;
 
 #[unsafe(no_mangle)]
 unsafe extern "C" fn kmain() -> ! {
@@ -75,7 +84,20 @@ unsafe extern "C" fn kmain() -> ! {
 
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
-    add_named_ktask(idle, "idle".into());
+    with_devices!(
+        |devices| {
+            let fb: FdEntry<SinkTag> = DeviceBuilder::tty().fb();
+            let serial: FdEntry<EDebugSinkTag> = DeviceBuilder::tty().serial();
+            let keyboard: FdEntry<StdInTag> = DeviceBuilder::tty().keyboard();
+            let gfx: FdEntry<GraphicsTag> = DeviceBuilder::gfx().simple();
+
+            devices.attach(fb);
+            devices.attach(serial);
+            devices.attach(keyboard);
+            devices.attach(gfx);
+        },
+        || { add_named_ktask(idle, "idle".into()) }
+    );
     serial_println!("idle task started");
 
     enable_threading_interrupts();

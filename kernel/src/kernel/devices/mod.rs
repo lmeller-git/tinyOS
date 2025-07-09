@@ -296,8 +296,14 @@ pub struct SinkTag;
 #[fd_composite_tag(StdErr, StdOut)]
 struct SinkTagCopy;
 
+#[fd_composite_tag(StdErr, DebugSink)]
+pub struct EDebugSinkTag;
+
 #[fd_composite_tag(StdOut, DebugSink)]
 pub struct SuccessSinkTag;
+
+#[fd_composite_tag()]
+pub struct NullTag;
 
 pub struct DeviceBuilder {}
 
@@ -318,13 +324,11 @@ pub fn init() {
 fn init_default() {
     DEFAULT_DEVICES.init_once(|| {
         Mutex::new(Box::new(|devices| {
-            #[cfg(not(feature = "test_run"))]
-            let sink: FdEntry<SinkTag> = DeviceBuilder::tty().fb();
-            #[cfg(feature = "test_run")]
-            let sink: FdEntry<SinkTag> = DeviceBuilder::tty().serial();
-            let source: FdEntry<StdInTag> = DeviceBuilder::tty().keyboard();
-            devices.attach(sink);
-            devices.attach(source);
+            _ = with_current_device_list(|current_devices| {
+                for (i, entry) in current_devices.fd_table.iter().enumerate() {
+                    devices.fd_table[i] = entry.clone();
+                }
+            });
         }))
     });
 }

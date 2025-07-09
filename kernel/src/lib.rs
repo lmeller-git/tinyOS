@@ -24,7 +24,7 @@ use core::panic::PanicInfo;
 #[cfg(feature = "test_run")]
 use kernel::threading::{self, JoinHandle, schedule::add_named_ktask, spawn_fn, yield_now};
 use kernel::{
-    devices::{DeviceBuilder, FdEntry, SinkTag, StdErrTag, TaskDevices},
+    devices::{DeviceBuilder, FdEntry, GraphicsTag, SinkTag, StdErrTag, StdInTag, TaskDevices},
     threading::task::{Arg, TaskRepr},
 };
 use os_macros::{kernel_test, tests, with_default_args};
@@ -70,7 +70,17 @@ pub fn test_test_main() {
 
     threading::init();
     testing::init();
-    add_named_ktask(kernel_test_runner, "test runner".into());
+    with_devices!(
+        |devices| {
+            let out: FdEntry<SinkTag> = DeviceBuilder::tty().serial();
+            let input: FdEntry<StdInTag> = DeviceBuilder::tty().keyboard();
+            let gfx: FdEntry<GraphicsTag> = DeviceBuilder::gfx().simple();
+            devices.attach(out);
+            devices.attach(input);
+            devices.attach(gfx);
+        },
+        || { add_named_ktask(kernel_test_runner, "test runner".into()) }
+    );
     start_drivers();
     threading::finalize();
 
@@ -166,17 +176,16 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
         schedule::with_current_task,
         task::{ExitInfo, TaskState},
     };
+    eprintln!("\ntest {}", info);
     with_current_task(|task| {
         task.raw().write().state = TaskState::Zombie(ExitInfo {
             exit_code: 1,
             signal: None,
         })
     });
-    eprintln!("test {}", info);
-    threading::yield_now();
-    // can exit as the dead task should not start up again
-    exit_qemu(QemuExitCode::Failed);
-    hcf()
+    loop {
+        threading::yield_now();
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
