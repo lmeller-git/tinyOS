@@ -12,8 +12,8 @@ use linked_list_allocator::Heap;
 
 use crate::{kernel::threading, serial_println};
 //TODO use my thread safe mutex, however this currently does not work due to gkl policy
-use spin::Mutex;
 
+use spin::Mutex;
 pub struct ChunkedArrayQueue<const N: usize, T>
 where
     T: Copy,
@@ -85,6 +85,7 @@ impl<const N: usize, T: Copy> ChunkedArrayQueue<N, T> {
         let head_idx = Self::to_idx(current_head);
 
         let n_read = (current_tail - current_head).min(buf.len());
+        assert!(n_read <= N);
 
         let next_head_idx = Self::to_idx(current_head + n_read);
 
@@ -92,7 +93,8 @@ impl<const N: usize, T: Copy> ChunkedArrayQueue<N, T> {
 
         // SAFETY: buffer can only be mutated thorugh push and if push is sound, all copied data must be initialized
         // n_read is <= min (buf.len(), buffer.len())
-        if tail_idx <= head_idx && next_head_idx <= tail_idx {
+        if tail_idx <= head_idx || next_head_idx <= head_idx {
+            // TODO check correctness
             // need to wrap around
             let first_n = N - head_idx;
 
@@ -111,9 +113,10 @@ impl<const N: usize, T: Copy> ChunkedArrayQueue<N, T> {
                 );
             }
         } else {
+            assert!(n_read <= tail_idx - head_idx);
             unsafe {
                 ptr::copy_nonoverlapping(
-                    buffer[head_idx..tail_idx].as_ptr() as *const T,
+                    buffer[head_idx..tail_idx].as_ptr() as *const T, // this panics sometimes??
                     buf[..n_read].as_mut_ptr(),
                     n_read,
                 );
@@ -132,7 +135,7 @@ impl<const N: usize, T: Copy> ChunkedArrayQueue<N, T> {
         self._try_push_internal(chunk)
     }
 
-    pub fn _try_push_internal(&self, chunk: &[T]) -> Result<(), QueueErr> {
+    fn _try_push_internal(&self, chunk: &[T]) -> Result<(), QueueErr> {
         /// tries to push data and update tail. !This method (and thus all methods depending on it) may block / yield if another queue has reserved a slot beforehand and we must wait for it to update tail!
         assert!(self.tail.load(Ordering::Acquire) <= usize::MAX - chunk.len());
         if chunk.is_empty() {
@@ -237,6 +240,10 @@ impl<const N: usize, T: Copy> ChunkedArrayQueue<N, T> {
     pub fn current_bytes(&self) -> usize {
         self.tail.load(Ordering::Acquire) - self.head.load(Ordering::Acquire)
     }
+
+    pub fn len(&self) -> usize {
+        N
+    }
 }
 
 unsafe impl<const N: usize, T: Copy> Sync for ChunkedArrayQueue<N, T> {}
@@ -339,7 +346,7 @@ mod tests {
         });
 
         assert!(handle1.unwrap().wait().is_ok());
-        assert!(handle2.unwrap().wait().is_ok());
+        assert!(handle2.unwrap().wait().is_ok()); // this deadlocks in alloc.lock() sometimes if it fails due to allocating a String in Result<Err(String)>????? WHY?? also other asserts affected???
         assert!(handle3.unwrap().wait().is_ok());
     }
 }

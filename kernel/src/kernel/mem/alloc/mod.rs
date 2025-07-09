@@ -1,6 +1,6 @@
-use linked_list_allocator::LockedHeap;
+use linked_list::SafeHeap;
 
 mod linked_list;
 
 #[global_allocator]
-pub static GLOBAL_ALLOCATOR: LockedHeap = linked_list::get_alloc();
+pub static GLOBAL_ALLOCATOR: SafeHeap = linked_list::get_alloc();

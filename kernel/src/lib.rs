@@ -105,8 +105,10 @@ extern "C" fn kernel_test_runner() -> ProcessReturn {
 
         let handle = with_devices!(
             |devices| {
-                let sink: FdEntry<StdErrTag> = DeviceBuilder::tty().serial();
-                devices.attach(sink);
+                if !test.config.should_panic {
+                    let sink: FdEntry<StdErrTag> = DeviceBuilder::tty().serial();
+                    devices.attach(sink);
+                }
                 for init in test.config.device_inits {
                     init(devices as *mut TaskDevices as *mut ());
                 }
@@ -174,8 +176,10 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
             signal: None,
         })
     });
-    eprintln!("test panicked with {}", info);
+    eprintln!("test {}", info);
     threading::yield_now();
+    // can exit as the dead task should not start up again
+    exit_qemu(QemuExitCode::Failed);
     hcf()
 }
 

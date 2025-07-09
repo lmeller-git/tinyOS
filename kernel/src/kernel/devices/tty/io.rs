@@ -51,15 +51,22 @@ pub fn __write_debug(input: &str) {
     });
 }
 
+// force prints something to serial
 pub fn __serial_stub(input: Arguments) {
-    if threading::is_running() && interrupt::are_enabled() {
-        let backend = SERIALBACKEND.get_or_init(SerialBackend::new);
-        backend.write(format!("{}", input).as_bytes());
-        backend.flush();
-    } else if !interrupt::are_enabled() {
-        // the following two MUST NOT ALLOCATE/LOCK (currently they do lock)
-        arch::_serial_print(input);
+    if interrupt::are_enabled() {
+        let slice = format!("{}", input);
+        unsafe { arch::_force_raw_serial_print(slice.as_bytes()) };
     } else {
         arch::_serial_print(input);
     }
+    // if threading::is_running() && interrupt::are_enabled() {
+    //     let backend = SERIALBACKEND.get_or_init(SerialBackend::new);
+    //     backend.write(format!("{}", input).as_bytes());
+    //     backend.flush();
+    // } else if !interrupt::are_enabled() {
+    //     // the following two MUST NOT ALLOCATE/LOCK (currently they do lock)
+    //     arch::_serial_print(input);
+    // } else {
+    //     arch::_serial_print(input);
+    // }
 }

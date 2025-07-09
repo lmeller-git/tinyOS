@@ -36,18 +36,24 @@ impl SerialBackend {
 
 impl TTYSink for SerialBackend {
     fn write(&self, bytes: &[u8]) {
-        // here we might already want to split bytes into chinks of length N in order to prevent locking -> this would however allow interleaving outputs
+        // here we might already want to split bytes into chunks of length N in order to prevent locking -> this would however allow interleaving outputs
+        // however a locked push with gkl enabled might lead to a deadlock, as we cannot acquire the lock to flush anymore
+        #[cfg(feature = "gkl")]
+        for chunk in bytes.chunks(self.buffer.len()) {
+            self.buffer.push(chunk);
+        }
+        #[cfg(not(feature = "gkl"))]
         self.buffer.push(bytes);
     }
 
     fn flush(&self) {
         let mut buf = [0; 50];
-        let lock = self.read_lock.lock();
+        // let lock = self.read_lock.lock();
         let Ok(n) = self.buffer.read(&mut buf) else {
             //TODO: handle
             panic!("cannot handle buf read err")
         };
-        drop(lock);
+        // drop(lock);
         arch::_raw_serial_print(&buf[..n]);
     }
 }
@@ -70,17 +76,22 @@ impl FbBackend {
 impl TTYSink for FbBackend {
     fn write(&self, bytes: &[u8]) {
         // here we might already want to split bytes into chinks of length N in order to prevent locking -> this would however allow interleaving outputs
+        #[cfg(feature = "gkl")]
+        for chunk in bytes.chunks(self.buffer.len()) {
+            self.buffer.push(chunk);
+        }
+        #[cfg(not(feature = "gkl"))]
         self.buffer.push(bytes);
     }
 
     fn flush(&self) {
         let mut buf = [0; 50];
-        let lock = self.read_lock.lock();
+        // let lock = self.read_lock.lock();
         let Ok(n) = self.buffer.read(&mut buf) else {
             //TODO: handle
             panic!("Cannot handle buf read err")
         };
-        drop(lock);
+        // drop(lock);
         if let Ok(out) = str::from_utf8(&buf[..n]) {
             _print(format_args!("{}", out));
         }

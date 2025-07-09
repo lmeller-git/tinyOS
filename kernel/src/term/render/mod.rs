@@ -175,9 +175,15 @@ impl<const X: usize, const Y: usize> TermCharBuffer<X, Y> {
     {
         for row in 0..Y - 1 {
             let pixel = TermPixel { inner: row };
-            self.redraw_empty_row(&pixel, gfx);
+            let range1 = self.get_range_from_row(&pixel);
+            let range2 = self.get_range_from_row(&TermPixel { inner: row + 1 });
+            let range = if range1.len() > range2.len() {
+                range1
+            } else {
+                range2
+            };
             self.inner[row] = self.inner[row + 1];
-            self.redraw_row_with_range(&pixel, gfx, style, self.get_range_from_row(&pixel));
+            self.redraw_row_with_range(&pixel, gfx, style, range);
         }
         self.clear_line(&TermPixel { inner: Y - 1 });
         self.redraw_empty_row(&TermPixel { inner: Y - 1 }, gfx);

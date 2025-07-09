@@ -52,6 +52,10 @@ impl<T> Mutex<T> {
     pub unsafe fn force_lock(&self) {
         self.lock.store(true, Ordering::Release);
     }
+
+    pub fn is_locked(&self) -> bool {
+        self.lock.load(Ordering::Acquire)
+    }
 }
 
 pub struct MutexGuard<'a, T> {

@@ -2,7 +2,7 @@ use super::{alloc, paging};
 use crate::arch::mem::{FrameAllocator, Mapper, Page, PageTableFlags, VirtAddr};
 
 pub const HEAP_START: usize = 0x_4444_4444_0000;
-pub const HEAP_SIZE: usize = 100 * 1024; // 100 KiB
+pub const HEAP_SIZE: usize = 200 * 1024; // 200 KiB
 
 pub fn init() {
     let page_range = {
@@ -25,8 +25,6 @@ pub fn init() {
         };
     }
     unsafe {
-        alloc::GLOBAL_ALLOCATOR
-            .lock()
-            .init(HEAP_START as *mut u8, HEAP_SIZE);
+        alloc::GLOBAL_ALLOCATOR.init(HEAP_START as *mut u8, HEAP_SIZE);
     }
 }

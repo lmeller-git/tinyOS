@@ -3,6 +3,7 @@ use core::fmt::{Arguments, Write};
 use crate::{arch::interrupt, locks::primitive::Mutex};
 use lazy_static::lazy_static;
 use uart_16550::SerialPort;
+use x86_64::instructions::interrupts::without_interrupts;
 
 lazy_static! {
     static ref SERIAL1: Mutex<SerialPort> = {
@@ -41,4 +42,34 @@ pub fn _raw_print(slice: &[u8]) {
     for byte in slice {
         lock.send(*byte);
     }
+}
+
+// SAFETY: This function is safe, if only this thread accesses SERIAL1
+#[doc(hidden)]
+pub unsafe fn _force_raw_print(slice: &[u8]) {
+    without_interrupts(|| {
+        let locked = SERIAL1.is_locked();
+        SERIAL1.force_unlock();
+        let mut lock = SERIAL1.lock();
+        for byte in slice {
+            lock.send(*byte);
+        }
+        drop(lock);
+        if locked {
+            SERIAL1.force_lock();
+        }
+    })
+}
+
+// SAFETY: This function is safe, if only this thread accesses SERIAL1
+#[doc(hidden)]
+pub unsafe fn _force_print(input: Arguments) {
+    without_interrupts(|| {
+        let locked = SERIAL1.is_locked();
+        SERIAL1.force_unlock();
+        SERIAL1.lock().write_fmt(input);
+        if locked {
+            SERIAL1.force_lock();
+        }
+    })
 }

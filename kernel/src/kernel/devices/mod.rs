@@ -310,8 +310,11 @@ pub fn init() {
 fn init_default() {
     DEFAULT_DEVICES.init_once(|| {
         Mutex::new(Box::new(|devices| {
+            #[cfg(not(feature = "test_run"))]
             let sink: FdEntry<SinkTag> = DeviceBuilder::tty().fb();
-            let source: FdEntry<StdInTag> = DeviceBuilder::tty().serial();
+            #[cfg(feature = "test_run")]
+            let sink: FdEntry<SinkTag> = DeviceBuilder::tty().serial();
+            let source: FdEntry<StdInTag> = DeviceBuilder::tty().keyboard();
             devices.attach(sink);
             devices.attach(source);
         }))
