@@ -38,11 +38,11 @@ impl TTYSink for SerialBackend {
     fn write(&self, bytes: &[u8]) {
         // here we might already want to split bytes into chunks of length N in order to prevent locking -> this would however allow interleaving outputs
         // however a locked push with gkl enabled might lead to a deadlock, as we cannot acquire the lock to flush anymore
-        #[cfg(feature = "gkl")]
-        for chunk in bytes.chunks(self.buffer.len()) {
-            self.buffer.push(chunk);
-        }
-        #[cfg(not(feature = "gkl"))]
+        // #[cfg(feature = "gkl")]
+        // for chunk in bytes.chunks(self.buffer.len()) {
+        //     self.buffer.push(chunk);
+        // }
+        // #[cfg(not(feature = "gkl"))]
         self.buffer.push(bytes);
     }
 

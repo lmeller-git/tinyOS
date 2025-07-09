@@ -85,7 +85,7 @@ pub fn test_test_main() {
 }
 
 use kernel::threading::ProcessReturn;
-#[cfg(feature = "test_run")]
+// #[cfg(feature = "test_run")]
 #[with_default_args]
 extern "C" fn kernel_test_runner() -> ProcessReturn {
     use arch::interrupt::handlers::current_tick;
@@ -98,10 +98,6 @@ extern "C" fn kernel_test_runner() -> ProcessReturn {
     for test in tests {
         let dots = ".".repeat(max_len - test.name().len() + 3);
         serial_print!("{}{} ", test.name(), dots);
-        // let mut devices = TaskDevices::new();
-        // for init in test.config.device_inits {
-        //     init(&mut devices as *mut TaskDevices as *mut ());
-        // }
 
         let handle = with_devices!(
             |devices| {

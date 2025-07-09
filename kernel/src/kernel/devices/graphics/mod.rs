@@ -3,7 +3,9 @@ use hashbrown::HashMap;
 
 use crate::{
     bootinfo,
-    drivers::graphics::{GLOBAL_FRAMEBUFFER, framebuffers::LimineFrameBuffer},
+    drivers::graphics::{
+        GLOBAL_FRAMEBUFFER, framebuffers::GlobalFrameBuffer, framebuffers::LimineFrameBuffer,
+    },
     services::graphics::{PrimitiveDrawTarget, Simplegraphics},
 };
 
@@ -19,10 +21,11 @@ impl GFXBuilder {
     }
 
     pub fn simple<T: FdTag>(self) -> FdEntry<T> {
-        todo!()
-        // let backend = Simplegraphics::new(&GLOBAL_FRAMEBUFFER);
-        // let mut new_map = HashMap::new();
-        // new_map.insert(self.id, Arc::new(backend) as Arc<dyn PrimitiveDrawTarget>);
-        // FdEntry::new(RawFdEntry::GraphicsBackend(new_map), self.id)
+        let mut new_map = HashMap::new();
+        new_map.insert(
+            self.id,
+            Arc::new(Simplegraphics::new(&*GLOBAL_FRAMEBUFFER)) as Arc<dyn PrimitiveDrawTarget>,
+        );
+        FdEntry::new(RawFdEntry::GraphicsBackend(new_map), self.id)
     }
 }

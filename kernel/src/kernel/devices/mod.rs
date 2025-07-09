@@ -248,6 +248,12 @@ impl RawFdEntry {
                 };
                 own.extend(s);
             }
+            Self::GraphicsBackend(b) => {
+                let RawFdEntry::GraphicsBackend(b2) = entry else {
+                    unreachable!()
+                };
+                b.extend(b2);
+            }
             _ => {}
         }
     }
@@ -256,6 +262,7 @@ impl RawFdEntry {
         match self {
             Self::TTYSink(own) => _ = own.remove(&id),
             Self::TTYSource(own) => _ = own.remove(&id),
+            Self::GraphicsBackend(b) => _ = b.remove(&id),
             _ => {}
         }
     }
@@ -268,6 +275,7 @@ impl RawFdEntry {
         match self {
             Self::TTYSink(sinks) => sinks.len(),
             Self::TTYSource(sources) => sources.len(),
+            Self::GraphicsBackend(bs) => bs.len(),
             _ => 0,
         }
     }
