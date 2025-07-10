@@ -24,6 +24,7 @@ const MAX_CHARS_X: usize = 127;
 const MAX_CHARS_Y: usize = 39;
 
 // TODO clean up the mess and rewrite graphics shit
+// TODO use graphics devices (maybe not to increase perf?)
 
 static FOO: OnceCell<Mutex<graphics::Simplegraphics<'static, GlobalFrameBuffer>>> =
     OnceCell::uninit();

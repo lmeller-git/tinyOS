@@ -41,14 +41,14 @@ pub enum PrimitiveGlyph<'a> {
     ContiguousFilling(primitives::Rectangle, Vec<RGBColor>),
     SolidFilling(primitives::Rectangle, RGBColor),
     Text(
-        MonoTextStyle<'a, RGBColor>,
+        &'a MonoTextStyle<'a, RGBColor>,
         &'a str,
         embedded_graphics::prelude::Point,
     ),
 }
 
 impl PrimitiveGlyph<'_> {
-    fn render_in<D>(&self, target: &mut D) -> Result<(), GraphicsError>
+    pub fn render_in<D>(&self, target: &mut D) -> Result<(), GraphicsError>
     where
         D: DrawTarget<Color = RGBColor, Error = GraphicsError>,
     {
@@ -78,7 +78,7 @@ impl PrimitiveGlyph<'_> {
 
 impl<T> PrimitiveDrawTarget for T
 where
-    T: Debug + DrawTarget<Color = RGBColor, Error = GraphicsError>,
+    T: Debug + DrawTarget<Color = RGBColor, Error = GraphicsError> + GraphicsBackend,
 {
     fn draw_primitive(&mut self, item: &PrimitiveGlyph<'_>) -> Result<(), GraphicsError> {
         item.render_in(self)
@@ -90,8 +90,8 @@ where
 }
 
 pub trait GraphicsBackend {
-    fn draw_pixel(&self, p: &Point, color: &ColorCode);
-    fn draw_line(&self, start: &Point, end: &Point, color: &ColorCode);
+    fn draw_pixel(&self, p: &Point, color: &ColorCode) {}
+    fn draw_line(&self, start: &Point, end: &Point, color: &ColorCode) {}
     fn width(&self) -> usize;
     fn height(&self) -> usize;
     fn flush(&self) {}

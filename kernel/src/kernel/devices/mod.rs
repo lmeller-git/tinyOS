@@ -7,7 +7,7 @@ use core::{
     ops::{Add, AddAssign},
     sync::atomic::{AtomicPtr, AtomicU64},
 };
-use graphics::GFXBuilder;
+use graphics::{GFXBuilder, GFXManager};
 use hashbrown::HashMap;
 use os_macros::{FDTable, fd_composite_tag, kernel_test};
 use tty::{TTYBuilder, TTYSink, TTYSource};
@@ -107,7 +107,8 @@ impl TaskDevices {
 }
 
 pub fn next_device_id() -> RawDeviceID {
-    static CURRENT_DEVICE_ID: AtomicU64 = AtomicU64::new(0);
+    // 0 is reserved for Null
+    static CURRENT_DEVICE_ID: AtomicU64 = AtomicU64::new(1);
     let current = CURRENT_DEVICE_ID.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
     RawDeviceID::new(current)
 }
@@ -132,7 +133,7 @@ impl DeviceIDBuilder {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
-struct RawDeviceID {
+pub struct RawDeviceID {
     inner: u64,
 }
 
@@ -227,10 +228,10 @@ impl<T: FdTag> FdEntry<T> {
 
 #[derive(Debug, Clone)]
 #[repr(usize)]
-enum RawFdEntry {
+pub enum RawFdEntry {
     TTYSink(HashMap<RawDeviceID, Arc<dyn TTYSink>>),
     TTYSource(HashMap<RawDeviceID, Arc<dyn TTYSource>>),
-    GraphicsBackend(HashMap<RawDeviceID, Arc<dyn PrimitiveDrawTarget>>),
+    GraphicsBackend(RawDeviceID, Arc<dyn GFXManager>),
 }
 
 impl RawFdEntry {
@@ -248,11 +249,12 @@ impl RawFdEntry {
                 };
                 own.extend(s);
             }
-            Self::GraphicsBackend(b) => {
-                let RawFdEntry::GraphicsBackend(b2) = entry else {
+            Self::GraphicsBackend(id1, backend1) => {
+                let RawFdEntry::GraphicsBackend(id2, backend2) = entry else {
                     unreachable!()
                 };
-                b.extend(b2);
+                *id1 = id2;
+                *backend1 = backend2;
             }
             _ => {}
         }
@@ -262,24 +264,36 @@ impl RawFdEntry {
         match self {
             Self::TTYSink(own) => _ = own.remove(&id),
             Self::TTYSource(own) => _ = own.remove(&id),
-            Self::GraphicsBackend(b) => _ = b.remove(&id),
+            Self::GraphicsBackend(backend_id, backend) => {
+                if *backend_id == id {
+                    *backend = Arc::new(Null);
+                    *backend_id = RawDeviceID::new(0)
+                }
+            }
             _ => {}
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.n_attached() == 0
+        match self {
+            Self::TTYSink(_) | Self::TTYSource(_) => self.n_attached() == 0,
+            Self::GraphicsBackend(id, _) => id.inner == 0, // this indicates that Null is attached
+        }
     }
 
     pub fn n_attached(&self) -> usize {
         match self {
             Self::TTYSink(sinks) => sinks.len(),
             Self::TTYSource(sources) => sources.len(),
-            Self::GraphicsBackend(bs) => bs.len(),
+            Self::GraphicsBackend(_, _) => 1,
             _ => 0,
         }
     }
 }
+
+// a placeholder device, which simply does nothing
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Null;
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, FDTable)]
 pub enum FdEntryType {
