@@ -36,6 +36,7 @@ use tiny_os::drivers::start_drivers;
 use tiny_os::exit_qemu;
 use tiny_os::get_device;
 use tiny_os::kernel;
+use tiny_os::kernel::abi::syscalls::SysRetCode;
 use tiny_os::kernel::devices::DeviceBuilder;
 use tiny_os::kernel::devices::EDebugSinkTag;
 use tiny_os::kernel::devices::FdEntry;
@@ -106,8 +107,6 @@ unsafe extern "C" fn kmain() -> ! {
     serial_println!("idle task started");
 
     enable_threading_interrupts();
-    serial_println!("int: {}", interrupt::are_enabled());
-    serial_println!("gkl: {:#?}", GKL);
     assert!(!GKL.is_locked());
     threading::yield_now();
     unreachable!()
@@ -115,6 +114,7 @@ unsafe extern "C" fn kmain() -> ! {
 
 #[with_default_args]
 extern "C" fn idle() -> usize {
+    use core::arch::asm;
     start_drivers();
     threading::finalize();
     cross_println!("threads finalized");
@@ -124,52 +124,20 @@ extern "C" fn idle() -> usize {
     add_named_ktask(listen, "term".into());
     cross_println!("startup tasks started");
 
+    let x: i64;
+    unsafe {
+        asm!("push rax", "mov rax, 42", "int 0x80", "mov {0}, rax", "pop rax", out(reg) x, out("rax") _);
+    }
+    assert_eq!(x, SysRetCode::Unknown as i64);
+
     // just block forever, as there is nothing left to do
     with_current_task(|task| task.write_inner().block());
 
     loop {
         threading::yield_now();
     }
+
     unreachable!()
-}
-
-global_asm!(
-    "
-        .global foo
-
-        foo:
-            // mov rdi, rsp
-            // call printer2 //0xfffff000c0003ff0
-            // sub rsp, 16
-            mov rax, 42
-            // pop rdi
-            // mov rdi, rsp
-            // call printer2  //0xfffff000c0003ff8
-            // call hcf2
-            // jmp rdi
-            ret
-    ",
-);
-
-#[unsafe(no_mangle)]
-extern "C" fn hcf2() {
-    hcf()
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn printer2(v: usize) {
-    serial_println!("v: {:#x}", v);
-}
-
-unsafe extern "C" {
-    pub safe fn foo() -> usize;
-}
-
-#[with_default_args]
-extern "C" fn user_task() -> usize {
-    serial_println!("hello from user task");
-    hcf();
-    0
 }
 
 #[with_default_args]
@@ -186,25 +154,6 @@ extern "C" fn listen() -> usize {
 }
 
 #[with_default_args]
-extern "C" fn task1() -> usize {
-    // println!("a1: {:#?}", _arg0);
-    // let val = unsafe { _arg0.as_val::<&str>() };
-    // println!("v: {}", val);
-    println!("hello from task 1");
-    // panic!("end task1");
-    0
-}
-
-#[with_default_args]
-extern "C" fn task2() -> usize {
-    serial_println!("hello from task 2");
-    let x: usize;
-    unsafe { core::arch::asm!("mov {0}, rsp", out(reg) x) };
-    serial_println!("now at: {:#x}", x);
-    0
-}
-
-#[with_default_args]
 extern "C" fn grahics() -> usize {
     get_device!(FdEntryType::Graphics, RawFdEntry::GraphicsBackend(id, backend) => {
         let glyphs = [
@@ -212,6 +161,11 @@ extern "C" fn grahics() -> usize {
         ];
         backend.draw_batched_primitives(&glyphs).unwrap();
     });
+    unsafe {
+        use core::arch::asm;
+        asm!("mov rax, 60", "mov rdi, 0", "int 0x80");
+    }
+    unreachable!();
     0
 }
 

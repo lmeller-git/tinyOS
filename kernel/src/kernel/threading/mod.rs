@@ -1,6 +1,7 @@
 use crate::{arch, args, locks::thread_safe::RwLock, serial_println};
 use alloc::{format, string::String, sync::Arc};
 use core::{
+    arch::asm,
     hint,
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
@@ -46,9 +47,10 @@ pub fn yield_now() {
     //TODO
     use crate::arch::interrupt;
     if interrupt::are_enabled() {
-        // assert!(current_task().unwrap().raw().try_write().is_ok());
-        // assert!(GLOBAL_SCHEDULER.get().unwrap().try_lock().is_ok());
-        arch::timer();
+        // do a sys_yield syscall
+        unsafe {
+            asm!("push rax", "mov rax, 451", "int 0x80", "pop rax");
+        }
     } else {
         hint::spin_loop();
     }

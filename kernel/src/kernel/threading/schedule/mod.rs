@@ -159,7 +159,6 @@ pub unsafe extern "C" fn context_switch_local(rsp: u64) {
             //     rsp
             // );
             //
-            // serial_println!("hello");
             let Ok(mut current) = current.raw().try_write() else {
                 return;
             };

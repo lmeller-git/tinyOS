@@ -46,6 +46,58 @@ lazy_static! {
         Mutex::new([false; MAX_USER_KSTACKS]);
 }
 
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[repr(C)]
+pub struct SysCallCtx {
+    pub rax: u64,
+    pub rdi: u64,
+    pub rsi: u64,
+    pub rdx: u64,
+    pub r10: u64,
+    pub r9: u64,
+    pub r8: u64,
+
+    pub rbx: u64,
+    pub rcx: u64,
+    pub r11: u64,
+
+    pub rbp: u64,
+}
+
+impl SysCallCtx {
+    pub fn ret(&mut self, val: i64) {
+        self.rax = val as u64
+    }
+
+    pub fn num(&self) -> u64 {
+        self.rax
+    }
+
+    pub fn first(&self) -> u64 {
+        self.rdi
+    }
+
+    pub fn second(&self) -> u64 {
+        self.rsi
+    }
+
+    pub fn third(&self) -> u64 {
+        self.rdx
+    }
+
+    pub fn fourth(&self) -> u64 {
+        self.rcx
+    }
+
+    pub fn fifth(&self) -> u64 {
+        self.r8
+    }
+
+    pub fn sixth(&self) -> u64 {
+        self.r9
+    }
+}
+
 //TODO
 #[derive(Default, Debug)]
 #[repr(C)]

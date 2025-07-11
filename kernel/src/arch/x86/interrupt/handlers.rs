@@ -1,6 +1,9 @@
 use crate::{
-    arch::x86::interrupt::pic::end_interrupt,
-    kernel::threading::schedule::{context_switch, context_switch_local},
+    arch::{context::SysCallCtx, x86::interrupt::pic::end_interrupt},
+    kernel::{
+        abi::syscalls::syscall_handler,
+        threading::schedule::{context_switch, context_switch_local},
+    },
     serial_println,
 };
 use core::{
@@ -44,9 +47,11 @@ global_asm!(
     "
         .global interrupt_cleanup
         .global timer_interrupt_stub_local
+        .global syscall_stub
+        .global context_switch_stub
 
         interrupt_cleanup:
-            // reenables interrupts, signals eoi and iretqs
+            // reenables interrupts and iretqs
             sti     
             iretq
 
@@ -91,6 +96,37 @@ global_asm!(
             pop rbp
             pop rax
             jmp interrupt_cleanup
+
+        syscall_stub:
+            sti
+            push rbp
+            push r11
+            push rcx
+            push rbx
+            push r8
+            push r9
+            push r10
+            push rdx
+            push rsi
+            push rdi
+            push rax
+
+            mov rdi, rsp
+            call __syscall_handler
+
+            pop rax
+            pop rdi
+            pop rsi
+            pop rdx
+            pop r10
+            pop r9
+            pop r8
+            pop rbx
+            pop rcx
+            pop r11
+            pop rbp
+            
+            iretq
     "
 );
 
@@ -102,6 +138,7 @@ extern "C" fn printer(v: u64) {
 unsafe extern "C" {
     pub fn interrupt_cleanup();
     pub fn timer_interrupt_stub_local();
+    pub(super) fn syscall_stub();
 }
 
 pub(super) extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {
@@ -139,4 +176,9 @@ pub(super) const SPURIOUS_VECTOR: u8 = 0xFF;
 pub(super) extern "x86-interrupt" fn spurious_interrupt_handler(_stack_frame: InterruptStackFrame) {
     // nothing to do
     // serial_println!("spurious interrupt");
+}
+
+#[unsafe(no_mangle)]
+pub(super) extern "C" fn __syscall_handler(ctx: &mut SysCallCtx) {
+    syscall_handler(ctx)
 }

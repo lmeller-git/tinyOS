@@ -37,6 +37,16 @@ pub trait TaskRepr: Debug {
     fn wake(&mut self) {}
     fn get_devices(&self) -> &TaskDevices;
     fn get_devices_mut(&mut self) -> &mut TaskDevices;
+    fn privilege_level(&self) -> PrivilegeLevel;
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PrivilegeLevel {
+    Kernel,
+    User,
+    #[default]
+    Unset,
 }
 
 #[repr(C)]
@@ -51,6 +61,7 @@ pub struct SimpleTask {
     pub state: TaskState,
     pub exit_info: Pin<Box<TaskExitInfo>>,
     pub devices: TaskDevices,
+    pub privilege: PrivilegeLevel,
     private_marker: PhantomData<u8>,
 }
 
@@ -67,6 +78,7 @@ impl SimpleTask {
             state: TaskState::Ready,
             private_marker: PhantomData,
             devices: TaskDevices::new(),
+            privilege: PrivilegeLevel::default(),
             exit_info: Box::pin(TaskExitInfo::default()),
         })
     }
@@ -119,6 +131,10 @@ impl TaskRepr for SimpleTask {
 
     fn get_devices_mut(&mut self) -> &mut TaskDevices {
         &mut self.devices
+    }
+
+    fn privilege_level(&self) -> PrivilegeLevel {
+        self.privilege
     }
 }
 
@@ -308,6 +324,7 @@ impl TaskBuilder<SimpleTask, Init> {
     ) -> Result<TaskBuilder<SimpleTask, Ready<KTaskInfo>>, ThreadingError> {
         let stack_top = allocate_kstack()?;
         *self.inner.krsp() = stack_top;
+        self.inner.privilege = PrivilegeLevel::Kernel;
         let info = KTaskInfo::new(self.entry, self.inner.krsp);
         Ok(TaskBuilder {
             inner: self.inner,
@@ -322,6 +339,7 @@ impl TaskBuilder<SimpleTask, Init> {
         let usr_end = allocate_userstack(&mut tbl)?;
         let kstack = allocate_userkstack(&mut tbl)?;
         *self.inner.krsp() = kstack;
+        self.inner.privilege = PrivilegeLevel::User;
         let info = UsrTaskInfo::new(
             self.entry,
             self.inner.krsp,
@@ -467,6 +485,9 @@ impl TaskRepr for Task {
     fn get_devices_mut(&mut self) -> &mut TaskDevices {
         todo!()
     }
+    fn privilege_level(&self) -> PrivilegeLevel {
+        todo!()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -498,6 +519,12 @@ pub struct TaskID {
 impl TaskID {
     pub fn get_inner(&self) -> u64 {
         self.inner
+    }
+}
+
+impl From<u64> for TaskID {
+    fn from(value: u64) -> Self {
+        Self { inner: value }
     }
 }
 

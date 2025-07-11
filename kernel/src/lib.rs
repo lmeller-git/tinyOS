@@ -284,7 +284,7 @@ fn arg_expansion() {
 #[kernel_test(should_panic)]
 fn timeout() {
     loop {
-        threading::yield_now();
+        arch::timer();
     }
     unreachable!()
 }

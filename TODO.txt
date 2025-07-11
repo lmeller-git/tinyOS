@@ -1,9 +1,11 @@
 1: implement basic in-built terminal, for debugging during early start-up (DONE)
-2: implement scheduler, context-handling, syscals
-3: implement ramfs, procfs,...
-4: implement a tty binder
-5: build a separate terminal, which connects to the tty
-6: somehow launch this as (first) task and let it launch other tasks
-7: interrupts (DONE)
-8: locks should be safe to use across different tasks, currently wihtout interrupts, should use other mechanism
-check out rustdoc for test gen?
+2: implement scheduler, context-handling (DONE)
+3: interrupts (DONE)
+4: currently using gkl, should fix concurrency issues + fix ring_buf (prio 9)
+5: multi core support (prio 8)
+6: elf loader (prio 1)
+7: syscalls (prio 2)
+8: user tasks (prio 3)
+9: Add actual application (like terminal, ...) (prio 6)
+10: add filesystem ram / disk (prio 4)
+11: rewrite boot-up terminal (prio 5)
