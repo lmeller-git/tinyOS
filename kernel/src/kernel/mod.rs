@@ -1,5 +1,6 @@
 pub mod abi;
 pub mod devices;
+pub mod elf;
 pub mod mem;
 pub mod threading;
 

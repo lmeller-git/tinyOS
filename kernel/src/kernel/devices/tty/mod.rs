@@ -5,6 +5,8 @@ use hashbrown::HashMap;
 use sink::{FBBACKEND, FbBackend, SERIALBACKEND, SerialBackend, TTYReceiver};
 use source::{KEYBOARDBACKEND, KeyboardBackend, TTYInput};
 
+use crate::kernel::devices::Null;
+
 use super::{FdEntry, FdTag, RawDeviceID, RawFdEntry};
 
 pub mod io;
@@ -31,9 +33,7 @@ impl TTYBuilder {
 
     pub fn keyboard<T: FdTag>(self) -> FdEntry<T> {
         let backend = TTYInput::new(KEYBOARDBACKEND.get().unwrap().clone());
-        let mut new_map = HashMap::new();
-        new_map.insert(self.id, Arc::new(backend) as Arc<dyn TTYSource>);
-        FdEntry::new(RawFdEntry::TTYSource(new_map), self.id)
+        FdEntry::new(RawFdEntry::TTYSource(self.id, Arc::new(backend)), self.id)
     }
 
     pub fn serial<T: FdTag>(self) -> FdEntry<T> {
@@ -48,6 +48,18 @@ impl TTYBuilder {
         let mut new_map = HashMap::new();
         new_map.insert(self.id, Arc::new(backend) as Arc<dyn TTYSink>);
         FdEntry::new(RawFdEntry::TTYSink(new_map), self.id)
+    }
+}
+
+impl TTYSink for Null {
+    fn write(&self, bytes: &[u8]) {}
+
+    fn flush(&self) {}
+}
+
+impl TTYSource for Null {
+    fn read(&self) -> Option<u8> {
+        None
     }
 }
 

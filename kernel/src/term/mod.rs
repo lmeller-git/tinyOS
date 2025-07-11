@@ -6,6 +6,7 @@ use crate::{
         graphics::{GLOBAL_FRAMEBUFFER, framebuffers::GlobalFrameBuffer},
         keyboard::{KEYBOARD_BUFFER, parse_scancode},
     },
+    kernel::devices::tty::io::read_all,
     locks::primitive::Mutex,
     print,
     services::graphics,
@@ -57,12 +58,11 @@ pub fn init_term() {
 }
 
 pub fn synced_keyboard_listener() {
-    // serial_println!("{:#?}", *FOOBAR.get().unwrap().lock());
+    let mut buf = [0; 20];
     loop {
-        // serial_println!("w");
-        if let Ok(v) = KEYBOARD_BUFFER.pop() {
-            if let Ok(res) = parse_scancode(v) {
-                // serial_println!("{:#?}", res);
+        let n_read = read_all(&mut buf);
+        for read in buf[..n_read].iter() {
+            if let Ok(res) = parse_scancode(*read) {
                 match res {
                     pc_keyboard::DecodedKey::RawKey(_k) => {}
                     pc_keyboard::DecodedKey::Unicode(c) => match c {

@@ -11,19 +11,21 @@ use crate::{
     },
     kernel::{
         devices::{Attacheable, CompositeAttacheable, FdEntry, FdTag, TaskDevices},
+        elf::apply,
         mem::paging::create_new_pagedir,
         threading::trampoline::TaskExitInfo,
     },
     locks::reentrant::{RwLockReadGuard, RwLockWriteGuard},
     serial_println,
 };
-use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, format, string::String, sync::Arc, vec::Vec};
 use core::{
     fmt::{Debug, LowerHex},
     marker::PhantomData,
     pin::Pin,
     sync::atomic::{AtomicU64, Ordering},
 };
+use elf::{ElfBytes, endian::AnyEndian};
 use hashbrown::HashMap;
 
 pub trait TaskRepr: Debug {
@@ -223,7 +225,24 @@ macro_rules! args {
 }
 
 pub struct Uninit;
-pub struct Init;
+pub struct Init<'data> {
+    elf_data: Option<&'data [u8]>,
+}
+
+impl<'data> Init<'data> {
+    fn new(bytes: &'data [u8]) -> Self {
+        Self {
+            elf_data: Some(bytes),
+        }
+    }
+}
+
+impl Default for Init<'_> {
+    fn default() -> Self {
+        Self { elf_data: None }
+    }
+}
+
 pub struct Ready<I> {
     inner: I,
     exit: TaskExitInfo,
@@ -299,26 +318,39 @@ impl<S> TaskBuilder<SimpleTask, S> {
 impl TaskBuilder<SimpleTask, Uninit> {
     pub unsafe fn from_addr(
         addr: VirtAddr,
-    ) -> Result<TaskBuilder<SimpleTask, Init>, ThreadingError> {
+    ) -> Result<TaskBuilder<SimpleTask, Init<'static>>, ThreadingError> {
         Ok(TaskBuilder::<SimpleTask, Init> {
             inner: SimpleTask::new()?,
             entry: addr,
             data: TaskData::default(),
-            _marker: Init,
+            _marker: Init::default(),
         })
     }
 
-    pub fn from_fn(func: ProcessEntry) -> Result<TaskBuilder<SimpleTask, Init>, ThreadingError> {
+    pub fn from_fn(
+        func: ProcessEntry,
+    ) -> Result<TaskBuilder<SimpleTask, Init<'static>>, ThreadingError> {
         Ok(TaskBuilder::<SimpleTask, Init> {
             inner: SimpleTask::new()?,
             entry: VirtAddr::new(func as usize as u64),
             data: TaskData::default(),
-            _marker: Init,
+            _marker: Init::default(),
+        })
+    }
+
+    pub fn from_bytes<'data>(
+        bytes: &'data [u8],
+    ) -> Result<TaskBuilder<SimpleTask, Init<'data>>, ThreadingError> {
+        Ok(TaskBuilder::<SimpleTask, Init> {
+            inner: SimpleTask::new()?,
+            entry: VirtAddr::zero(),
+            data: TaskData::default(),
+            _marker: Init::new(bytes),
         })
     }
 }
 
-impl TaskBuilder<SimpleTask, Init> {
+impl TaskBuilder<SimpleTask, Init<'_>> {
     pub fn as_kernel(
         mut self,
     ) -> Result<TaskBuilder<SimpleTask, Ready<KTaskInfo>>, ThreadingError> {
@@ -340,12 +372,22 @@ impl TaskBuilder<SimpleTask, Init> {
         let kstack = allocate_userkstack(&mut tbl)?;
         *self.inner.krsp() = kstack;
         self.inner.privilege = PrivilegeLevel::User;
+
+        if let Some(data) = self._marker.elf_data {
+            let bytes = elf::ElfBytes::minimal_parse(data)
+                .map_err(|e| ThreadingError::Unknown(format!("{:#?}", e)))?;
+            self.entry = VirtAddr::new(bytes.ehdr.e_entry);
+            apply(&bytes, data, &mut tbl)
+                .map_err(|e| ThreadingError::Unknown(format!("{:#?}", e)))?;
+        }
+
         let info = UsrTaskInfo::new(
             self.entry,
             self.inner.krsp,
             usr_end,
             tbl.root.start_address(),
         );
+
         Ok(TaskBuilder {
             inner: self.inner,
             entry: self.entry,
@@ -389,7 +431,9 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<KTaskInfo>> {
 }
 
 impl TaskBuilder<Task, Uninit> {
-    pub unsafe fn from_addr(addr: VirtAddr) -> Result<TaskBuilder<Task, Init>, ThreadingError> {
+    pub unsafe fn from_addr(
+        addr: VirtAddr,
+    ) -> Result<TaskBuilder<Task, Init<'static>>, ThreadingError> {
         todo!()
     }
 }

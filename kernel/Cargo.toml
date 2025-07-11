@@ -37,6 +37,7 @@ once_cell = { version = "1.21.3", default-features = false }
 acpi = { version = "5.2.0", features = ["alloc"] }
 raw-cpuid = "11.5.0"
 hashbrown = { version = "0.15.4" }
+elf = { version = "0.8.0", features = ["alloc", "to_str"], default-features = false  }
 
 [profile.dev]
 panic = "abort"

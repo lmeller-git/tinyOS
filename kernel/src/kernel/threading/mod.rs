@@ -1,4 +1,6 @@
-use crate::{arch, args, locks::thread_safe::RwLock, serial_println};
+use crate::{
+    arch, args, kernel::abi::syscalls::funcs::sys_yield, locks::thread_safe::RwLock, serial_println,
+};
 use alloc::{format, string::String, sync::Arc};
 use core::{
     arch::asm,
@@ -47,10 +49,7 @@ pub fn yield_now() {
     //TODO
     use crate::arch::interrupt;
     if interrupt::are_enabled() {
-        // do a sys_yield syscall
-        unsafe {
-            asm!("push rax", "mov rax, 451", "int 0x80", "pop rax");
-        }
+        sys_yield();
     } else {
         hint::spin_loop();
     }

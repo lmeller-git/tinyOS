@@ -4,6 +4,7 @@ pub mod gdt;
 pub mod handlers;
 mod idt;
 mod pic;
+use core::arch::asm;
 pub use pic::*;
 
 pub(super) fn init() {
@@ -20,6 +21,14 @@ pub(super) fn init() {
 
 pub fn enable_threading_interrupts() {
     enable_timer();
+}
+
+pub unsafe fn enable() {
+    unsafe { asm!("sti") }
+}
+
+pub unsafe fn disable() {
+    unsafe { asm!("cli") }
 }
 
 pub fn timer() {

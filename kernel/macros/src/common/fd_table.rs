@@ -9,6 +9,8 @@ pub fn derive_fd_table(input: DeriveInput) -> TokenStream {
         panic!("derive FDTable only defined for enums");
     };
 
+    let ident = &input.ident;
+
     let n_variants = variants.len();
 
     let generated = variants.iter().map(|variant| {
@@ -42,7 +44,25 @@ pub fn derive_fd_table(input: DeriveInput) -> TokenStream {
             }
         }
     });
+
+    let match_stmt = variants.iter().enumerate().map(|(i, variant)| {
+        let var_ident = &variant.ident;
+        quote! {
+            #i => Self::#var_ident,
+        }
+    });
+
     quote! {
+        impl TryFrom<usize> for #ident {
+            type Error = isize;
+            fn try_from(value: usize) -> Result<Self, Self::Error> {
+                Ok(match value {
+                    #(#match_stmt)*
+                    _ => return Err(-1),
+                })
+            }
+        }
+
         const DEVICE_NUM: usize = #n_variants;
         #(#generated)*
     }

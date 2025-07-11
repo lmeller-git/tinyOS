@@ -8,7 +8,9 @@ use crate::{
     arch::{self, interrupt},
     get_device,
     kernel::{
-        devices::{FdEntryType, RawFdEntry, with_current_device_list},
+        devices::{
+            FdEntryType, RawFdEntry, tty::source::KEYBOARDBACKEND, with_current_device_list,
+        },
         threading::{self, schedule::current_task},
     },
     serial_print, serial_println, term,
@@ -69,4 +71,19 @@ pub fn __serial_stub(input: Arguments) {
     // } else {
     //     arch::_serial_print(input);
     // }
+}
+
+pub fn read_all(buf: &mut [u8]) -> usize {
+    let mut n_read = 0;
+    get_device!(FdEntryType::StdIn, RawFdEntry::TTYSource(id, source) => {
+    for i in 0.. buf.len() {
+        if let Some(val) = source.read() {
+            buf[i] = val;
+            n_read += 1;
+        } else {
+            break;
+        }
+    }
+       });
+    n_read
 }

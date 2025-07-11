@@ -96,6 +96,10 @@ impl SysCallCtx {
     pub fn sixth(&self) -> u64 {
         self.r9
     }
+
+    pub fn ret2(&mut self, val: i64) {
+        self.rdx = val as u64
+    }
 }
 
 //TODO
@@ -331,63 +335,7 @@ global_asm!(
             ret
 
         init_usr_task:
-            //TODO return, ..
-            mov rax, rsp
-            
-            // mov rsi, [rdi + 8]
-            // call {0} // stack top
-            
-            mov rsp, [rdi + 8] // kstack top
-
-            /// pushes return addr after trampoline
-            /// trampoline addr
-            /// and relevant context
-            /// info in rsi
-
-            push [rsi + 8] // trampoline
-            push [rsi] // final return
-            
-            // push relevant context
-            push rax // rsp
-            mov r12, cr3
-            push r12 // cr3
-
-            // return stub
-            lea r12, return_trampoline_stub
-            push r12
-            
-            
-            // now on tasks kstack
-            // 1: push interrupt frame
-            push [rdi + 40] // ss
-            push [rdi + 16] // usr stack rsp
-            push [rdi + 32] // rflags
-            push [rdi + 24] // cs
-            push [rdi] // rip
-
-            // mov rsi, rsp
-            // call {0}
-
-            // 2: push Cpu Context, such that it can be popped by switch_and_apply
-            push 0 // rax
-            push 0 // rbp
-            push 0 // rdi
-            push 0 // rsi
-            push 0 // rdx
-            push 0 // rcx
-            push 0 // rbx
-            push [rdi + 48] // cr3
-            push 0 // r15
-            push 0
-            push 0
-            push 0
-            push 0
-            push 0
-            push 0
-            push 0 // r8
-            mov rsi, rsp
-            mov rsp, rax
-            mov rax, rsi
+            // TODO
             ret
 
         return_trampoline_stub:
@@ -400,7 +348,6 @@ global_asm!(
             mov rdi, rax
             ret // go to trampoline
    ",
-    sym serial_stub__,
 );
 
 pub fn serial_stub__(v1: u64, v2: u64) {
@@ -461,28 +408,39 @@ impl KTaskInfo {
 #[repr(C)]
 #[derive(Debug)]
 pub struct UsrTaskInfo {
+    // user data
     rip: VirtAddr,
-    kstack_top: VirtAddr,
     usr_stack_top: VirtAddr,
-    cs: u64,
-    rflags: u64,
-    ss: u64,
+    u_cs: u64,
+    u_rflags: u64,
+    u_ss: u64,
     cr3: PhysAddr,
+    // kernel stack data
+    kstack_top: VirtAddr,
+    k_cs: u64,
+    k_rflags: u64,
+    k_ss: u64,
 }
 
 impl UsrTaskInfo {
     pub fn new(addr: VirtAddr, kstack: VirtAddr, usr: VirtAddr, tbl: PhysAddr) -> Self {
         let (cs, ss) = get_user_selectors();
+        let (kcs, kss) = get_kernel_selectors();
         //TODO
         let rflags = RFlags::INTERRUPT_FLAG | RFlags::from_bits_truncate(0x2);
+        let k_rflags = RFlags::INTERRUPT_FLAG | RFlags::from_bits_truncate(0x2);
         Self {
             rip: addr,
-            kstack_top: kstack,
             usr_stack_top: usr,
-            cs: cs.0 as u64,
-            rflags: rflags.bits(),
-            ss: ss.0 as u64,
+            u_cs: cs.0 as u64,
+            u_rflags: rflags.bits(),
+            u_ss: ss.0 as u64,
             cr3: tbl,
+
+            kstack_top: kstack,
+            k_cs: kcs.0 as u64,
+            k_rflags: k_rflags.bits(),
+            k_ss: kss.0 as u64,
         }
     }
 }

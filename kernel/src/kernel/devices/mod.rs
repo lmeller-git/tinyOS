@@ -162,6 +162,12 @@ impl Add for RawDeviceID {
     }
 }
 
+impl From<u64> for RawDeviceID {
+    fn from(value: u64) -> Self {
+        Self { inner: value }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DeviceID<T: FdTag> {
     inner: RawDeviceID,
@@ -230,7 +236,7 @@ impl<T: FdTag> FdEntry<T> {
 #[repr(usize)]
 pub enum RawFdEntry {
     TTYSink(HashMap<RawDeviceID, Arc<dyn TTYSink>>),
-    TTYSource(HashMap<RawDeviceID, Arc<dyn TTYSource>>),
+    TTYSource(RawDeviceID, Arc<dyn TTYSource>),
     GraphicsBackend(RawDeviceID, Arc<dyn GFXManager>),
 }
 
@@ -243,11 +249,12 @@ impl RawFdEntry {
                 };
                 own.extend(s); //.extend_from_slice(&s);
             }
-            Self::TTYSource(own) => {
-                let RawFdEntry::TTYSource(s) = entry else {
+            Self::TTYSource(id1, own) => {
+                let RawFdEntry::TTYSource(id2, backend2) = entry else {
                     unreachable!()
                 };
-                own.extend(s);
+                *id1 = id2;
+                *own = backend2;
             }
             Self::GraphicsBackend(id1, backend1) => {
                 let RawFdEntry::GraphicsBackend(id2, backend2) = entry else {
@@ -263,7 +270,12 @@ impl RawFdEntry {
     pub fn remove(&mut self, id: RawDeviceID) {
         match self {
             Self::TTYSink(own) => _ = own.remove(&id),
-            Self::TTYSource(own) => _ = own.remove(&id),
+            Self::TTYSource(backend_id, backend) => {
+                if *backend_id == id {
+                    *backend = Arc::new(Null);
+                    *backend_id = RawDeviceID::new(0)
+                }
+            }
             Self::GraphicsBackend(backend_id, backend) => {
                 if *backend_id == id {
                     *backend = Arc::new(Null);
@@ -276,15 +288,15 @@ impl RawFdEntry {
 
     pub fn is_empty(&self) -> bool {
         match self {
-            Self::TTYSink(_) | Self::TTYSource(_) => self.n_attached() == 0,
-            Self::GraphicsBackend(id, _) => id.inner == 0, // this indicates that Null is attached
+            Self::TTYSink(_) => self.n_attached() == 0,
+            Self::GraphicsBackend(id, _) | Self::TTYSource(id, _) => id.inner == 0, // this indicates that Null is attached
         }
     }
 
     pub fn n_attached(&self) -> usize {
         match self {
             Self::TTYSink(sinks) => sinks.len(),
-            Self::TTYSource(sources) => sources.len(),
+            Self::TTYSource(_, _) => 1,
             Self::GraphicsBackend(_, _) => 1,
             _ => 0,
         }

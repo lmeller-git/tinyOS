@@ -163,7 +163,7 @@ extern "C" fn grahics() -> usize {
     });
     unsafe {
         use core::arch::asm;
-        asm!("mov rax, 60", "mov rdi, 0", "int 0x80");
+        asm!("mov rax, 1", "mov rdi, 0", "int 0x80");
     }
     unreachable!();
     0
