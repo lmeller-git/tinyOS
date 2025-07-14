@@ -2,17 +2,19 @@ use super::{ProcessEntry, ThreadingError, schedule::TaskPtr_};
 use crate::{
     add_device,
     arch::{
+        self,
         context::{
             KTaskInfo, TaskCtx, UsrTaskInfo, allocate_kstack, allocate_userkstack,
-            allocate_userstack, init_kernel_task, init_usr_task,
+            allocate_userstack, copy_ustack_mappings_into, init_kernel_task, init_usr_task,
+            unmap_ustack_mappings,
         },
-        current_page_tbl,
+        current_page_tbl, interrupt,
         mem::{Cr3Flags, PhysFrame, Size4KiB, VirtAddr},
     },
     kernel::{
         devices::{Attacheable, CompositeAttacheable, FdEntry, FdTag, TaskDevices},
         elf::apply,
-        mem::paging::create_new_pagedir,
+        mem::paging::{PAGETABLE, TaskPageTable, create_new_pagedir},
         threading::trampoline::TaskExitInfo,
     },
     locks::reentrant::{RwLockReadGuard, RwLockWriteGuard},
@@ -266,6 +268,14 @@ impl From<UsrTaskInfo> for Ready<UsrTaskInfo> {
     }
 }
 
+impl<'a> From<ExtendedUsrTaskInfo<'a>> for Ready<ExtendedUsrTaskInfo<'a>> {
+    fn from(value: ExtendedUsrTaskInfo<'a>) -> Self {
+        Self {
+            inner: value,
+            exit: TaskExitInfo::default(),
+        }
+    }
+}
 #[repr(C)]
 #[derive(Default, Debug)]
 pub struct TaskData {
@@ -277,6 +287,11 @@ pub struct TaskBuilder<T: TaskRepr, S> {
     entry: VirtAddr,
     data: TaskData,
     _marker: S,
+}
+
+pub struct ExtendedUsrTaskInfo<'a> {
+    info: UsrTaskInfo,
+    pagedir: TaskPageTable<'a>,
 }
 
 impl<T, S> TaskBuilder<T, S>
@@ -366,10 +381,14 @@ impl TaskBuilder<SimpleTask, Init<'_>> {
         })
     }
 
-    pub fn as_usr(mut self) -> Result<TaskBuilder<SimpleTask, Ready<UsrTaskInfo>>, ThreadingError> {
-        let mut tbl = create_new_pagedir().map_err(|e| ThreadingError::PageDirNotBuilt)?;
+    pub fn as_usr<'a>(
+        mut self,
+    ) -> Result<TaskBuilder<SimpleTask, Ready<ExtendedUsrTaskInfo<'a>>>, ThreadingError> {
+        let kstack = allocate_kstack()?;
+        let mut tbl =
+            create_new_pagedir::<'a, '_>().map_err(|e| ThreadingError::PageDirNotBuilt)?;
         let usr_end = allocate_userstack(&mut tbl)?;
-        let kstack = allocate_userkstack(&mut tbl)?;
+        // let kstack = allocate_userkstack(&mut tbl)?;
         *self.inner.krsp() = kstack;
         self.inner.privilege = PrivilegeLevel::User;
 
@@ -392,18 +411,33 @@ impl TaskBuilder<SimpleTask, Init<'_>> {
             inner: self.inner,
             entry: self.entry,
             data: self.data,
-            _marker: info.into(),
+            _marker: ExtendedUsrTaskInfo {
+                info: info,
+                pagedir: tbl,
+            }
+            .into(),
         })
     }
 }
 
-impl<T: TaskRepr> TaskBuilder<T, Ready<UsrTaskInfo>> {
+impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
     pub fn build(mut self) -> T {
         // serial_println!("data: {:#?}", self._marker.inner);
         // serial_println!("task: {:#?}", self.inner);
 
+        unsafe {
+            interrupt::disable();
+        }
+
+        copy_ustack_mappings_into(&self._marker.inner.pagedir, &mut *PAGETABLE.lock());
+
         let next_top =
-            unsafe { init_usr_task(&self._marker.inner, self.inner.exit_info(), &self.data) };
+            unsafe { init_usr_task(&self._marker.inner.info, self.inner.exit_info(), &self.data) };
+
+        unmap_ustack_mappings(&mut *PAGETABLE.lock());
+        unsafe {
+            interrupt::enable();
+        }
 
         // serial_println!("krsp after pushes: {:#x}", next_top);
         *self.inner.krsp() = next_top;

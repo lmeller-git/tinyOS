@@ -23,13 +23,13 @@ use crate::{
 use core::arch::global_asm;
 use lazy_static::lazy_static;
 use spin::Mutex;
-use x86_64::registers::rflags::RFlags;
+use x86_64::{registers::rflags::RFlags, structures::paging::OffsetPageTable};
 
 const KSTACK_AREA_START: VirtAddr = VirtAddr::new(0xffff_f000_c000_0000); // random location
 const KSTACK_USER_AREA_START: VirtAddr = VirtAddr::new(0xffff_f000_f000_0000);
 
-const KSTACK_SIZE: usize = 16 * 1024; // 16 KiB
-const KSTACK_SIZE_USER: usize = 8 * 1024; // 8 KiB
+const KSTACK_SIZE: usize = 32 * 1024; // 16 KiB
+const KSTACK_SIZE_USER: usize = 16 * 1024; // 8 KiB
 
 const MAX_KSTACKS: usize = 512; // random num (this is also max kernel tasks)
 const MAX_USER_KSTACKS: usize = 1024; // random num (this is also max user tasks)
@@ -298,15 +298,14 @@ global_asm!(
         
                     
             // return stub
-            lea r12, return_trampoline_stub
-            push r12
+            lea r8, return_trampoline_stub
+            push r8
 
             // now on tasks kstack
             // 1: push interrupt frame
-            mov r12, rsp
+            mov r8, rsp
             push [rdi + 32] // ss
-            // push [rdi + 8]  // rsp
-            push r12  // rsp before ss
+            push r8  // rsp before ss
             push [rdi + 24] // rflags
             push [rdi + 16] // cs
             push [rdi] // rip
@@ -336,6 +335,88 @@ global_asm!(
 
         init_usr_task:
             // TODO
+            mov rax, rsp
+            mov rsp, [rdi + 48] // kernel stack top
+
+            
+            /// pushes return addr after trampoline
+            /// trampoline addr
+            /// and relevant context
+            /// info in rsi
+
+            push [rsi] // trampoline
+            push rsi // task exit info
+
+            mov r8, rsp
+            
+            call setup_usr_stack
+            // user task rsp in r8
+                   
+            // return stub
+            lea r9, return_trampoline_stub
+            push r9
+
+            // now on tasks kstack
+            // 1: push interrupt frame
+            // user variables
+            push [rdi + 32] // ss
+            // push r8 ??
+            push [rdi + 8]  // rsp for user stack
+            push [rdi + 24] // rflags
+            push [rdi + 16] // cs
+            push [rdi]  // rip
+
+            // 2: push Cpu Context, such that it can be popped by switch_and_apply
+            push 0 // rax
+            push 0 // rbp
+            push [rdx + 0] // rdi
+            push [rdx + 8] // rsi
+            push [rdx + 16] // rdx
+            push [rdx + 24] // rcx
+            push 0 // rbx
+            push [rdi + 40] // cr3
+            push 0 // r15
+            push 0
+            push 0
+            push 0
+            push 0
+            push 0
+            push [rdx + 40]
+            push [rdx + 32] // r8
+            mov rsi, rsp
+            mov rsp, rax
+            mov rax, rsi
+            ret
+
+        setup_usr_stack:
+            // expects rsp of kstack in r8
+            // and usr task info in rdi
+            // puts usr task rsp in r8
+            mov r9, rsp
+            mov rsp, [rdi + 8]
+            // now on user stack
+
+            // push rsp pointing to return_trampoline stub, as we assume all work to be concluded
+            push r8
+
+            // the following will be popped by ret in userland
+            lea r8, [rip + usr_return_trampoline]
+            push r8
+
+            mov r8, rsp
+            mov rsp, r9
+            ret
+
+        usr_return_trampoline:
+            // on user stack
+            // reads rsp of kernel stack, moves execution to it and calls return_trampoline_stub
+            // pop rdi
+            // mov rsp, rdi
+            // simply calls sys_exit via syscall
+            mov rax, 1
+            mov rdi, 0
+            int 0x80
+            // we will never reach this point. The remainder is legacy
             ret
 
         return_trampoline_stub:
@@ -410,13 +491,13 @@ impl KTaskInfo {
 pub struct UsrTaskInfo {
     // user data
     rip: VirtAddr,
-    usr_stack_top: VirtAddr,
+    pub usr_stack_top: VirtAddr,
     u_cs: u64,
     u_rflags: u64,
     u_ss: u64,
-    cr3: PhysAddr,
+    pub cr3: PhysAddr,
     // kernel stack data
-    kstack_top: VirtAddr,
+    pub kstack_top: VirtAddr,
     k_cs: u64,
     k_rflags: u64,
     k_ss: u64,
@@ -528,8 +609,8 @@ pub fn allocate_userstack(tbl: &mut TaskPageTable) -> Result<VirtAddr, Threading
         PageTableFlags::WRITABLE | PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE;
 
     let base = USER_STACK_START.align_up(Size4KiB::SIZE);
-    let start = base + Size4KiB::SIZE; //.align_up(Size4KiB::SIZE);
-    let end = base + USER_STACK_SIZE as u64; //.align_up(Size4KiB::SIZE);
+    let start = (base + Size4KiB::SIZE).align_up(Size4KiB::SIZE);
+    let end = (base + USER_STACK_SIZE as u64).align_up(Size4KiB::SIZE);
 
     let start_page = Page::containing_address(start);
     let end_page = Page::containing_address(end - 1);
@@ -537,6 +618,8 @@ pub fn allocate_userstack(tbl: &mut TaskPageTable) -> Result<VirtAddr, Threading
     {
         let mapper = &mut tbl.table;
         let mut frame_allocator = GLOBAL_FRAME_ALLOCATOR.lock();
+
+        assert!(mapper.translate_page(start_page).is_err());
 
         for page in Page::range_inclusive(start_page, end_page) {
             let frame = frame_allocator
@@ -549,10 +632,50 @@ pub fn allocate_userstack(tbl: &mut TaskPageTable) -> Result<VirtAddr, Threading
                     .flush();
             }
         }
+        assert!(mapper.translate_page(end_page).is_ok());
     }
 
-    let stack_top = VirtAddr::new(end.as_u64() - 8); // & !0xF);
+    let stack_top = VirtAddr::new((end.as_u64() - 8) & !0xF);
     Ok(stack_top)
+}
+
+pub fn copy_ustack_mappings_into(from: &TaskPageTable, into: &mut OffsetPageTable) {
+    let flags =
+        PageTableFlags::WRITABLE | PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE;
+
+    let base = USER_STACK_START.align_up(Size4KiB::SIZE);
+    let start = (base + Size4KiB::SIZE).align_up(Size4KiB::SIZE);
+    let end = (base + USER_STACK_SIZE as u64).align_up(Size4KiB::SIZE);
+
+    let start_page: Page<Size4KiB> = Page::containing_address(start);
+    let end_page: Page<Size4KiB> = Page::containing_address(end - 1);
+
+    {
+        let mut frame_allocator = GLOBAL_FRAME_ALLOCATOR.lock();
+        for page in Page::range_inclusive(start_page, end_page) {
+            unsafe {
+                let frame = from.table.translate_page(page).unwrap();
+                into.map_to(page, frame, flags, &mut *frame_allocator)
+                    .unwrap()
+                    .flush();
+            }
+        }
+    }
+}
+
+pub fn unmap_ustack_mappings(tbl: &mut OffsetPageTable) {
+    let base = USER_STACK_START.align_up(Size4KiB::SIZE);
+    let start = (base + Size4KiB::SIZE).align_up(Size4KiB::SIZE);
+    let end = (base + USER_STACK_SIZE as u64).align_up(Size4KiB::SIZE);
+
+    let start_page: Page<Size4KiB> = Page::containing_address(start);
+    let end_page: Page<Size4KiB> = Page::containing_address(end - 1);
+
+    {
+        for page in Page::range_inclusive(start_page, end_page) {
+            tbl.unmap(page).unwrap().1.flush();
+        }
+    }
 }
 
 pub fn allocate_userkstack(tbl: &mut TaskPageTable) -> Result<VirtAddr, ThreadingError> {

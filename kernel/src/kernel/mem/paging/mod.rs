@@ -11,6 +11,7 @@ use crate::{
         mem::{FrameAllocator, OffsetPageTable, PageTable, PhysFrame, VirtAddr},
     },
     bootinfo,
+    kernel::mem::heap::map_heap,
 };
 pub use alloc::GLOBAL_FRAME_ALLOCATOR;
 use lazy_static::lazy_static;
@@ -65,9 +66,11 @@ pub fn create_new_pagedir<'a, 'b>() -> Result<TaskPageTable<'b>, &'a str> {
         new_table[i] = current_tbl[i].clone();
     }
 
-    let new_offset_page_tbl = ManuallyDrop::new(unsafe {
+    let mut new_offset_page_tbl = ManuallyDrop::new(unsafe {
         OffsetPageTable::new(new_table, VirtAddr::new(bootinfo::get_phys_offset()))
     });
+
+    map_heap(&mut new_offset_page_tbl);
 
     Ok(TaskPageTable {
         table: new_offset_page_tbl,

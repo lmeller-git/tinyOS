@@ -8,6 +8,7 @@ use crate::{
     arch::{
         self,
         context::{TaskCtx, TaskState, switch_and_apply},
+        interrupt::gdt::set_tss_kstack,
         mem::VirtAddr,
     },
     kernel::threading::task::Uninit,
@@ -178,6 +179,7 @@ pub unsafe extern "C" fn context_switch_local(rsp: u64) {
             drop(guard);
             drop(new);
             drop(lock);
+            set_tss_kstack(VirtAddr::new(task.rsp));
             switch_and_apply(task);
             unreachable!()
         }

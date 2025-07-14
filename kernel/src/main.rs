@@ -47,6 +47,7 @@ use tiny_os::kernel::devices::SinkTag;
 use tiny_os::kernel::devices::StdInTag;
 use tiny_os::kernel::devices::with_device_init;
 use tiny_os::kernel::threading;
+use tiny_os::kernel::threading::schedule;
 use tiny_os::kernel::threading::schedule::GLOBAL_SCHEDULER;
 use tiny_os::kernel::threading::schedule::OneOneScheduler;
 use tiny_os::kernel::threading::schedule::add_ktask;
@@ -57,6 +58,7 @@ use tiny_os::kernel::threading::spawn;
 use tiny_os::kernel::threading::spawn_fn;
 use tiny_os::kernel::threading::task::Arg;
 use tiny_os::kernel::threading::task::Args;
+use tiny_os::kernel::threading::task::TaskBuilder;
 use tiny_os::kernel::threading::task::TaskRepr;
 use tiny_os::locks::GKL;
 use tiny_os::println;
@@ -117,7 +119,21 @@ extern "C" fn idle() -> usize {
     use core::arch::asm;
     start_drivers();
     threading::finalize();
-    cross_println!("threads finalized");
+    serial_println!("threads finalized");
+
+    serial_println!("building task from ../user_tasks/exit");
+    let bin = include_bytes!("../user_tasks/exit");
+    let task = TaskBuilder::from_bytes(bin)
+        .unwrap()
+        .with_default_devices()
+        .as_usr()
+        .unwrap();
+    let task = task.build();
+    serial_println!("task built");
+    schedule::add_built_task(task);
+    serial_println!("task added");
+    threading::yield_now();
+    serial_println!("task executed succesfully");
 
     add_named_ktask(grahics, "graphic drawer".into());
     add_named_ktask(rand, "random".into());

@@ -1,5 +1,8 @@
 use crate::arch::{
-    interrupt::handlers::{syscall_stub, timer_interrupt_stub_local},
+    interrupt::{
+        gdt::get_kernel_selectors,
+        handlers::{syscall_stub, timer_interrupt_stub_local},
+    },
     x86::interrupt::handlers::{
         SPURIOUS_VECTOR, breakpoint_handler, double_fault_handler, gpf_handler,
         keyboard_interrupt_handler, page_fault_handler, spurious_interrupt_handler,
@@ -8,7 +11,10 @@ use crate::arch::{
 
 use super::gdt;
 use lazy_static::lazy_static;
-use x86_64::{VirtAddr, structures::idt::InterruptDescriptorTable};
+use x86_64::{
+    PrivilegeLevel, VirtAddr,
+    structures::{gdt::SegmentSelector, idt::InterruptDescriptorTable},
+};
 
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
@@ -32,7 +38,7 @@ lazy_static! {
         idt[InterruptIndex::Keyboard as u8].set_handler_fn(keyboard_interrupt_handler);
         idt[SPURIOUS_VECTOR].set_handler_fn(spurious_interrupt_handler);
         unsafe {
-            idt[InterruptIndex::Syscall as u8].set_handler_addr(VirtAddr::new(syscall_stub as usize as u64));
+            idt[InterruptIndex::Syscall as u8].set_handler_addr(VirtAddr::new(syscall_stub as usize as u64)).set_present(true).set_privilege_level(PrivilegeLevel::Ring3).set_code_selector(get_kernel_selectors().0);
         }
         idt
     };

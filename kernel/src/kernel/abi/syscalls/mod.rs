@@ -1,6 +1,6 @@
 use funcs::{sys_exit, sys_kill, sys_write, sys_write_single, sys_yield};
 
-use crate::{arch::context::SysCallCtx, kernel::abi::syscalls::funcs::sys_read};
+use crate::{arch::context::SysCallCtx, kernel::abi::syscalls::funcs::sys_read, serial_println};
 
 pub mod funcs;
 
