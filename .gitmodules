@@ -1,0 +1,3 @@
+[submodule "libtinyos"]
+	path = libtinyos
+	url = ../libtinyos/
