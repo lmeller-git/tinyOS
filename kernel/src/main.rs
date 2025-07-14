@@ -121,8 +121,8 @@ extern "C" fn idle() -> usize {
     threading::finalize();
     serial_println!("threads finalized");
 
-    serial_println!("building task from ../user_tasks/exit");
-    let bin = include_bytes!("../user_tasks/exit");
+    serial_println!("building task from ../../tinyosprograms/programs/exit/a.out");
+    let bin = include_bytes!("../../tinyosprograms/programs/exit/a.out");
     let task = TaskBuilder::from_bytes(bin)
         .unwrap()
         .with_default_devices()
