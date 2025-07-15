@@ -121,19 +121,21 @@ extern "C" fn idle() -> usize {
     threading::finalize();
     serial_println!("threads finalized");
 
-    serial_println!("building task from ../../tinyosprograms/programs/exit/a.out");
-    let bin = include_bytes!("../../tinyosprograms/programs/exit/a.out");
-    let task = TaskBuilder::from_bytes(bin)
-        .unwrap()
-        .with_default_devices()
-        .as_usr()
-        .unwrap();
-    let task = task.build();
-    serial_println!("task built");
-    schedule::add_built_task(task);
-    serial_println!("task added");
-    threading::yield_now();
-    serial_println!("task executed succesfully");
+    // serial_println!("building task from ../../tinyosprograms/programs/exit/a.out");
+    // let bin = include_bytes!("../../tinyosprograms/programs/exit/a.out");
+    // serial_println!("building task from ../../tinyosprograms/programs/example-asm/a.out");
+    // let bin = include_bytes!("../../tinyosprograms/programs/example-rs/a.out");
+    // let task = TaskBuilder::from_bytes(bin)
+    //     .unwrap()
+    //     .with_default_devices()
+    //     .as_usr()
+    //     .unwrap();
+    // let task = task.build();
+    // serial_println!("task built");
+    // schedule::add_built_task(task);
+    // serial_println!("task added");
+    // threading::yield_now();
+    // serial_println!("task executed succesfully");
 
     add_named_ktask(grahics, "graphic drawer".into());
     add_named_ktask(rand, "random".into());

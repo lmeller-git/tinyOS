@@ -13,24 +13,6 @@ use crate::{
 };
 use elf::endian::AnyEndian;
 
-pub fn parse(bytes: &[u8]) -> Result<VirtAddr, elf::ParseError> {
-    let mut parser = elf::ElfBytes::<AnyEndian>::minimal_parse(bytes)?;
-    let headers = parser.segments().unwrap();
-    for header in headers.iter() {
-        let offset = header.p_offset;
-        let virt = header.p_vaddr;
-        let file_size = header.p_filesz;
-        let mem_size = header.p_memsz;
-        let flags = header.p_flags;
-        let align = header.p_align;
-
-        // let data = &bytes[offset..offset + file_size];
-        // now copy this to mem and init pagedir
-    }
-    let entry = parser.ehdr.e_entry;
-    Ok(VirtAddr::new(entry))
-}
-
 pub fn apply(
     bytes: &elf::ElfBytes<AnyEndian>,
     data: &[u8],
@@ -40,7 +22,6 @@ pub fn apply(
     for header in headers.iter() {
         let addr = VirtAddr::new(header.p_vaddr);
         let mapper = PageMapper::init(&addr, header.p_filesz);
-
         mapper.map(
             table,
             get_pagetableflags(header.p_flags),
@@ -101,6 +82,9 @@ impl PageMapper {
     fn map(&self, new: &mut TaskPageTable, flags: PageTableFlags, old: &mut OffsetPageTable<'_>) {
         let mut alloc = GLOBAL_FRAME_ALLOCATOR.lock();
         for page in Page::range_inclusive(self.start, self.end) {
+            // if new.table.translate_page(page).is_ok() {
+            //     continue;
+            // }
             let frame = alloc.allocate_frame().unwrap();
             unsafe {
                 new.table
