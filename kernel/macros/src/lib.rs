@@ -4,13 +4,13 @@ mod mem;
 mod test_gen;
 use common::{
     args::default_arg_parser,
-    fd_table::{derive_composite_fd_tag, derive_fd_table, CompositeTagAttrs},
+    fd_table::{CompositeTagAttrs, derive_composite_fd_tag, derive_fd_table},
 };
 use mem::addr::derive_addr;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput, ItemStruct};
-use test_gen::{kernel_test_handler, TestParser};
+use syn::{DeriveInput, ItemStruct, parse_macro_input};
+use test_gen::{TestParser, kernel_test_handler};
 
 #[proc_macro]
 pub fn tests(input: TokenStream) -> TokenStream {

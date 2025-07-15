@@ -15,6 +15,7 @@ extern crate alloc;
 extern crate tiny_os;
 
 use alloc::boxed::Box;
+use alloc::vec::Vec;
 use core::arch::global_asm;
 use embedded_graphics::mono_font;
 use embedded_graphics::primitives::PrimitiveStyle;
@@ -35,6 +36,7 @@ use tiny_os::drivers::graphics::text::draw_str;
 use tiny_os::drivers::start_drivers;
 use tiny_os::exit_qemu;
 use tiny_os::get_device;
+use tiny_os::include_bins::get_binaries;
 use tiny_os::kernel;
 use tiny_os::kernel::abi::syscalls::SysRetCode;
 use tiny_os::kernel::devices::DeviceBuilder;
@@ -120,22 +122,17 @@ extern "C" fn idle() -> usize {
     start_drivers();
     threading::finalize();
     serial_println!("threads finalized");
-
-    // serial_println!("building task from ../../tinyosprograms/programs/exit/a.out");
-    // let bin = include_bytes!("../../tinyosprograms/programs/exit/a.out");
-    // serial_println!("building task from ../../tinyosprograms/programs/example-asm/a.out");
-    // let bin = include_bytes!("../../tinyosprograms/programs/example-rs/a.out");
-    // let task = TaskBuilder::from_bytes(bin)
-    //     .unwrap()
-    //     .with_default_devices()
-    //     .as_usr()
-    //     .unwrap();
-    // let task = task.build();
-    // serial_println!("task built");
-    // schedule::add_built_task(task);
-    // serial_println!("task added");
-    // threading::yield_now();
-    // serial_println!("task executed succesfully");
+    let binaries: Vec<&'static [u8]> = get_binaries();
+    for bin in &binaries {
+        let task = TaskBuilder::from_bytes(bin)
+            .unwrap()
+            .with_default_devices()
+            .as_usr()
+            .unwrap()
+            .build();
+        schedule::add_built_task(task);
+    }
+    serial_println!("{} user tasks aded", binaries.len());
 
     add_named_ktask(grahics, "graphic drawer".into());
     add_named_ktask(rand, "random".into());

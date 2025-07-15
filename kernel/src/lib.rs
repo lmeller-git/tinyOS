@@ -36,6 +36,7 @@ pub mod arch;
 pub mod bootinfo;
 pub mod common;
 pub mod drivers;
+pub mod include_bins;
 pub mod kernel;
 pub mod requests;
 pub mod services;
