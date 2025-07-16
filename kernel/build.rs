@@ -55,15 +55,18 @@ fn build_user_programs() {
         // dir should now contain a.out
         let dir = programs_dir.join(program.file_name()).join("a.out");
         // copy binaries into OUT_DIR
-        let target = out_dir.join(format!("{}.out", program.file_name().display()));
+        let file_name = format!("{}.out", program.file_name().display());
+        let target = out_dir.join(&file_name);
         _ = fs::copy(dir, &target);
-        bins.push(target);
+        bins.push(file_name);
     }
 
     let mut includes = String::new();
     includes.push_str("pub fn get_binaries() -> alloc::vec::Vec<&'static [u8]>{\n\talloc::vec![\n");
     for bin in bins {
-        includes.push_str(&format!("\t\tinclude_bytes!(\"{}\"),\n", bin.display()));
+        includes.push_str(&format!(
+            "\t\tinclude_bytes!(concat!(env!(\"OUT_DIR\"), \"/{bin}\")),\n"
+        ));
     }
     includes.push_str("\t]\n}\n");
 
