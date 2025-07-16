@@ -1,6 +1,38 @@
 use std::{env, fs, path::Path, process::Command};
 
 fn main() {
+    println!("cargo:rerun-if-changed=NULL");
+
+    update_submodules();
+
+    build_user_programs();
+
+    let arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+    // Tell cargo to pass the linker script to the linker..
+    println!("cargo:rustc-link-arg=-Tlinker-{arch}.ld");
+    // ..and to re-run if it changes.
+    println!("cargo:rerun-if-changed=linker-{arch}.ld");
+}
+
+fn update_submodules() {
+    println!("cargo:warning=Updating git submodules...");
+
+    let output = Command::new("git")
+        .args(["submodule", "update", "--init", "--recursive", "--remote"])
+        .output()
+        .expect("Failed to update submodules");
+
+    if !output.status.success() {
+        println!(
+            "cargo:warning=Submodule update error: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+fn build_user_programs() {
+    println!("cargo:warning=Building user programs...");
+
     let programs = concat!(env!("CARGO_MANIFEST_DIR"), "/../tinyosprograms/programs");
 
     let programs_dir = Path::new(programs);
@@ -35,10 +67,4 @@ fn main() {
         includes,
     )
     .unwrap();
-
-    let arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
-    // Tell cargo to pass the linker script to the linker..
-    println!("cargo:rustc-link-arg=-Tlinker-{arch}.ld");
-    // ..and to re-run if it changes.
-    println!("cargo:rerun-if-changed=linker-{arch}.ld");
 }
