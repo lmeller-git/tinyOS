@@ -54,10 +54,13 @@ fn build_user_programs() {
         }
         // dir should now contain a.out
         let dir = programs_dir.join(program.file_name()).join("a.out");
+        if !dir.exists() {
+            panic!("build ran, but a.out does not exist");
+        }
         // copy binaries into OUT_DIR
         let file_name = format!("{}.out", program.file_name().display());
         let target = out_dir.join(&file_name);
-        _ = fs::copy(dir, &target);
+        fs::copy(dir, &target).expect("could not copy bin");
         bins.push(file_name);
     }
 
