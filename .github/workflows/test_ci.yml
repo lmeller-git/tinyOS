@@ -37,7 +37,7 @@ jobs:
 
     - name: install deps
       run: |
-        sudo apt-get update && sudo apt-get install -y qemu-system-x86 xorriso
+        sudo apt-get update && sudo apt-get install -y qemu-system-x86 xorriso nasm build-essential
 
     - name: Build test bin and run tests
       run: make test
