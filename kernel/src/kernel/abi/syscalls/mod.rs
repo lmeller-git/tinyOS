@@ -1,10 +1,15 @@
 use funcs::{sys_exit, sys_kill, sys_write, sys_write_single, sys_yield};
 
-use crate::{arch::context::SysCallCtx, kernel::abi::syscalls::funcs::sys_read, serial_println};
+use crate::{
+    arch::context::SysCallCtx,
+    kernel::abi::syscalls::funcs::{sys_heap_alloc, sys_read},
+    serial_println,
+};
 
 pub mod funcs;
 
 pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
+    serial_println!("syscall {} hit", args.rax);
     let res: SysRetCode = match args.num() {
         1 => {
             sys_exit(args.first() as i64);
@@ -47,6 +52,15 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
             );
             args.ret2(n_read as i64);
             if n_read < 0 {
+                SysRetCode::Fail
+            } else {
+                SysRetCode::Success
+            }
+        }
+        7 => {
+            let r = sys_heap_alloc(args.first() as usize);
+            args.ret2(r as i64);
+            if r.is_null() {
                 SysRetCode::Fail
             } else {
                 SysRetCode::Success

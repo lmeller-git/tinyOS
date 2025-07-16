@@ -1,11 +1,11 @@
 //TODO
 
+use crate::utils::locks::reentrant::Mutex;
 use crate::{
     arch::mem::{FrameAllocator, FrameDeallocator, PhysAddr, PhysFrame, Size4KiB},
     bootinfo::usable_mmap_entries,
 };
 use lazy_static::lazy_static;
-use spin::Mutex;
 
 // Does not free pages
 #[derive(Debug)]

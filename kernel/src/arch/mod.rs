@@ -5,6 +5,13 @@ pub use x86::{context, interrupt, mem};
 
 use core::{arch::asm, fmt::Arguments};
 
+pub fn early_init() {
+    #[cfg(target_arch = "x86_64")]
+    x86::early_init();
+    #[cfg(not(any(target_arch = "x86_64")))]
+    compile_error!("arch not supported")
+}
+
 pub fn init() {
     #[cfg(target_arch = "x86_64")]
     x86::init();

@@ -42,6 +42,9 @@ pub trait TaskRepr: Debug {
     fn get_devices(&self) -> &TaskDevices;
     fn get_devices_mut(&mut self) -> &mut TaskDevices;
     fn privilege_level(&self) -> PrivilegeLevel;
+    fn mut_pagdir(&mut self) -> &mut TaskPageTable<'static> {
+        todo!()
+    }
 }
 
 #[repr(u8)]
@@ -66,6 +69,8 @@ pub struct SimpleTask {
     pub exit_info: Pin<Box<TaskExitInfo>>,
     pub devices: TaskDevices,
     pub privilege: PrivilegeLevel,
+    pub heap_size: usize,
+    pub pagedir: Option<TaskPageTable<'static>>,
     private_marker: PhantomData<u8>,
 }
 
@@ -83,6 +88,8 @@ impl SimpleTask {
             private_marker: PhantomData,
             devices: TaskDevices::new(),
             privilege: PrivilegeLevel::default(),
+            heap_size: 0,
+            pagedir: None,
             exit_info: Box::pin(TaskExitInfo::default()),
         })
     }
@@ -139,6 +146,10 @@ impl TaskRepr for SimpleTask {
 
     fn privilege_level(&self) -> PrivilegeLevel {
         self.privilege
+    }
+
+    fn mut_pagdir(&mut self) -> &mut TaskPageTable<'static> {
+        self.pagedir.as_mut().unwrap()
     }
 }
 
@@ -291,7 +302,7 @@ pub struct TaskBuilder<T: TaskRepr, S> {
 
 pub struct ExtendedUsrTaskInfo<'a> {
     info: UsrTaskInfo,
-    pagedir: TaskPageTable<'a>,
+    _phatom: PhantomData<&'a u8>,
 }
 
 impl<T, S> TaskBuilder<T, S>
@@ -407,15 +418,19 @@ impl TaskBuilder<SimpleTask, Init<'_>> {
             tbl.root.start_address(),
         );
 
+        let _marker = ExtendedUsrTaskInfo {
+            info: info,
+            _phatom: PhantomData,
+        }
+        .into();
+
+        self.inner.pagedir = Some(tbl);
+
         Ok(TaskBuilder {
             inner: self.inner,
             entry: self.entry,
             data: self.data,
-            _marker: ExtendedUsrTaskInfo {
-                info: info,
-                pagedir: tbl,
-            }
-            .into(),
+            _marker,
         })
     }
 }
@@ -429,7 +444,7 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
             interrupt::disable();
         }
 
-        copy_ustack_mappings_into(&self._marker.inner.pagedir, &mut *PAGETABLE.lock());
+        copy_ustack_mappings_into(self.inner.mut_pagdir(), &mut *PAGETABLE.lock());
 
         let next_top =
             unsafe { init_usr_task(&self._marker.inner.info, self.inner.exit_info(), &self.data) };

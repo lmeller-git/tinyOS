@@ -75,9 +75,25 @@ global_asm!(
             push r10
             push r9
             push r8
+
+            // save current rsp
+            mov r9, rsp
+           
+            // align stack, save rsp and save xmm registers
+            sub rsp, 512 + 16
+            and rsp, -16
+            fxsave [rsp]
+            push r9
+            
             mov rdi, rsp
             call timer_interrupt_handler_local_
             call end_interrupt
+            
+            // pop xmm registers
+            pop r9
+            fxrstor [rsp]
+            mov rsp, r9
+            
             pop r8
             pop r9
             pop r10
@@ -110,7 +126,7 @@ global_asm!(
             push rsi
             push rdi
             push rax
-
+            
             mov rdi, rsp
             call __syscall_handler
 

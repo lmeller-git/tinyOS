@@ -70,7 +70,7 @@ pub fn set_tss_kstack(stack: VirtAddr) {
 }
 
 pub(super) fn init() {
-    use x86_64::instructions::segmentation::{CS, Segment};
+    use x86_64::instructions::segmentation::{CS, SS, Segment};
     use x86_64::instructions::tables::load_tss;
 
     let tss = init_tss();
@@ -83,7 +83,7 @@ pub(super) fn init() {
         let gdt = GDT.get_unchecked();
         gdt.0.load();
         CS::set_reg(gdt.1.code_selector);
-        x86_64::instructions::segmentation::SS::set_reg(gdt.1.data_selector);
+        SS::set_reg(gdt.1.data_selector);
         load_tss(gdt.1.tss_selector);
     }
 }

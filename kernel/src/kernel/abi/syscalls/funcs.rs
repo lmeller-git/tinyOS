@@ -1,11 +1,19 @@
-use core::{arch::global_asm, array};
+use core::{arch::global_asm, array, ptr::null_mut};
 
 use crate::{
-    arch::interrupt::gdt::{get_kernel_selectors, get_user_selectors},
+    arch::interrupt::{
+        self,
+        gdt::{get_kernel_selectors, get_user_selectors},
+    },
     get_device,
     kernel::{
         devices::{FdEntryType, RawDeviceID, RawFdEntry, tty::io::read_all},
+        mem::{
+            heap::{MAX_USER_HEAP_SIZE, USER_HEAP_START},
+            paging::GLOBAL_FRAME_ALLOCATOR,
+        },
         threading::{
+            self,
             schedule::{
                 self, OneOneScheduler, context_switch_local, current_task, with_current_task,
             },
@@ -13,6 +21,7 @@ use crate::{
             yield_now,
         },
     },
+    serial_println,
 };
 
 use super::SysRetCode;
@@ -94,6 +103,40 @@ pub fn sys_read(device_type: usize, buf: *mut u8, len: usize) -> isize {
     read_all(bytes) as isize
 }
 
+pub fn sys_heap_alloc(size: usize) -> *mut u8 {
+    use crate::arch::mem::{
+        FrameAllocator, Mapper, Page, PageSize, PageTableFlags, Size4KiB, VirtAddr,
+    };
+    serial_println!("heap request for: {} bytes", size);
+    let current_size = current_task().unwrap().raw().read().heap_size;
+    if current_size + size > MAX_USER_HEAP_SIZE {
+        serial_println!("too large");
+        return null_mut();
+    }
+    let base_addr = VirtAddr::new((USER_HEAP_START + current_size) as u64).align_up(Size4KiB::SIZE);
+    let end_addr = (base_addr + size as u64).align_up(Size4KiB::SIZE);
+    let start_page: Page<Size4KiB> = Page::containing_address(base_addr);
+    let end_page: Page<Size4KiB> = Page::containing_address(end_addr);
+    serial_println!("now mapping heap");
+    with_current_task(|task| {
+        task.with_inner_mut(|task| {
+            let flags = PageTableFlags::PRESENT
+                | PageTableFlags::USER_ACCESSIBLE
+                | PageTableFlags::WRITABLE;
+            let pagedir = task.mut_pagdir();
+            let mut alloc = GLOBAL_FRAME_ALLOCATOR.lock();
+            for page in Page::range_inclusive(start_page, end_page) {
+                let frame = alloc.allocate_frame().unwrap();
+                unsafe { pagedir.table.map_to(page, frame, flags, &mut *alloc) }
+                    .unwrap()
+                    .flush();
+            }
+        })
+    });
+    serial_println!("gave {} bytes on addr: {:#x}", size, base_addr.as_u64());
+    base_addr.as_mut_ptr()
+}
+
 global_asm!(
     "
     .global __sys_yield
@@ -130,8 +173,24 @@ global_asm!(
             push r10
             push r9
             push r8
+            
+            // save current rsp
+            mov r9, rsp
+           
+            // align stack, save rsp and save xmm registers
+            sub rsp, 512 + 16
+            and rsp, -16
+            fxsave [rsp]
+            push r9
+            
             mov rdi, rsp
             call context_switch_local
+
+            // pop xmm registers
+            pop r9
+            fxrstor [rsp]
+            mov rsp, r9
+
             pop r8
             pop r9
             pop r10

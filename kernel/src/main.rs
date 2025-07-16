@@ -15,6 +15,7 @@ extern crate alloc;
 extern crate tiny_os;
 
 use alloc::boxed::Box;
+use alloc::vec;
 use alloc::vec::Vec;
 use core::arch::global_asm;
 use embedded_graphics::mono_font;
@@ -47,6 +48,7 @@ use tiny_os::kernel::devices::GraphicsTag;
 use tiny_os::kernel::devices::RawFdEntry;
 use tiny_os::kernel::devices::SinkTag;
 use tiny_os::kernel::devices::StdInTag;
+use tiny_os::kernel::devices::StdOutTag;
 use tiny_os::kernel::devices::with_device_init;
 use tiny_os::kernel::threading;
 use tiny_os::kernel::threading::schedule;
@@ -81,6 +83,7 @@ unsafe extern "C" fn kmain() -> ! {
     bootinfo::get();
     serial_println!("starting up...");
     kernel::mem::init_paging();
+    arch::early_init();
     serial_println!("paging set up");
     term::init_term();
     cross_println!("terminal started");
@@ -98,10 +101,12 @@ unsafe extern "C" fn kmain() -> ! {
         |devices| {
             let fb: FdEntry<SinkTag> = DeviceBuilder::tty().fb();
             let serial: FdEntry<EDebugSinkTag> = DeviceBuilder::tty().serial();
+            let serial2: FdEntry<StdOutTag> = DeviceBuilder::tty().serial();
             let keyboard: FdEntry<StdInTag> = DeviceBuilder::tty().keyboard();
             let gfx: FdEntry<GraphicsTag> = DeviceBuilder::gfx().simple();
 
             devices.attach(fb);
+            // devices.attach(serial2);
             devices.attach(serial);
             devices.attach(keyboard);
             devices.attach(gfx);
@@ -122,7 +127,10 @@ extern "C" fn idle() -> usize {
     start_drivers();
     threading::finalize();
     serial_println!("threads finalized");
-    let binaries: Vec<&'static [u8]> = get_binaries();
+    let mut binaries: Vec<&'static [u8]> = get_binaries();
+
+    serial_println!("adding {} user tasks", binaries.len());
+    println!("hi");
     for bin in &binaries {
         let task = TaskBuilder::from_bytes(bin)
             .unwrap()
@@ -132,7 +140,7 @@ extern "C" fn idle() -> usize {
             .build();
         schedule::add_built_task(task);
     }
-    serial_println!("{} user tasks aded", binaries.len());
+    serial_println!("{} user tasks added", binaries.len());
 
     add_named_ktask(grahics, "graphic drawer".into());
     add_named_ktask(rand, "random".into());

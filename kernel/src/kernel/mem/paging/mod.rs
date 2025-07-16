@@ -2,7 +2,7 @@ mod alloc;
 mod frame;
 mod map;
 mod table;
-use core::mem::ManuallyDrop;
+use core::{fmt::Debug, mem::ManuallyDrop};
 
 //TODO make arch agnostic / abstract arch stuff away
 use crate::{
@@ -76,4 +76,10 @@ pub fn create_new_pagedir<'a, 'b>() -> Result<TaskPageTable<'b>, &'a str> {
         table: new_offset_page_tbl,
         root: new_frame,
     })
+}
+
+impl Debug for TaskPageTable<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        Ok(())
+    }
 }

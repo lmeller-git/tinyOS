@@ -262,6 +262,11 @@ global_asm!(
            
             call end_interrupt
             // now on tasks kstack, with state on stack
+
+            // pop xmm registers
+            pop r9
+            fxrstor [rsp]
+            mov rsp, r9
             
             pop r8
             pop r9
@@ -272,7 +277,7 @@ global_asm!(
             pop r14
             pop r15
             pop rax // cr3
-            mov cr3, rax // indefinite hang??
+            mov cr3, rax
             pop rbx
             pop rcx
             pop rdx
@@ -292,6 +297,10 @@ global_asm!(
             /// trampoline addr
             /// and relevant context
             /// info in rsi
+
+            // ensure alignemnent
+            and rsp, -16
+            push 0
 
             push [rsi] // trampoline
             push rsi // task exit info
@@ -328,13 +337,21 @@ global_asm!(
             push 0
             push [rdx + 40]
             push [rdx + 32] // r8
+
+            // save xmm registers
+            mov r9, rsp
+            sub rsp, 512 + 16
+            and rsp, -16
+            fxsave [rsp]
+            push r9
+
+            // restore rsp
             mov rsi, rsp
             mov rsp, rax
             mov rax, rsi
             ret
 
         init_usr_task:
-            // TODO
             mov rax, rsp
             mov rsp, [rdi + 48] // kernel stack top
 
@@ -344,10 +361,13 @@ global_asm!(
             /// and relevant context
             /// info in rsi
 
+            // ensure alignemnt
+            and rsp, -16
+            push 0
+
             push [rsi] // trampoline
             push rsi // task exit info
 
-            mov r8, rsp
             
             call setup_usr_stack
             // user task rsp in r8
@@ -360,8 +380,8 @@ global_asm!(
             // 1: push interrupt frame
             // user variables
             push [rdi + 32] // ss
-            // push r8 ??
-            push [rdi + 8]  // rsp for user stack
+            push r8
+            // push [rdi + 8]  // rsp for user stack
             push [rdi + 24] // rflags
             push [rdi + 16] // cs
             push [rdi]  // rip
@@ -383,26 +403,34 @@ global_asm!(
             push 0
             push [rdx + 40]
             push [rdx + 32] // r8
+            
+            // save xmm registers
+            mov r9, rsp
+            sub rsp, 512 + 16
+            and rsp, -16
+            fxsave [rsp]
+            push r9
+            
+            // restore rsp
             mov rsi, rsp
             mov rsp, rax
             mov rax, rsi
             ret
 
         setup_usr_stack:
-            // expects rsp of kstack in r8
-            // and usr task info in rdi
+            // usr task info in rdi
             // puts usr task rsp in r8
             mov r9, rsp
             mov rsp, [rdi + 8]
             // now on user stack
 
-            // push rsp pointing to return_trampoline stub, as we assume all work to be concluded
-            push r8
+            // ensure alignemnt
+            and rsp, -16
+            sub rsp, 8
 
-            // the following will be popped by ret in userland
-            lea r8, [rip + usr_return_trampoline]
-            push r8
-
+            // push return trampolines
+            // TODO (currently exit() is expected)
+            
             mov r8, rsp
             mov rsp, r9
             ret
