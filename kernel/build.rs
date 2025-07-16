@@ -44,23 +44,39 @@ fn build_user_programs() {
         if !dir.join("build.sh").is_file() {
             continue;
         }
-        if Command::new("bash")
+        let child = Command::new("bash")
             .arg("build.sh")
             .current_dir(&dir)
-            .status()
-            .is_err()
-        {
-            panic!("could not build {}", dir.display());
+            .output()
+            .expect("could not run build.sh");
+
+        println!(
+            "cargo:warning=stdout build.sh: {}",
+            String::from_utf8_lossy(&child.stdout)
+        );
+        println!(
+            "cargo:warning=stderr build.sh: {}",
+            String::from_utf8_lossy(&child.stderr)
+        );
+
+        if !child.status.success() {
+            panic!(
+                "could not build {}: {}",
+                dir.display(),
+                String::from_utf8_lossy(&child.stderr)
+            );
         }
         // dir should now contain a.out
         let dir = programs_dir.join(program.file_name()).join("a.out");
+
         if !dir.exists() {
             panic!("build ran, but a.out does not exist");
         }
+
         // copy binaries into OUT_DIR
         let file_name = format!("{}.out", program.file_name().display());
         let target = out_dir.join(&file_name);
-        fs::copy(dir, &target).expect("could not copy bin");
+        fs::copy(dir, &target).expect("could not copy bin into OUT_DIR");
         bins.push(file_name);
     }
 
