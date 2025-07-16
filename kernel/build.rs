@@ -34,6 +34,8 @@ fn build_user_programs() {
     println!("cargo:warning=Building user programs...");
 
     let programs = concat!(env!("CARGO_MANIFEST_DIR"), "/../tinyosprograms/programs");
+    let out = env::var("OUT_DIR").unwrap();
+    let out_dir = Path::new(&out);
 
     let programs_dir = Path::new(programs);
     let mut bins = Vec::new();
@@ -52,7 +54,10 @@ fn build_user_programs() {
         }
         // dir should now contain a.out
         let dir = programs_dir.join(program.file_name()).join("a.out");
-        bins.push(dir);
+        // copy binaries into OUT_DIR
+        let target = out_dir.join(format!("{}.out", program.file_name().display()));
+        _ = fs::copy(dir, &target);
+        bins.push(target);
     }
 
     let mut includes = String::new();
