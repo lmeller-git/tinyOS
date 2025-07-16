@@ -49,6 +49,16 @@ fn build_user_programs() {
             .current_dir(&dir)
             .output()
             .expect("could not run build.sh");
+
+        println!(
+            "cargo:warning=stdout build.sh: {}",
+            String::from_utf8_lossy(&child.stdout)
+        );
+        println!(
+            "cargo:warning=stderr build.sh: {}",
+            String::from_utf8_lossy(&child.stderr)
+        );
+
         if !child.status.success() {
             panic!(
                 "could not build {}: {}",
