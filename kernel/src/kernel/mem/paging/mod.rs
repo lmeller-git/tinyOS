@@ -15,6 +15,7 @@ use crate::{
 };
 pub use alloc::GLOBAL_FRAME_ALLOCATOR;
 use lazy_static::lazy_static;
+pub use map::{kernel_map_region, user_map_region};
 use spin::Mutex;
 
 // reads current p4 rom cpu (CR3) and returns pointer

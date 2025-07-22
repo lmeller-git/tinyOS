@@ -19,6 +19,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::arch::global_asm;
 use embedded_graphics::mono_font;
+use embedded_graphics::prelude::Dimensions;
 use embedded_graphics::primitives::PrimitiveStyle;
 use embedded_graphics::primitives::StyledDrawable;
 use embedded_graphics::text::renderer::TextRenderer;
@@ -32,6 +33,7 @@ use tiny_os::args;
 use tiny_os::bootinfo;
 use tiny_os::cross_println;
 use tiny_os::drivers::graphics::colors::ColorCode;
+use tiny_os::drivers::graphics::framebuffers::BoundingBox;
 use tiny_os::drivers::graphics::framebuffers::LimineFrameBuffer;
 use tiny_os::drivers::graphics::text::draw_str;
 use tiny_os::drivers::start_drivers;
@@ -40,6 +42,8 @@ use tiny_os::get_device;
 use tiny_os::include_bins::get_binaries;
 use tiny_os::kernel;
 use tiny_os::kernel::abi::syscalls::SysRetCode;
+use tiny_os::kernel::abi::syscalls::funcs::sys_exit;
+use tiny_os::kernel::abi::syscalls::funcs::sys_write;
 use tiny_os::kernel::devices::DeviceBuilder;
 use tiny_os::kernel::devices::EDebugSinkTag;
 use tiny_os::kernel::devices::FdEntry;
@@ -104,6 +108,8 @@ unsafe extern "C" fn kmain() -> ! {
             let serial2: FdEntry<StdOutTag> = DeviceBuilder::tty().serial();
             let keyboard: FdEntry<StdInTag> = DeviceBuilder::tty().keyboard();
             let gfx: FdEntry<GraphicsTag> = DeviceBuilder::gfx().simple();
+            // let gfx: FdEntry<GraphicsTag> = DeviceBuilder::gfx()
+            //     .blit_kernel(crate::arch::mem::VirtAddr::new(0xffff_ffff_f000_0000));
 
             devices.attach(fb);
             // devices.attach(serial2);
@@ -127,6 +133,11 @@ extern "C" fn idle() -> usize {
     start_drivers();
     threading::finalize();
     serial_println!("threads finalized");
+
+    let gfx: FdEntry<GraphicsTag> =
+        DeviceBuilder::gfx().blit_kernel(crate::arch::mem::VirtAddr::new(0xffff_ffff_f000_0000));
+    with_current_task(|task| task.raw().write().get_devices_mut().attach(gfx));
+
     let mut binaries: Vec<&'static [u8]> = get_binaries();
 
     serial_println!("adding {} user tasks", binaries.len());
@@ -143,7 +154,7 @@ extern "C" fn idle() -> usize {
     serial_println!("{} user tasks added", binaries.len());
 
     add_named_ktask(grahics, "graphic drawer".into());
-    add_named_ktask(rand, "random".into());
+    // add_named_ktask(rand, "random".into());
     add_named_ktask(listen, "term".into());
     cross_println!("startup tasks started");
 
@@ -178,16 +189,29 @@ extern "C" fn listen() -> usize {
 
 #[with_default_args]
 extern "C" fn grahics() -> usize {
+    let glyphs = [&PrimitiveGlyph::Circle(
+        embedded_graphics::primitives::Circle {
+            top_left: embedded_graphics::prelude::Point { x: 250, y: 250 },
+            diameter: 42,
+        },
+        PrimitiveStyle::with_stroke(ColorCode::Pink.into(), 3),
+    )];
     get_device!(FdEntryType::Graphics, RawFdEntry::GraphicsBackend(id, backend) => {
-        let glyphs = [
-            &PrimitiveGlyph::Circle(embedded_graphics::primitives::Circle { top_left: embedded_graphics::prelude::Point { x: 250, y: 250 }, diameter: 42 }, PrimitiveStyle::with_stroke(ColorCode::Pink.into(), 3)),
-        ];
+
         backend.draw_batched_primitives(&glyphs).unwrap();
     });
-    unsafe {
-        use core::arch::asm;
-        asm!("mov rax, 1", "mov rdi, 0", "int 0x80");
-    }
+
+    let PrimitiveGlyph::Circle(c, s) = glyphs[0] else {
+        unreachable!()
+    };
+
+    sys_write(
+        FdEntryType::Graphics as usize,
+        &Into::<BoundingBox>::into(c.bounding_box()) as *const BoundingBox as *const u8,
+        core::mem::size_of::<BoundingBox>(),
+    );
+    sys_exit(0);
+
     unreachable!();
     0
 }

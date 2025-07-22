@@ -12,7 +12,7 @@ use thiserror::Error;
 
 use crate::drivers::graphics::{
     colors::{ColorCode, RGBColor},
-    framebuffers::FrameBuffer,
+    framebuffers::{BoundingBox, FrameBuffer, HasFrameBuffer},
 };
 
 pub mod shapes;
@@ -21,6 +21,11 @@ pub mod text;
 pub trait PrimitiveDrawTarget: Debug {
     fn draw_primitive(&mut self, item: &PrimitiveGlyph<'_>) -> Result<(), GraphicsError>;
     fn clear(&mut self, color: RGBColor) -> Result<(), GraphicsError>;
+}
+
+pub trait BlitTarget {
+    unsafe fn copy_row(&self, from: *const u32, len: usize, x: usize, y: usize);
+    fn copy_rect<F: FrameBuffer>(&self, area: &BoundingBox, buf: &F);
 }
 
 pub enum PrimitiveGlyph<'a> {
@@ -199,6 +204,45 @@ where
     }
     fn height(&self) -> usize {
         self.fb.height()
+    }
+}
+
+impl<B> BlitTarget for Simplegraphics<'_, B>
+where
+    B: FrameBuffer,
+{
+    unsafe fn copy_row(&self, from: *const u32, len: usize, x: usize, y: usize) {
+        core::ptr::copy_nonoverlapping(
+            from,
+            self.fb.addr().add(self.fb.pixel_offset(x, y)).cast::<u32>(),
+            len,
+        );
+    }
+
+    fn copy_rect<F: FrameBuffer>(&self, area: &BoundingBox, buf: &F) {
+        assert!(area.width + area.x <= self.fb.width());
+        assert!(area.height + area.y <= self.fb.height());
+        assert_eq!(buf.bpp(), self.fb.bpp());
+
+        for row in area.y..area.y + area.height {
+            unsafe {
+                self.copy_row(
+                    unsafe { buf.addr().add(buf.pixel_offset(area.x, row)).cast::<u32>() },
+                    area.width,
+                    area.x,
+                    row,
+                )
+            };
+        }
+    }
+}
+
+impl<B> HasFrameBuffer<B> for Simplegraphics<'_, B>
+where
+    B: FrameBuffer,
+{
+    fn get_framebuffer(&self) -> &B {
+        self.fb
     }
 }
 

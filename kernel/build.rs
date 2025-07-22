@@ -17,10 +17,13 @@ fn main() {
 fn update_submodules() {
     println!("cargo:warning=Updating git submodules...");
 
-    let output = Command::new("git")
+    let Ok(output) = Command::new("git")
         .args(["submodule", "update", "--init", "--recursive", "--remote"])
         .output()
-        .expect("Failed to update submodules");
+    else {
+        eprintln!("cargo:warning=Submodule update error");
+        return;
+    };
 
     if !output.status.success() {
         println!(

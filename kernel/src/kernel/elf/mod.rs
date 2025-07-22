@@ -20,6 +20,7 @@ pub fn apply(
 ) -> Result<(), ElfError> {
     let headers = bytes.segments().ok_or(ElfError::Unknown)?;
     for header in headers.iter() {
+        serial_println!("getting addr");
         let addr = VirtAddr::new(header.p_vaddr);
         let mapper = PageMapper::init(&addr, header.p_filesz);
         mapper.map(
@@ -49,6 +50,7 @@ pub fn apply(
             interrupt::enable();
         }
     }
+    serial_println!("done");
     Ok(())
 }
 
@@ -87,13 +89,13 @@ impl PageMapper {
             // }
             let frame = alloc.allocate_frame().unwrap();
             unsafe {
-                new.table
-                    .map_to(page, frame.clone(), flags, &mut *alloc)
-                    .unwrap()
-                    .flush();
-                old.map_to(page, frame, flags | PageTableFlags::WRITABLE, &mut *alloc)
-                    .unwrap()
-                    .flush();
+                _ = new
+                    .table
+                    .map_to(page, frame, flags, &mut *alloc)
+                    .map(|f| f.flush());
+                _ = old
+                    .map_to(page, frame, flags | PageTableFlags::WRITABLE, &mut *alloc)
+                    .map(|f| f.flush());
             }
         }
     }

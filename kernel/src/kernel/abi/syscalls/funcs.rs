@@ -1,13 +1,21 @@
 use core::{arch::global_asm, array, ptr::null_mut};
 
 use crate::{
-    arch::interrupt::{
-        self,
-        gdt::{get_kernel_selectors, get_user_selectors},
+    add_device,
+    arch::{
+        interrupt::{
+            self,
+            gdt::{get_kernel_selectors, get_user_selectors},
+        },
+        mem::VirtAddr,
     },
+    drivers::graphics::framebuffers::BoundingBox,
     get_device,
     kernel::{
-        devices::{FdEntryType, RawDeviceID, RawFdEntry, tty::io::read_all},
+        devices::{
+            DeviceBuilder, FdEntry, FdEntryType, GraphicsTag, RawDeviceID, RawFdEntry,
+            tty::io::read_all,
+        },
         mem::{
             heap::{MAX_USER_HEAP_SIZE, USER_HEAP_START},
             paging::GLOBAL_FRAME_ALLOCATOR,
@@ -54,16 +62,30 @@ pub fn sys_write(device_type: usize, buf: *const u8, len: usize) -> isize {
         return -1;
     };
 
-    get_device!(entry_type, RawFdEntry::TTYSink(sinks) => {
-        let bytes = unsafe {&*core::ptr::slice_from_raw_parts(buf, len)};
-        for device in sinks.values() {
-            device.write(bytes);
+    match entry_type {
+        FdEntryType::StdOut | FdEntryType::StdErr | FdEntryType::DebugSink => {
+            get_device!(entry_type, RawFdEntry::TTYSink(sinks) => {
+                let bytes = unsafe {&*core::ptr::slice_from_raw_parts(buf, len)};
+                for device in sinks.values() {
+                    device.write(bytes);
+                }
+                len as isize
+            } | {
+                -2
+            })
+            .unwrap_or(-3)
         }
-        len as isize
-    } | {
-        -2
-    })
-    .unwrap_or(-3)
+        FdEntryType::Graphics => {
+            get_device!(entry_type, RawFdEntry::GraphicsBackend(id, device) => {
+                assert_eq!(len, core::mem::size_of::<BoundingBox>());
+                let bounds = unsafe {&* (buf as *const BoundingBox)};
+                device.flush(bounds);
+                len as isize
+            } | {-2})
+            .unwrap_or(-3)
+        }
+        _ => todo!(),
+    }
 }
 
 pub fn sys_write_single(device_type: usize, device_id: u64, buf: *const u8, len: usize) -> isize {
@@ -135,6 +157,25 @@ pub fn sys_heap_alloc(size: usize) -> *mut u8 {
     });
     serial_println!("gave {} bytes on addr: {:#x}", size, base_addr.as_u64());
     base_addr.as_mut_ptr()
+}
+
+pub fn sys_map_device(device_type: usize, addr: *mut ()) -> Result<(), SysRetCode> {
+    let Ok(entry_type) = FdEntryType::try_from(device_type) else {
+        return Err(SysRetCode::Fail);
+    };
+
+    let addr = if addr.is_null() { todo!() } else { addr };
+
+    match entry_type {
+        FdEntryType::Graphics => {
+            let addr = VirtAddr::from_ptr(addr);
+            let entry: FdEntry<GraphicsTag> = DeviceBuilder::gfx().blit_user(addr);
+            with_current_task(|task| task.raw().write().devices.attach(entry));
+        }
+        _ => todo!(),
+    }
+
+    Ok(())
 }
 
 global_asm!(
