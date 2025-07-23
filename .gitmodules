@@ -4,3 +4,4 @@
 [submodule "tinyosprograms"]
 	path = tinyosprograms
 	url = ../tinyosprograms/
+	branch = testing
