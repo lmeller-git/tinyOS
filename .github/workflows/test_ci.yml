@@ -17,7 +17,6 @@ jobs:
       uses: actions/checkout@v4
       with:
         submodules: recursive
-        fetch-depth: 0
 
     - name: Install Rust Nightly
       run: rustup install nightly
@@ -38,7 +37,7 @@ jobs:
 
     - name: install deps
       run: |
-        sudo apt-get update && sudo apt-get install -y qemu-system-x86 xorriso nasm build-essential
+        sudo apt-get update && sudo apt-get install -y qemu-system-x86 xorriso nasm build-essential git
 
     - name: Build test bin and run tests
       run: make test
