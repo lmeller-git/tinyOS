@@ -43,7 +43,7 @@ pub struct FramBufferConfig {
 }
 
 #[repr(C)]
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct BoundingBox {
     pub x: usize,
     pub y: usize,
@@ -285,7 +285,14 @@ impl RawFrameBuffer {
         height: usize,
         bpp: u16,
     ) -> Self {
-        let pitch = align_up(width * bpp as usize, 64);
+        let pitch = align_up(width * (bpp / 8) as usize, 64);
+        serial_println!(
+            "pitch: {}, width: {}, height: {}, size: {}",
+            pitch,
+            width,
+            height,
+            pitch * height
+        );
         user_map_region(addr, pitch * height).expect("could not map memory");
         Self {
             addr: addr.as_mut_ptr(),

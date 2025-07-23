@@ -27,9 +27,7 @@ pub fn init() {
                 .flush();
         };
     }
-    unsafe {
-        alloc::GLOBAL_ALLOCATOR.init(HEAP_START as *mut u8, HEAP_SIZE);
-    }
+    alloc::GLOBAL_ALLOCATOR.init(HEAP_START as *mut u8, HEAP_SIZE);
 }
 
 pub fn map_heap(tbl: &mut crate::arch::mem::OffsetPageTable) {

@@ -231,3 +231,25 @@ where
         todo!()
     }
 }
+
+unsafe impl<B, T, F> Send for BlitManager<B, T, F>
+where
+    B: PrimitiveDrawTarget
+        + DrawTarget<Color = RGBColor, Error = GraphicsError>
+        + GraphicsBackend
+        + HasFrameBuffer<F>,
+    F: FrameBuffer,
+    T: BlitTarget,
+{
+}
+
+unsafe impl<B, T, F> Sync for BlitManager<B, T, F>
+where
+    B: PrimitiveDrawTarget
+        + DrawTarget<Color = RGBColor, Error = GraphicsError>
+        + GraphicsBackend
+        + HasFrameBuffer<F>,
+    F: FrameBuffer,
+    T: BlitTarget,
+{
+}

@@ -32,8 +32,10 @@ use tiny_os::arch::interrupt::enable_threading_interrupts;
 use tiny_os::args;
 use tiny_os::bootinfo;
 use tiny_os::cross_println;
+use tiny_os::drivers::graphics::GLOBAL_FRAMEBUFFER;
 use tiny_os::drivers::graphics::colors::ColorCode;
 use tiny_os::drivers::graphics::framebuffers::BoundingBox;
+use tiny_os::drivers::graphics::framebuffers::FrameBuffer;
 use tiny_os::drivers::graphics::framebuffers::LimineFrameBuffer;
 use tiny_os::drivers::graphics::text::draw_str;
 use tiny_os::drivers::start_drivers;
@@ -107,9 +109,9 @@ unsafe extern "C" fn kmain() -> ! {
             let serial: FdEntry<EDebugSinkTag> = DeviceBuilder::tty().serial();
             let serial2: FdEntry<StdOutTag> = DeviceBuilder::tty().serial();
             let keyboard: FdEntry<StdInTag> = DeviceBuilder::tty().keyboard();
-            let gfx: FdEntry<GraphicsTag> = DeviceBuilder::gfx().simple();
-            // let gfx: FdEntry<GraphicsTag> = DeviceBuilder::gfx()
-            //     .blit_kernel(crate::arch::mem::VirtAddr::new(0xffff_ffff_f000_0000));
+            // let gfx: FdEntry<GraphicsTag> = DeviceBuilder::gfx().simple();
+            let gfx: FdEntry<GraphicsTag> = DeviceBuilder::gfx()
+                .blit_kernel(crate::arch::mem::VirtAddr::new(0xffff_ffff_f000_0000));
 
             devices.attach(fb);
             // devices.attach(serial2);
@@ -133,10 +135,6 @@ extern "C" fn idle() -> usize {
     start_drivers();
     threading::finalize();
     serial_println!("threads finalized");
-
-    let gfx: FdEntry<GraphicsTag> =
-        DeviceBuilder::gfx().blit_kernel(crate::arch::mem::VirtAddr::new(0xffff_ffff_f000_0000));
-    with_current_task(|task| task.raw().write().get_devices_mut().attach(gfx));
 
     let mut binaries: Vec<&'static [u8]> = get_binaries();
 
@@ -208,7 +206,7 @@ extern "C" fn grahics() -> usize {
     sys_write(
         FdEntryType::Graphics as usize,
         &Into::<BoundingBox>::into(c.bounding_box()) as *const BoundingBox as *const u8,
-        core::mem::size_of::<BoundingBox>(),
+        1,
     );
     sys_exit(0);
 
@@ -313,9 +311,19 @@ fn random_stuff() {
         ));
     });
 
-    println!("finished");
-    println!("finished2");
-    println!("finished3");
+    let bounds = BoundingBox {
+        x: 0,
+        y: 0,
+        width: GLOBAL_FRAMEBUFFER.width(),
+        height: GLOBAL_FRAMEBUFFER.height(),
+    };
+
+    sys_write(
+        FdEntryType::Graphics as usize,
+        &bounds as *const BoundingBox as *const u8,
+        1,
+    );
+    cross_println!("copied contents into Global Framebuffer");
 }
 
 #[panic_handler]

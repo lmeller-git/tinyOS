@@ -9,7 +9,10 @@ use crate::{
         },
         mem::VirtAddr,
     },
-    drivers::graphics::framebuffers::BoundingBox,
+    drivers::graphics::{
+        GLOBAL_FRAMEBUFFER,
+        framebuffers::{BoundingBox, FrameBuffer, get_config},
+    },
     get_device,
     kernel::{
         devices::{
@@ -33,6 +36,9 @@ use crate::{
 };
 
 use super::SysRetCode;
+
+const USER_DEVICE_MAP: VirtAddr = VirtAddr::new(0x0000_3000_0000);
+const USER_MAP_EDGE: VirtAddr = VirtAddr::new(0x0000_4000_000);
 
 pub fn sys_exit(status: i64) {
     with_current_task(|task| task.with_inner_mut(|task| task.kill_with_code(status as usize)));
@@ -76,10 +82,14 @@ pub fn sys_write(device_type: usize, buf: *const u8, len: usize) -> isize {
             .unwrap_or(-3)
         }
         FdEntryType::Graphics => {
+            serial_println!("graphics write");
             get_device!(entry_type, RawFdEntry::GraphicsBackend(id, device) => {
-                assert_eq!(len, core::mem::size_of::<BoundingBox>());
-                let bounds = unsafe {&* (buf as *const BoundingBox)};
-                device.flush(bounds);
+                let bounds = unsafe {&*core::ptr::slice_from_raw_parts(buf as *const BoundingBox, len)};
+                for bound in bounds {
+                    serial_println!("flushing: {:#?}", bound);
+                    device.flush(bound);
+                }
+            
                 len as isize
             } | {-2})
             .unwrap_or(-3)
@@ -159,23 +169,68 @@ pub fn sys_heap_alloc(size: usize) -> *mut u8 {
     base_addr.as_mut_ptr()
 }
 
-pub fn sys_map_device(device_type: usize, addr: *mut ()) -> Result<(), SysRetCode> {
+pub fn sys_map_device(device_type: usize, addr: *mut ()) -> Result<*mut (), SysRetCode> {
     let Ok(entry_type) = FdEntryType::try_from(device_type) else {
         return Err(SysRetCode::Fail);
     };
 
-    let addr = if addr.is_null() { todo!() } else { addr };
+    // TODO dynamically determine this addr + discriminate between user + kernel
+    // needs some thread local memmap
+    let addr = if addr.is_null() {
+        USER_DEVICE_MAP.as_mut_ptr()
+    } else {
+        addr
+    };
 
     match entry_type {
         FdEntryType::Graphics => {
             let addr = VirtAddr::from_ptr(addr);
+            serial_println!("building fb");
             let entry: FdEntry<GraphicsTag> = DeviceBuilder::gfx().blit_user(addr);
             with_current_task(|task| task.raw().write().devices.attach(entry));
         }
         _ => todo!(),
     }
 
-    Ok(())
+    Ok(addr)
+}
+
+// TEMP: This is used to pass config until fs is ready
+// TODO: port this into fs, such that configs can be queried from special files/ dirs
+#[deprecated]
+#[repr(C)]
+pub struct GFXConfig {
+    pub red_mask_shift: u8,
+    pub red_mask_size: u8,
+    pub green_mask_shift: u8,
+    pub green_mask_size: u8,
+    pub blue_mask_shift: u8,
+    pub blue_mask_size: u8,
+    pub bpp: u16,
+    pub width: u32,
+    pub height: u32,
+    pub pitch: u32,
+}
+
+impl GFXConfig {
+    fn apply_defaults(&mut self) {
+        let config = get_config();
+        self.red_mask_shift = config.red_mask_shift;
+        self.red_mask_size = config.red_mask_size;
+        self.green_mask_shift = config.green_mask_shift;
+        self.green_mask_size = config.green_mask_size;
+        self.blue_mask_shift = config.blue_mask_shift;
+        self.blue_mask_size = config.blue_mask_size;
+        self.bpp = GLOBAL_FRAMEBUFFER.bpp();
+        self.width = GLOBAL_FRAMEBUFFER.width() as u32;
+        self.height = GLOBAL_FRAMEBUFFER.height() as u32;
+        self.pitch = GLOBAL_FRAMEBUFFER.pitch() as u32;
+    }
+}
+
+#[deprecated]
+pub fn sys_gfx_config(config: *mut GFXConfig) {
+    unsafe { &mut *config }.apply_defaults();
 }
 
 global_asm!(
