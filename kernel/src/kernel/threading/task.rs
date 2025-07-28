@@ -4,9 +4,8 @@ use crate::{
     arch::{
         self,
         context::{
-            KTaskInfo, TaskCtx, UsrTaskInfo, allocate_kstack, allocate_userkstack,
-            allocate_userstack, copy_ustack_mappings_into, init_kernel_task, init_usr_task,
-            unmap_ustack_mappings,
+            KTaskInfo, TaskCtx, UsrTaskInfo, allocate_kstack, allocate_userstack,
+            copy_ustack_mappings_into, init_kernel_task, init_usr_task, unmap_ustack_mappings,
         },
         current_page_tbl, interrupt,
         mem::{Cr3Flags, PhysFrame, Size4KiB, VirtAddr},
@@ -517,7 +516,8 @@ impl Task {
     pub fn new_user(entry: extern "C" fn()) -> Result<Self, ThreadingError> {
         let (tbl, flags) = current_page_tbl();
         let mut new_tbl = create_new_pagedir().map_err(|_| ThreadingError::PageDirNotBuilt)?;
-        let kstack_top = allocate_userkstack(&mut new_tbl)?;
+        // let kstack_top = allocate_userkstack(&mut new_tbl)?;
+        let kstack_top = allocate_kstack()?;
         let stack_top = allocate_userstack(&mut new_tbl)?;
 
         Ok(Self {

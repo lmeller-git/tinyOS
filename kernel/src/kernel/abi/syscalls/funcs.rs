@@ -10,23 +10,20 @@ use crate::{
         mem::VirtAddr,
     },
     drivers::graphics::{
-        GLOBAL_FRAMEBUFFER,
-        framebuffers::{BoundingBox, FrameBuffer, get_config},
+        framebuffers::{get_config, BoundingBox, FrameBuffer}, GLOBAL_FRAMEBUFFER
     },
     get_device,
     kernel::{
         devices::{
-            DeviceBuilder, FdEntry, FdEntryType, GraphicsTag, RawDeviceID, RawFdEntry,
-            tty::io::read_all,
+            tty::io::read_all, DeviceBuilder, FdEntry, FdEntryType, GraphicsTag, RawDeviceID, RawFdEntry
         },
         mem::{
-            heap::{MAX_USER_HEAP_SIZE, USER_HEAP_START},
-            paging::GLOBAL_FRAME_ALLOCATOR,
+            align_up, heap::{MAX_USER_HEAP_SIZE, USER_HEAP_START}, paging::GLOBAL_FRAME_ALLOCATOR
         },
         threading::{
             self,
             schedule::{
-                self, OneOneScheduler, context_switch_local, current_task, with_current_task,
+                self, context_switch_local, current_task, with_current_task, OneOneScheduler
             },
             task::{PrivilegeLevel, TaskID, TaskRepr},
             yield_now,
@@ -86,7 +83,6 @@ pub fn sys_write(device_type: usize, buf: *const u8, len: usize) -> isize {
             get_device!(entry_type, RawFdEntry::GraphicsBackend(id, device) => {
                 let bounds = unsafe {&*core::ptr::slice_from_raw_parts(buf as *const BoundingBox, len)};
                 for bound in bounds {
-                    serial_println!("flushing: {:#?}", bound);
                     device.flush(bound);
                 }
             
@@ -135,21 +131,20 @@ pub fn sys_read(device_type: usize, buf: *mut u8, len: usize) -> isize {
     read_all(bytes) as isize
 }
 
-pub fn sys_heap_alloc(size: usize) -> *mut u8 {
+pub fn sys_heap(size: usize) -> *mut u8 {
     use crate::arch::mem::{
         FrameAllocator, Mapper, Page, PageSize, PageTableFlags, Size4KiB, VirtAddr,
     };
-    serial_println!("heap request for: {} bytes", size);
+
     let current_size = current_task().unwrap().raw().read().heap_size;
     if current_size + size > MAX_USER_HEAP_SIZE {
-        serial_println!("too large");
         return null_mut();
     }
     let base_addr = VirtAddr::new((USER_HEAP_START + current_size) as u64).align_up(Size4KiB::SIZE);
     let end_addr = (base_addr + size as u64).align_up(Size4KiB::SIZE);
     let start_page: Page<Size4KiB> = Page::containing_address(base_addr);
     let end_page: Page<Size4KiB> = Page::containing_address(end_addr);
-    serial_println!("now mapping heap");
+
     with_current_task(|task| {
         task.with_inner_mut(|task| {
             let flags = PageTableFlags::PRESENT
@@ -158,14 +153,17 @@ pub fn sys_heap_alloc(size: usize) -> *mut u8 {
             let pagedir = task.mut_pagdir();
             let mut alloc = GLOBAL_FRAME_ALLOCATOR.lock();
             for page in Page::range_inclusive(start_page, end_page) {
+                if pagedir.table.translate_page(page).is_ok() {
+                    continue;
+                }
                 let frame = alloc.allocate_frame().unwrap();
                 unsafe { pagedir.table.map_to(page, frame, flags, &mut *alloc) }
                     .unwrap()
                     .flush();
             }
+            task.heap_size += size;
         })
     });
-    serial_println!("gave {} bytes on addr: {:#x}", size, base_addr.as_u64());
     base_addr.as_mut_ptr()
 }
 

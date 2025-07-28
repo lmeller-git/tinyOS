@@ -26,13 +26,13 @@ use spin::Mutex;
 use x86_64::{registers::rflags::RFlags, structures::paging::OffsetPageTable};
 
 const KSTACK_AREA_START: VirtAddr = VirtAddr::new(0xffff_f000_c000_0000); // random location
-const KSTACK_USER_AREA_START: VirtAddr = VirtAddr::new(0xffff_f000_f000_0000);
+// const KSTACK_USER_AREA_START: VirtAddr = VirtAddr::new(0xffff_f000_f000_0000);
 
-const KSTACK_SIZE: usize = 32 * 1024; // 16 KiB
-const KSTACK_SIZE_USER: usize = 16 * 1024; // 8 KiB
+const KSTACK_SIZE: usize = 64 * 1024; // 64 KiB
+// const KSTACK_SIZE_USER: usize = 32 * 1024; // 32 KiB
 
 const MAX_KSTACKS: usize = 512; // random num (this is also max kernel tasks)
-const MAX_USER_KSTACKS: usize = 1024; // random num (this is also max user tasks)
+// const MAX_USER_KSTACKS: usize = 1024; // random num (this is also max user tasks)
 
 const USER_STACK_START: VirtAddr = VirtAddr::new(0x0000_0000_1000_0000); // random location
 const USER_STACK_SIZE: usize = 1024 * 1024; // 1MiB
@@ -41,10 +41,10 @@ lazy_static! {
     static ref KSTACKS_IN_USAGE: Mutex<[bool; MAX_KSTACKS]> = Mutex::new([false; MAX_KSTACKS]);
 }
 
-lazy_static! {
-    static ref USER_KSTACKS_IN_USAGE: Mutex<[bool; MAX_USER_KSTACKS]> =
-        Mutex::new([false; MAX_USER_KSTACKS]);
-}
+// lazy_static! {
+//     static ref USER_KSTACKS_IN_USAGE: Mutex<[bool; MAX_USER_KSTACKS]> =
+//         Mutex::new([false; MAX_USER_KSTACKS]);
+// }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 #[repr(C)]
@@ -706,85 +706,85 @@ pub fn unmap_ustack_mappings(tbl: &mut OffsetPageTable) {
     }
 }
 
-pub fn allocate_userkstack(tbl: &mut TaskPageTable) -> Result<VirtAddr, ThreadingError> {
-    let flags = PageTableFlags::WRITABLE | PageTableFlags::PRESENT | PageTableFlags::NO_EXECUTE;
+// pub fn allocate_userkstack(tbl: &mut TaskPageTable) -> Result<VirtAddr, ThreadingError> {
+//     let flags = PageTableFlags::WRITABLE | PageTableFlags::PRESENT | PageTableFlags::NO_EXECUTE;
 
-    let kstack_start_idx = {
-        let mut in_use = USER_KSTACKS_IN_USAGE.lock();
-        in_use
-            .iter_mut()
-            .position(|pos| {
-                if !*pos {
-                    *pos = true;
-                    true
-                } else {
-                    false
-                }
-            })
-            .ok_or(ThreadingError::StackNotBuilt)?
-    };
+//     let kstack_start_idx = {
+//         let mut in_use = USER_KSTACKS_IN_USAGE.lock();
+//         in_use
+//             .iter_mut()
+//             .position(|pos| {
+//                 if !*pos {
+//                     *pos = true;
+//                     true
+//                 } else {
+//                     false
+//                 }
+//             })
+//             .ok_or(ThreadingError::StackNotBuilt)?
+//     };
 
-    let base = (KSTACK_USER_AREA_START + kstack_start_idx as u64 * KSTACK_SIZE_USER as u64)
-        .align_up(Size4KiB::SIZE);
-    let start = base + Size4KiB::SIZE; //.align_up(Size4KiB::SIZE);
-    let end = base + KSTACK_SIZE_USER as u64; //.align_up(Size4KiB::SIZE);
+//     let base = (KSTACK_USER_AREA_START + kstack_start_idx as u64 * KSTACK_SIZE_USER as u64)
+//         .align_up(Size4KiB::SIZE);
+//     let start = base + Size4KiB::SIZE; //.align_up(Size4KiB::SIZE);
+//     let end = base + KSTACK_SIZE_USER as u64; //.align_up(Size4KiB::SIZE);
 
-    let start_page = Page::containing_address(start);
-    let end_page = Page::containing_address(end - 1);
+//     let start_page = Page::containing_address(start);
+//     let end_page = Page::containing_address(end - 1);
 
-    {
-        let mapper = &mut tbl.table;
-        let mut frame_allocator = GLOBAL_FRAME_ALLOCATOR.lock();
+//     {
+//         let mapper = &mut tbl.table;
+//         let mut frame_allocator = GLOBAL_FRAME_ALLOCATOR.lock();
 
-        for page in Page::range_inclusive(start_page, end_page) {
-            let frame = frame_allocator
-                .allocate_frame()
-                .ok_or(ThreadingError::StackNotBuilt)?;
-            unsafe {
-                mapper
-                    .map_to(page, frame, flags, &mut *frame_allocator)
-                    .map_err(|_| ThreadingError::StackNotBuilt)?
-                    .flush();
-            };
-        }
-    }
+//         for page in Page::range_inclusive(start_page, end_page) {
+//             let frame = frame_allocator
+//                 .allocate_frame()
+//                 .ok_or(ThreadingError::StackNotBuilt)?;
+//             unsafe {
+//                 mapper
+//                     .map_to(page, frame, flags, &mut *frame_allocator)
+//                     .map_err(|_| ThreadingError::StackNotBuilt)?
+//                     .flush();
+//             };
+//         }
+//     }
 
-    let stack_top = VirtAddr::new(end.as_u64() - 8); // & !0xF);
-    Ok(stack_top)
-}
+//     let stack_top = VirtAddr::new(end.as_u64() - 8); // & !0xF);
+//     Ok(stack_top)
+// }
 
-pub fn free_user_kstack(top: VirtAddr, tbl: &mut TaskPageTable) -> Result<(), ThreadingError> {
-    //TODO
-    // assuming top is a properly aligned addr in the correct region
-    let start = (top + 1 - KSTACK_SIZE_USER as u64).align_up(Size4KiB::SIZE);
-    let idx = (start - KSTACK_USER_AREA_START) as usize / KSTACK_SIZE_USER;
+// pub fn free_user_kstack(top: VirtAddr, tbl: &mut TaskPageTable) -> Result<(), ThreadingError> {
+//     //TODO
+//     // assuming top is a properly aligned addr in the correct region
+//     let start = (top + 1 - KSTACK_SIZE_USER as u64).align_up(Size4KiB::SIZE);
+//     let idx = (start - KSTACK_USER_AREA_START) as usize / KSTACK_SIZE_USER;
 
-    let start_page = Page::containing_address((start + Size4KiB::SIZE).align_up(Size4KiB::SIZE));
-    let end_page = Page::containing_address(top);
-    {
-        let mapper = &mut tbl.table;
-        let mut frame_allocator = GLOBAL_FRAME_ALLOCATOR.lock();
-        for page in Page::range_inclusive(start_page, end_page) {
-            let (frame, flush) = mapper
-                .unmap(page)
-                .map_err(|_| ThreadingError::StackNotFreed)?;
-            flush.flush();
-            unsafe { frame_allocator.deallocate_frame(frame) };
-        }
-    }
+//     let start_page = Page::containing_address((start + Size4KiB::SIZE).align_up(Size4KiB::SIZE));
+//     let end_page = Page::containing_address(top);
+//     {
+//         let mapper = &mut tbl.table;
+//         let mut frame_allocator = GLOBAL_FRAME_ALLOCATOR.lock();
+//         for page in Page::range_inclusive(start_page, end_page) {
+//             let (frame, flush) = mapper
+//                 .unmap(page)
+//                 .map_err(|_| ThreadingError::StackNotFreed)?;
+//             flush.flush();
+//             unsafe { frame_allocator.deallocate_frame(frame) };
+//         }
+//     }
 
-    *USER_KSTACKS_IN_USAGE
-        .lock()
-        .get_mut(idx)
-        .ok_or(ThreadingError::StackNotFreed)? = false;
+//     *USER_KSTACKS_IN_USAGE
+//         .lock()
+//         .get_mut(idx)
+//         .ok_or(ThreadingError::StackNotFreed)? = false;
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 pub fn free_user_stack(top: VirtAddr, tbl: &mut TaskPageTable) -> Result<(), ThreadingError> {
     //TODO
     // assuming top is a properly aligned addr in the correct region
-    let start = (top + 1 - KSTACK_SIZE_USER as u64).align_up(Size4KiB::SIZE);
+    let start = (top + 1 - USER_STACK_SIZE as u64).align_up(Size4KiB::SIZE);
 
     let start_page = Page::containing_address((start + Size4KiB::SIZE).align_up(Size4KiB::SIZE));
     let end_page = Page::containing_address(top);

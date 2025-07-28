@@ -139,7 +139,6 @@ extern "C" fn idle() -> usize {
     let mut binaries: Vec<&'static [u8]> = get_binaries();
 
     serial_println!("adding {} user tasks", binaries.len());
-    println!("hi");
     for bin in &binaries {
         let task = TaskBuilder::from_bytes(bin)
             .unwrap()
@@ -155,12 +154,6 @@ extern "C" fn idle() -> usize {
     // add_named_ktask(rand, "random".into());
     add_named_ktask(listen, "term".into());
     cross_println!("startup tasks started");
-
-    let x: i64;
-    unsafe {
-        asm!("push rax", "mov rax, 42", "int 0x80", "mov {0}, rax", "pop rax", out(reg) x, out("rax") _);
-    }
-    assert_eq!(x, SysRetCode::Unknown as i64);
 
     // just block forever, as there is nothing left to do
     with_current_task(|task| task.write_inner().block());

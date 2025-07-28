@@ -25,22 +25,19 @@ static TSS: OnceCell<Mutex<TaskStateSegment>> = OnceCell::uninit();
 static GDT: OnceCell<(GlobalDescriptorTable, Selectors)> = OnceCell::uninit();
 
 pub fn init_tss() -> &'static TaskStateSegment {
-    unsafe {
-        TSS.init_once(|| {
-            Mutex::new({
-                let mut tss = TaskStateSegment::new();
-                tss.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX as usize] = {
-                    // TODO this should use STACK_SIZE_REQUEST (is currently eq)
-                    const STACK_SIZE: usize = 4096 * 5;
-                    static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
+    TSS.init_once(|| {
+        Mutex::new({
+            let mut tss = TaskStateSegment::new();
+            tss.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX as usize] = {
+                const STACK_SIZE: usize = 4096 * 5;
+                static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 
-                    let stack_start = VirtAddr::from_ptr(&raw const STACK);
-                    stack_start + STACK_SIZE as u64
-                };
-                tss
-            })
+                let stack_start = VirtAddr::from_ptr(&raw const STACK);
+                stack_start + STACK_SIZE as u64
+            };
+            tss
         })
-    };
+    });
     unsafe { &*(&*TSS.get_unchecked().lock() as *const TaskStateSegment) }
 }
 

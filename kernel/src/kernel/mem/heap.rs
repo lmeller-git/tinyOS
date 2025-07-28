@@ -5,7 +5,7 @@ pub const HEAP_START: usize = 0x_4444_4444_0000;
 pub const HEAP_SIZE: usize = 200 * 1024; // 200 KiB
 
 pub const USER_HEAP_START: usize = 0x0000_2000_0000;
-pub const MAX_USER_HEAP_SIZE: usize = 2000 * 1024; // 1MiB
+pub const MAX_USER_HEAP_SIZE: usize = 2000 * 1024; // 2MiB
 
 pub fn init() {
     let page_range = {

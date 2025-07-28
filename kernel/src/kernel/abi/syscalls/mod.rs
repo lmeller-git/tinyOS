@@ -2,9 +2,7 @@ use funcs::{sys_exit, sys_kill, sys_write, sys_write_single, sys_yield};
 
 use crate::{
     arch::context::SysCallCtx,
-    kernel::abi::syscalls::funcs::{
-        GFXConfig, sys_gfx_config, sys_heap_alloc, sys_map_device, sys_read,
-    },
+    kernel::abi::syscalls::funcs::{GFXConfig, sys_gfx_config, sys_heap, sys_map_device, sys_read},
     serial_println,
 };
 
@@ -60,7 +58,7 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
             }
         }
         7 => {
-            let r = sys_heap_alloc(args.first() as usize);
+            let r = sys_heap(args.first() as usize);
             args.ret2(r as i64);
             if r.is_null() {
                 SysRetCode::Fail
