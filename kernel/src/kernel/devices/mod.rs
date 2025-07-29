@@ -370,6 +370,7 @@ where
     let tasks = &binding.read_inner().devices;
     Some(f(tasks))
 }
+
 pub fn with_device_init<F, R>(init: Box<dyn Fn(&mut TaskDevices)>, f: F) -> Option<R>
 where
     F: FnOnce() -> R,
@@ -398,7 +399,7 @@ macro_rules! set_device {
 macro_rules! get_device {
     // get device and use it
     ($device_type:expr, $device:pat => $body:block) => {
-        crate::kernel::devices::with_current_device_list(|devices| {
+        $crate::kernel::devices::with_current_device_list(|devices| {
             if let Some(devices) = devices.get($device_type) {
                 let $device = devices else { unreachable!() };
                 $body
@@ -408,7 +409,7 @@ macro_rules! get_device {
 
     // get device with fallback if no device available
     ($device_type:expr, $device:pat => $body:block | $fallback:block) => {
-        crate::kernel::devices::with_current_device_list(|devices| {
+        $crate::kernel::devices::with_current_device_list(|devices| {
             if let Some(devices) = devices.get($device_type) {
                 let $device = devices else { unreachable!() };
                 $body
@@ -426,10 +427,10 @@ macro_rules! get_device {
 #[macro_export]
 macro_rules! with_devices {
     ($func:expr) => {
-        crate::kernel::devices::with_device_init(alloc::boxed::Box::new(|_| {}), $func)
+        $crate::kernel::devices::with_device_init(alloc::boxed::Box::new(|_| {}), $func)
     };
     ($init:expr, $func:expr) => {
-        crate::kernel::devices::with_device_init(alloc::boxed::Box::new($init), $func)
+        $crate::kernel::devices::with_device_init(alloc::boxed::Box::new($init), $func)
     };
 }
 

@@ -51,71 +51,48 @@ pub type GlobalTask = SimpleTask;
 pub type TaskPtr_<T: TaskRepr> = Arc<RwLock<T>>;
 pub type GlobalTaskPtr = TaskPtr<GlobalTask>;
 
-pub static GLOBAL_SCHEDULER: OnceCell<Mutex<GlobalScheduler>> = OnceCell::uninit();
+static GLOBAL_SCHEDULER: OnceCell<Mutex<GlobalScheduler>> = OnceCell::uninit();
 
 static CURRENT_PID: AtomicU64 = AtomicU64::new(0);
+#[allow(static_mut_refs)]
+static mut CURRENT_TASK: Option<GlobalTaskPtr> = None;
 
 pub fn init() {
     _ = GLOBAL_SCHEDULER.try_init_once(|| Mutex::new(GlobalScheduler::new()));
 }
 
-pub fn get<'a>() -> Option<MutexGuard<'a, GlobalScheduler>> {
-    GLOBAL_SCHEDULER.get().map(|s| s.lock())
-}
-
-pub unsafe fn get_unchecked<'a>() -> MutexGuard<'a, GlobalScheduler> {
-    unsafe { GLOBAL_SCHEDULER.get_unchecked() }.lock()
-}
-
-//SAFETY This function is EXTREMELY unsafe and the caller must ensure that no other function runs in parallel to this one, as well as keeping the state of sched consistent
-#[deprecated]
-#[allow(unsafe_op_in_unsafe_fn)]
-pub unsafe fn with_scheduler_unckecked<F, R>(f: F) -> R
+pub fn with_scheduler<F, R>(f: F) -> Option<R>
 where
-    F: FnOnce(&mut GlobalScheduler) -> R,
+    F: FnOnce(&Mutex<GlobalScheduler>) -> R,
 {
-    use crate::arch::interrupt::without_interrupts;
-    without_interrupts(|| {
-        let mut was_locked = false;
-        let mut sched = if let Ok(s) = GLOBAL_SCHEDULER.get_unchecked().try_lock() {
-            s
-        } else {
-            was_locked = true;
-            GLOBAL_SCHEDULER.get_unchecked().force_unlock();
-            GLOBAL_SCHEDULER.get_unchecked().lock()
-        };
-        let res = f(&mut *sched);
-        drop(sched);
-        if was_locked {
-            GLOBAL_SCHEDULER.get_unchecked().force_lock();
-        }
-        res
-    })
+    let s = GLOBAL_SCHEDULER.get()?;
+    Some(crate::arch::interrupt::without_interrupts(|| f(s)))
 }
 
 pub fn current_pid() -> u64 {
     CURRENT_PID.load(Ordering::Acquire)
 }
 
-pub fn set_current_pid(v: u64) {
+pub unsafe fn set_current_pid(v: u64) {
     CURRENT_PID.store(v, Ordering::Release);
+}
+
+#[allow(static_mut_refs)]
+pub fn set_current_task(task: GlobalTaskPtr) {
+    unsafe { CURRENT_TASK.replace(task) };
 }
 
 pub fn with_current_task<F, R>(f: F) -> Option<R>
 where
     F: FnOnce(GlobalTaskPtr) -> R,
 {
-    let guard = get()?;
-    let task = guard.current()?;
+    let task = current_task().ok()?;
     Some(f(task))
 }
 
+#[allow(static_mut_refs)]
 pub fn current_task() -> Result<GlobalTaskPtr, ThreadingError> {
-    let guard = get().ok_or(ThreadingError::Unknown("could not get schduler".into()))?;
-    let task = guard.current().ok_or(ThreadingError::Unknown(
-        "no task runnign but requested".into(),
-    ))?;
-    Ok(task.clone())
+    unsafe { CURRENT_TASK.clone() }.ok_or(ThreadingError::Unknown("no task registered".into()))
 }
 
 #[allow(unsafe_op_in_unsafe_fn)]
@@ -136,20 +113,24 @@ pub unsafe extern "C" fn context_switch_local(rsp: u64) {
 
     if let Ok(mut lock) = GLOBAL_SCHEDULER.get().unwrap().try_lock() {
         if let Some(current) = lock.current_mut() {
-            let Ok(mut current) = current.raw().try_write() else {
-                serial_println!("current locked");
-                return;
-            };
+            // let Ok(mut current) = current.raw().try_write() else {
+            //     serial_println!("current locked");
+            //     return;
+            // };
+            let current = current.inner_unchecked();
             current.krsp = VirtAddr::new(rsp);
         }
         if let Some(new) = lock.switch() {
-            let Ok(guard) = new.raw().try_read() else {
-                panic!("task we wanted to switch to is write locked");
-            };
-            let task = TaskState::from_task(&*guard);
+            // let Ok(guard) = new.raw().try_read() else {
+            //     serial_println!("task we wanted to switch to is locked");
+            //     return;
+            // };
+            let guard = new.inner_unchecked();
+            let task = TaskState::from_task(guard);
             set_current_pid(guard.pid.get_inner());
+            #[allow(dropping_references)]
             drop(guard);
-            drop(new);
+            set_current_task(new);
             drop(lock);
             set_tss_kstack(VirtAddr::new(task.rsp));
             switch_and_apply(task);
@@ -166,13 +147,10 @@ pub unsafe extern "C" fn context_switch(
     state: arch::context::ReducedCpuInfo,
     frame: arch::interrupt::handlers::InterruptStackFrame,
 ) {
-    // let ctx = TaskCtx::from_trap_ctx(frame, state);
-    // if let Some(new) = GLOBAL_SCHEDULER.get_unchecked().lock().switch(ctx) {}
-    // set_cpu_context(ctx);
 }
 
 pub fn add_task_ptr__(ptr: GlobalTaskPtr) {
-    unsafe { get_unchecked() }.add_task(ptr);
+    with_scheduler(|sched| sched.lock().add_task(ptr));
 }
 
 pub fn add_built_task(task: GlobalTask) {
@@ -180,39 +158,30 @@ pub fn add_built_task(task: GlobalTask) {
 }
 
 pub fn add_named_ktask(func: ProcessEntry, name: String) -> Result<(), ThreadingError> {
-    // #[cfg(not(feature = "test_run"))]
-    // serial_println!("spawning task {} at {:#x}", name, func as usize);
     let task = TaskBuilder::from_fn(func)?
         .with_name(name)
         .with_default_devices()
         .as_kernel()?
         .build();
-    // serial_println!("task built");
     add_built_task(task);
     Ok(())
 }
 
 pub fn add_ktask(func: ProcessEntry) -> Result<(), ThreadingError> {
-    serial_println!("spawning task {:#x}", func as usize);
     let task = TaskBuilder::from_fn(func)?
         .with_default_devices()
         .as_kernel()?
         .build();
-    serial_println!("task built");
     add_built_task(task);
     Ok(())
 }
 
 pub fn add_named_usr_task(func: ProcessEntry, name: String) -> Result<(), ThreadingError> {
-    serial_println!("spawning user task {} at {:#x}", name, func as usize);
     let task = TaskBuilder::from_fn(func)?
         .with_name(name)
         .with_default_devices();
-    serial_println!("task created");
     let task = task.as_usr()?;
-    serial_println!("task setup");
     let task = task.build();
-    serial_println!("task built");
     add_built_task(task);
     Ok(())
 }
@@ -222,15 +191,11 @@ pub unsafe fn add_named_usr_task_from_addr(
     addr: VirtAddr,
     name: String,
 ) -> Result<(), ThreadingError> {
-    serial_println!("spawning user task {} at {:#x}", name, addr);
     let task: TaskBuilder<SimpleTask, crate::kernel::threading::task::Init> =
         TaskBuilder::<SimpleTask, Uninit>::from_addr(addr)?;
     let task = task.with_name(name).with_default_devices();
-    serial_println!("task created");
     let task = task.as_usr()?;
-    serial_println!("task setup");
     let task = task.build();
-    serial_println!("task built");
     add_built_task(task);
     Ok(())
 }

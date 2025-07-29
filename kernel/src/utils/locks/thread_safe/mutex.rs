@@ -11,10 +11,7 @@ use os_macros::kernel_test;
 use crate::{
     kernel::threading::{
         self,
-        schedule::{
-            self, GLOBAL_SCHEDULER, GlobalTaskPtr, OneOneScheduler, current_task,
-            with_scheduler_unckecked,
-        },
+        schedule::{self, GlobalTaskPtr, OneOneScheduler, current_task},
         task::TaskRepr,
     },
     locks::{GKL, GklGuard},
@@ -31,6 +28,7 @@ unsafe impl<T> Send for Mutex<T> {}
 #[allow(dead_code)]
 impl<T> Mutex<T> {
     pub fn lock(&self) -> MutexGuard<'_, T> {
+        #[cfg(feature = "gkl")]
         let gkl = loop {
             if let Ok(gkl) = GKL.try_lock() {
                 break gkl;
@@ -41,17 +39,26 @@ impl<T> Mutex<T> {
         while self.lock.swap(true, Ordering::Acquire) {
             threading::yield_now();
         }
-        MutexGuard { inner: self, gkl }
+        MutexGuard {
+            inner: self,
+            #[cfg(feature = "gkl")]
+            gkl,
+        }
     }
 
     pub fn try_lock(&self) -> Result<MutexGuard<'_, T>, MutexError> {
+        #[cfg(feature = "gkl")]
         let Ok(gkl) = GKL.try_lock() else {
             return Err(MutexError::IsLocked);
         };
         if self.lock.swap(true, Ordering::Acquire) {
             Err(MutexError::IsLocked)
         } else {
-            Ok(MutexGuard { inner: self, gkl })
+            Ok(MutexGuard {
+                inner: self,
+                #[cfg(feature = "gkl")]
+                gkl,
+            })
         }
     }
 
@@ -97,6 +104,7 @@ impl<T> From<T> for Mutex<T> {
 #[allow(dead_code)]
 pub struct MutexGuard<'a, T> {
     inner: &'a Mutex<T>,
+    #[cfg(feature = "gkl")]
     gkl: GklGuard<'a>,
 }
 

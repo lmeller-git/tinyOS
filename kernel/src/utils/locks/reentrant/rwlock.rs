@@ -12,8 +12,7 @@ use crate::{
     kernel::threading::{
         self,
         schedule::{
-            self, GLOBAL_SCHEDULER, GlobalTaskPtr, OneOneScheduler, current_pid, current_task,
-            with_current_task, with_scheduler_unckecked,
+            self, GlobalTaskPtr, OneOneScheduler, current_pid, current_task, with_current_task,
         },
         task::TaskRepr,
     },
@@ -55,6 +54,7 @@ impl<T> RwLock<T> {
     }
 
     pub fn try_write(&self) -> Result<RwLockWriteGuard<'_, T>, RwLockError> {
+        #[cfg(feature = "gkl")]
         let Ok(gkl) = GKL.try_lock() else {
             return Err(RwLockError::IsLocked);
         };
@@ -65,10 +65,18 @@ impl<T> RwLock<T> {
         {
             self.held_by.store(current_pid(), Ordering::Release);
             self.count.fetch_add(1, Ordering::Release);
-            Ok(RwLockWriteGuard { inner: self, gkl })
+            Ok(RwLockWriteGuard {
+                inner: self,
+                #[cfg(feature = "gkl")]
+                gkl,
+            })
         } else if self.held_by.load(Ordering::Acquire) == current_pid() {
             self.count.fetch_add(1, Ordering::Release);
-            Ok(RwLockWriteGuard { inner: self, gkl })
+            Ok(RwLockWriteGuard {
+                inner: self,
+                #[cfg(feature = "gkl")]
+                gkl,
+            })
         } else {
             Err(RwLockError::IsLocked)
         }
@@ -84,6 +92,7 @@ impl<T> RwLock<T> {
     }
 
     pub fn try_read(&self) -> Result<RwLockReadGuard<'_, T>, RwLockError> {
+        #[cfg(feature = "gkl")]
         let Ok(gkl) = GKL.try_lock() else {
             return Err(RwLockError::IsLocked);
         };
@@ -92,7 +101,11 @@ impl<T> RwLock<T> {
                 lock.checked_add(1)
             })
             .map_err(|_| RwLockError::IsLocked)
-            .map(|_| RwLockReadGuard { inner: self, gkl })
+            .map(|_| RwLockReadGuard {
+                inner: self,
+                #[cfg(feature = "gkl")]
+                gkl,
+            })
     }
 
     pub fn drop_read(&self) {
@@ -124,6 +137,10 @@ impl<T> RwLock<T> {
     pub unsafe fn inner_unchecked(&self) -> &mut T {
         unsafe { self.value.as_mut_unchecked() }
     }
+
+    pub fn is_locked(&self) -> bool {
+        self.lock.load(Ordering::Acquire) != 0
+    }
 }
 
 impl<T> From<T> for RwLock<T> {
@@ -135,6 +152,7 @@ impl<T> From<T> for RwLock<T> {
 #[allow(dead_code)]
 pub struct RwLockWriteGuard<'a, T> {
     inner: &'a RwLock<T>,
+    #[cfg(feature = "gkl")]
     gkl: GklGuard<'a>,
 }
 
@@ -165,6 +183,7 @@ impl<T> Drop for RwLockWriteGuard<'_, T> {
 #[allow(dead_code)]
 pub struct RwLockReadGuard<'a, T> {
     inner: &'a RwLock<T>,
+    #[cfg(feature = "gkl")]
     gkl: GklGuard<'a>,
 }
 

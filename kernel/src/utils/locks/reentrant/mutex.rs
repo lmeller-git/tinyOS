@@ -11,10 +11,7 @@ use os_macros::kernel_test;
 use crate::{
     kernel::threading::{
         self,
-        schedule::{
-            self, GLOBAL_SCHEDULER, GlobalTaskPtr, OneOneScheduler, current_pid, current_task,
-            with_scheduler_unckecked,
-        },
+        schedule::{self, GlobalTaskPtr, OneOneScheduler, current_pid, current_task},
         task::TaskRepr,
     },
     locks::{GKL, GklGuard, thread_safe::MutexError},
@@ -43,20 +40,29 @@ impl<T> Mutex<T> {
     }
 
     pub fn try_lock(&self) -> Result<MutexGuard<'_, T>, MutexError> {
+        #[cfg(feature = "gkl")]
         let Ok(gkl) = GKL.try_lock() else {
             return Err(MutexError::IsLocked);
         };
         if self.lock.swap(true, Ordering::Acquire) {
             if self.held_by.load(Ordering::Acquire) == current_pid() {
                 self.count.fetch_add(1, Ordering::Release);
-                Ok(MutexGuard { inner: self, gkl })
+                Ok(MutexGuard {
+                    inner: self,
+                    #[cfg(feature = "gkl")]
+                    gkl,
+                })
             } else {
                 Err(MutexError::IsLocked)
             }
         } else {
             self.held_by.store(current_pid(), Ordering::Release);
             self.count.fetch_add(1, Ordering::Release);
-            Ok(MutexGuard { inner: self, gkl })
+            Ok(MutexGuard {
+                inner: self,
+                #[cfg(feature = "gkl")]
+                gkl,
+            })
         }
     }
 
@@ -111,6 +117,7 @@ impl<T> From<T> for Mutex<T> {
 #[allow(dead_code)]
 pub struct MutexGuard<'a, T> {
     inner: &'a Mutex<T>,
+    #[cfg(feature = "gkl")]
     gkl: GklGuard<'a>,
 }
 

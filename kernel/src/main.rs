@@ -56,11 +56,11 @@ use tiny_os::kernel::devices::StdOutTag;
 use tiny_os::kernel::devices::with_device_init;
 use tiny_os::kernel::threading;
 use tiny_os::kernel::threading::schedule;
-use tiny_os::kernel::threading::schedule::GLOBAL_SCHEDULER;
 use tiny_os::kernel::threading::schedule::OneOneScheduler;
 use tiny_os::kernel::threading::schedule::add_ktask;
 use tiny_os::kernel::threading::schedule::add_named_ktask;
 use tiny_os::kernel::threading::schedule::add_named_usr_task;
+use tiny_os::kernel::threading::schedule::current_task;
 use tiny_os::kernel::threading::schedule::with_current_task;
 use tiny_os::kernel::threading::spawn;
 use tiny_os::kernel::threading::spawn_fn;
@@ -148,7 +148,7 @@ extern "C" fn idle() -> usize {
     }
     serial_println!("{} user tasks added", binaries.len());
 
-    _ = add_named_ktask(grahics, "graphic drawer".into());
+    _ = add_named_ktask(graphics, "graphic drawer".into());
     _ = add_named_ktask(listen, "term".into());
     cross_println!("startup tasks started");
 
@@ -167,7 +167,7 @@ extern "C" fn listen() -> usize {
 }
 
 #[with_default_args]
-extern "C" fn grahics() -> usize {
+extern "C" fn graphics() -> usize {
     let glyphs = [&PrimitiveGlyph::Circle(
         embedded_graphics::primitives::Circle {
             top_left: embedded_graphics::prelude::Point { x: 250, y: 250 },
@@ -200,16 +200,8 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     #[cfg(feature = "test_run")]
     tiny_os::test_panic_handler(info);
     serial_println!("{:#?}, {}", info, interrupt::are_enabled());
-    if GLOBAL_SCHEDULER.is_initialized() {
-        if let Some(ref mut sched) = GLOBAL_SCHEDULER
-            .get()
-            .map(|sched| sched.try_lock().ok())
-            .flatten()
-        {
-            if let Some(current) = sched.current_mut() {
-                current.write_inner().kill_with_code(1);
-            }
-        }
+    if let Ok(current) = current_task() {
+        current.write_inner().kill_with_code(1);
     }
 
     loop {

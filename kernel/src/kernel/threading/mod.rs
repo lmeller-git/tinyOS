@@ -1,5 +1,11 @@
 use crate::{
-    arch, args, kernel::abi::syscalls::funcs::sys_yield, locks::thread_safe::RwLock, serial_println,
+    arch, args,
+    kernel::{
+        abi::syscalls::funcs::sys_yield,
+        threading::{schedule::with_current_task, task::TaskRepr},
+    },
+    locks::thread_safe::RwLock,
+    serial_println,
 };
 use alloc::{format, string::String, sync::Arc};
 use core::{
@@ -9,8 +15,8 @@ use core::{
 };
 use os_macros::kernel_test;
 use schedule::{
-    GLOBAL_SCHEDULER, GlobalTaskPtr, OneOneScheduler, add_built_task, add_ktask, add_task_ptr__,
-    context_switch_local, current_task, get, get_unchecked,
+    GlobalTaskPtr, OneOneScheduler, add_built_task, add_ktask, add_task_ptr__,
+    context_switch_local, current_task, with_scheduler,
 };
 use task::{Arg, Args, ExitInfo, TaskBuilder, TaskState};
 use trampoline::{TaskExitInfo, closure_trampoline};
@@ -160,12 +166,8 @@ pub fn spawn_fn(
         .as_kernel()?
         .with_exit_info(TaskExitInfo::new_with_default_trampoline(
             move |v: usize| {
-                unsafe { get_unchecked() }.current().map(|c| {
-                    c.raw().write().state = TaskState::Zombie(task::ExitInfo {
-                        exit_code: v as u32,
-                        signal: None,
-                    })
-                });
+                with_current_task(|task| task.write_inner().kill_with_code(v));
+
                 raw.val.write().replace(v);
                 raw.finished.store(true, Ordering::Release);
                 yield_now();

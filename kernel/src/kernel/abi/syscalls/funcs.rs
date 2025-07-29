@@ -23,7 +23,7 @@ use crate::{
         threading::{
             self,
             schedule::{
-                self, context_switch_local, current_task, with_current_task, OneOneScheduler
+                self, context_switch_local, current_task, with_current_task, with_scheduler, OneOneScheduler
             },
             task::{PrivilegeLevel, TaskID, TaskRepr},
             yield_now,
@@ -43,7 +43,7 @@ pub fn sys_exit(status: i64) {
 }
 
 pub fn sys_kill(id: u64, status: i64) -> SysRetCode {
-    schedule::get().unwrap().kill(id.into());
+    with_scheduler(|sched| sched.lock().kill(id.into()));
     SysRetCode::Success
 }
 

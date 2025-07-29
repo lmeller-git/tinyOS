@@ -19,20 +19,30 @@ unsafe impl<T> Send for Mutex<T> {}
 #[allow(dead_code)]
 impl<T> Mutex<T> {
     pub fn lock(&self) -> MutexGuard<'_, T> {
+        #[cfg(feature = "gkl")]
         let gkl = GKL.lock();
         while self.lock.swap(true, Ordering::Acquire) {
             spin_loop()
         }
-        MutexGuard { inner: self, gkl }
+        MutexGuard {
+            inner: self,
+            #[cfg(feature = "gkl")]
+            gkl,
+        }
     }
     pub fn try_lock(&self) -> Result<MutexGuard<'_, T>, MutexError> {
+        #[cfg(feature = "gkl")]
         let Ok(gkl) = GKL.try_lock() else {
             return Err(MutexError::IsLocked);
         };
         if self.lock.swap(true, Ordering::Acquire) {
             Err(MutexError::IsLocked)
         } else {
-            Ok(MutexGuard { inner: self, gkl })
+            Ok(MutexGuard {
+                inner: self,
+                #[cfg(feature = "gkl")]
+                gkl,
+            })
         }
     }
     fn unlock(&self) {
@@ -66,6 +76,7 @@ impl<T> Mutex<T> {
 #[allow(dead_code)]
 pub struct MutexGuard<'a, T> {
     inner: &'a Mutex<T>,
+    #[cfg(feature = "gkl")]
     gkl: GklGuard<'a>,
 }
 

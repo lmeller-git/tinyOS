@@ -39,9 +39,7 @@ fn map_region(start: VirtAddr, len: usize, flags: PageTableFlags) -> Result<(), 
     let end_addr = (start + len as u64).align_up(Size4KiB::SIZE);
     let start = Page::containing_address(start);
     let end = Page::containing_address(end_addr);
-    if !threading::is_running()
-        || current_task().unwrap().raw().read().privilege_level() == PrivilegeLevel::Kernel
-    {
+    if !threading::is_running() || !flags.contains(PageTableFlags::USER_ACCESSIBLE) {
         let mut pagedir = PAGETABLE.lock();
         let mut alloc = GLOBAL_FRAME_ALLOCATOR.lock();
         for page in Page::range_inclusive(start, end) {
@@ -55,9 +53,9 @@ fn map_region(start: VirtAddr, len: usize, flags: PageTableFlags) -> Result<(), 
         Ok(())
     } else {
         with_current_task(|task| {
+            let mut alloc = GLOBAL_FRAME_ALLOCATOR.lock();
             task.with_inner_mut(|task| {
                 let pagedir = task.mut_pagdir();
-                let mut alloc = GLOBAL_FRAME_ALLOCATOR.lock();
                 for page in Page::range_inclusive(start, end) {
                     let frame = alloc
                         .allocate_frame()

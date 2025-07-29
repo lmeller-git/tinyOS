@@ -44,24 +44,18 @@ impl OneOneScheduler for OneOneRoundRobin {
     }
 
     fn switch(&mut self) -> Option<GlobalTaskPtr> {
-        // serial_println!("current tasks: {:#?}", self.lookup);
-        // serial_println!("hello 3");
         while let Some(next) = self.ready.pop_front() {
             if next.read_inner().state != TaskState::Ready {
                 // TODO do something with these tasks, instead of just ignoring
                 // for now: they simply get popped and later added again via wake() (potentially). They continue to be stored in lookup, unless cleaned up
-                // serial_println!("blocking: {:#?}", &next);
                 continue;
             }
             if let Some(current) = self.running.replace(next) {
                 // it is fine to push all tasks, as non rerady tasks will be popped in the (next) switch
-                // serial_println!("ready: {:#?}", &self.current());
                 self.ready.push_back(current);
             }
             return self.current();
         }
-        // serial_println!("now running: {:#?}", self.current());
-        // serial_println!("hello 4");
         None
     }
 
@@ -70,7 +64,7 @@ impl OneOneScheduler for OneOneRoundRobin {
     }
 
     fn current(&self) -> Option<GlobalTaskPtr> {
-        self.running.as_ref().map(|r| r.clone())
+        self.running.clone()
     }
 
     fn num_tasks(&self) -> usize {
@@ -88,14 +82,13 @@ impl OneOneScheduler for OneOneRoundRobin {
     }
 
     fn wake(&mut self, id: &TaskID) {
-        if !self
-            .ready
-            .iter()
-            .any(|task| task.with_inner(|inner| &inner.pid == id))
+        if let Some(task) = self.lookup.get(id)
+            && !self
+                .ready
+                .iter()
+                .any(|task| task.with_inner(|inner| &inner.pid == id))
         {
-            if let Some(task) = self.lookup.get(id) {
-                self.ready.push_back(task.clone());
-            }
+            self.ready.push_back(task.clone());
         }
     }
 }

@@ -11,10 +11,7 @@ use os_macros::kernel_test;
 use crate::{
     kernel::threading::{
         self,
-        schedule::{
-            self, GLOBAL_SCHEDULER, GlobalTaskPtr, OneOneScheduler, current_task,
-            with_current_task, with_scheduler_unckecked,
-        },
+        schedule::{self, GlobalTaskPtr, OneOneScheduler, current_task, with_current_task},
         task::TaskRepr,
     },
     locks::{GKL, GklGuard},
@@ -50,13 +47,18 @@ impl<T> RwLock<T> {
     }
 
     pub fn try_write(&self) -> Result<RwLockWriteGuard<'_, T>, RwLockError> {
+        #[cfg(feature = "gkl")]
         let Ok(gkl) = GKL.try_lock() else {
             return Err(RwLockError::IsLocked);
         };
         self.lock
             .compare_exchange(0, WRITER_LOCK, Ordering::Acquire, Ordering::Relaxed)
             .map_err(|_| RwLockError::IsLocked)
-            .map(|_| RwLockWriteGuard { inner: self, gkl })
+            .map(|_| RwLockWriteGuard {
+                inner: self,
+                #[cfg(feature = "gkl")]
+                gkl,
+            })
     }
 
     pub fn read(&self) -> RwLockReadGuard<'_, T> {
@@ -69,6 +71,7 @@ impl<T> RwLock<T> {
     }
 
     pub fn try_read(&self) -> Result<RwLockReadGuard<'_, T>, RwLockError> {
+        #[cfg(feature = "gkl")]
         let Ok(gkl) = GKL.try_lock() else {
             return Err(RwLockError::IsLocked);
         };
@@ -77,7 +80,11 @@ impl<T> RwLock<T> {
                 lock.checked_add(1)
             })
             .map_err(|_| RwLockError::IsLocked)
-            .map(|_| RwLockReadGuard { inner: self, gkl })
+            .map(|_| RwLockReadGuard {
+                inner: self,
+                #[cfg(feature = "gkl")]
+                gkl,
+            })
     }
 
     pub fn drop_read(&self) {
@@ -116,6 +123,7 @@ impl<T> From<T> for RwLock<T> {
 #[allow(dead_code)]
 pub struct RwLockWriteGuard<'a, T> {
     inner: &'a RwLock<T>,
+    #[cfg(feature = "gkl")]
     gkl: GklGuard<'a>,
 }
 
@@ -146,6 +154,7 @@ impl<T> Drop for RwLockWriteGuard<'_, T> {
 #[allow(dead_code)]
 pub struct RwLockReadGuard<'a, T> {
     inner: &'a RwLock<T>,
+    #[cfg(feature = "gkl")]
     gkl: GklGuard<'a>,
 }
 

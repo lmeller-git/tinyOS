@@ -3,11 +3,12 @@ use os_macros::with_default_args;
 
 use super::{
     ProcessReturn,
-    schedule::{GLOBAL_SCHEDULER, OneOneScheduler, context_switch_local},
+    schedule::{OneOneScheduler, context_switch_local},
     task::{Arg, TaskRepr},
 };
 use crate::{
     arch::{context::return_trampoline_stub, hcf},
+    kernel::threading::schedule::with_current_task,
     serial_println,
 };
 use core::{arch::asm, fmt::Debug, pin::Pin};
@@ -39,12 +40,7 @@ pub extern "C" fn test_kernel_return_trampoline(ret: ProcessReturn, returnto: ex
 
 pub fn default_exit(ret: usize) {
     serial_println!("default exit");
-    if let Some(ref mut sched) = GLOBAL_SCHEDULER.get().map(|sched| sched.lock()) {
-        if let Some(current) = sched.current_mut() {
-            //TODO kill with info
-            current.write_inner().kill_with_code(ret);
-        }
-    }
+    with_current_task(|task| task.write_inner().kill_with_code(ret));
     unsafe { context_switch_local(0) };
     hcf();
 }
