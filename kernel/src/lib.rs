@@ -1,16 +1,15 @@
 #![no_std]
 #![feature(abi_x86_interrupt)]
-#![feature(result_flattening)]
 #![feature(lazy_type_alias)]
+#![feature(unsafe_cell_access)]
 #![allow(
     unused_imports,
     unreachable_code,
-    unsafe_op_in_unsafe_fn,
-    dead_code,
     unused_doc_comments,
-    unused_must_use,
     unused_variables,
-    private_interfaces
+    private_interfaces,
+    incomplete_features,
+    clippy::missing_safety_doc
 )]
 pub extern crate alloc;
 
@@ -64,7 +63,7 @@ pub fn test_main() {
 }
 
 #[cfg(feature = "test_run")]
-pub fn test_test_main() {
+pub fn test_test_main() -> ! {
     use arch::interrupt::enable_threading_interrupts;
     use drivers::start_drivers;
     use kernel::threading;
@@ -87,12 +86,7 @@ pub fn test_test_main() {
 
     enable_threading_interrupts();
     yield_now();
-    // let tests = unsafe { get_kernel_tests() };
-    // serial_println!("huhu");
-    // for test in tests {
-    // serial_println!("name: {}", test.name());
-    // test.run_in(unsafe { GLOBAL_TEST_SCHEDULER.get_unchecked() });
-    // }
+    unreachable!()
 }
 
 use kernel::threading::ProcessReturn;

@@ -26,7 +26,7 @@ impl Gkl {
         self.lock.load(Ordering::Acquire)
     }
 
-    pub fn lock(&self) -> GklGuard {
+    pub fn lock(&self) -> GklGuard<'_> {
         #[cfg(not(feature = "gkl"))]
         return GklGuard { inner: self };
         loop {
@@ -39,7 +39,7 @@ impl Gkl {
         unreachable!()
     }
 
-    pub fn try_lock(&self) -> Result<GklGuard, GklErr> {
+    pub fn try_lock(&self) -> Result<GklGuard<'_>, GklErr> {
         #[cfg(not(feature = "gkl"))]
         return Ok(GklGuard { inner: self });
         if self.lock.swap(true, Ordering::Acquire) {
@@ -67,6 +67,12 @@ impl Gkl {
             self.currently_held.store(0, Ordering::Release);
             self.lock.store(false, Ordering::Release);
         }
+    }
+}
+
+impl Default for Gkl {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

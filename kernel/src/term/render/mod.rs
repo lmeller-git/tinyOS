@@ -352,12 +352,6 @@ where
 {
     pub(super) fn new(gfx: &'a Mutex<B>, buffer: &'a mut TermCharBuffer<X, Y>) -> Self {
         let bounds = { gfx.lock().bounding_box() };
-        // MAX_CHARS_X and MAX_CHARS_Y :
-        // serial_println!(
-        //     "w: {}, h: {}",
-        //     (bounds.size.width as usize) / CHAR_WIDTH,
-        //     (bounds.size.height as usize) / CHAR_HEIGHT
-        // );
         Self {
             backend: gfx,
             cursor: TermPosition::new(
@@ -396,7 +390,7 @@ where
             }
         }
 
-        self.backend.lock().fill_solid(
+        _ = self.backend.lock().fill_solid(
             &Rectangle::new(
                 self.cursor.into(),
                 Size::new(CHAR_WIDTH as u32, CHAR_HEIGHT as u32),
@@ -415,18 +409,13 @@ where
     fn write_char(&mut self, c: char) {
         match c {
             '\n' => {
-                // This will try to draw /n, which is ?
-                // _ = self.buffer.push_dumb(c, &self.cursor);
                 self.newline();
             }
             '\t' => self.write_tab(),
             '\r' => self.line_clear(),
             _ => {
-                // self.cleanup(res);
-                // serial_println!("c: {:#?}", self.cursor);
                 match self.buffer.force_push_smart(c, &mut self.cursor) {
                     Err(PositionError::NewLine) => {
-                        // serial_println!("e1");
                         self.buffer.redraw_row_with_range(
                             &self.cursor.row,
                             &mut *self.backend.lock(),
@@ -436,18 +425,14 @@ where
                         self.cursor.col.inner += 1;
                     }
                     Err(PositionError::PrevLine) => {
-                        // serial_println!("e2");
                         self.buffer.redraw(
                             &mut self.cursor,
                             &mut *self.backend.lock(),
                             &self.str_style,
                         );
-                        // self.buffer
-                        // .redraw_empty_row(&self.cursor.row, &mut *self.backend.lock());
                         self.cursor.col.inner += 1;
                     }
                     Ok(()) => {
-                        // serial_println!("ok");
                         let res = self.str_style.draw_char(
                             c,
                             self.cursor.into(),
@@ -456,9 +441,7 @@ where
                         );
                         self.cursor.col.inner += 1;
                     }
-                    _ => {
-                        // serial_println!("e3");
-                    }
+                    _ => {}
                 };
             }
         }

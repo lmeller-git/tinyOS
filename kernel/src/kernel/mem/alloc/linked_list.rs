@@ -7,8 +7,6 @@ use linked_list_allocator::{Heap, LockedHeap};
 
 use crate::locks::reentrant::Mutex;
 
-// pub(super) static ALLOCATOR: LockedHeap = LockedHeap::empty();
-
 pub(super) const fn get_alloc() -> SafeHeap {
     SafeHeap::new()
 }
@@ -41,7 +39,7 @@ unsafe impl GlobalAlloc for SafeHeap {
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         if let Some(nn_ptr) = NonNull::new(ptr) {
-            self.inner.lock().deallocate(nn_ptr, layout);
+            unsafe { self.inner.lock().deallocate(nn_ptr, layout) };
         }
     }
 }

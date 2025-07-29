@@ -19,12 +19,14 @@ pub fn init_tty_sinks() {
     _ = FBBACKEND.try_init_once(FbBackend::new);
 }
 
+// the read_locks are only necessary if multiple instances of these Backends are alive at once, as ChunkedArrayQueue is mpsc. Currently this is not the case.
 #[derive(Debug)]
 pub struct SerialBackend {
     #[cfg(feature = "custom_ds")]
     buffer: ChunkedArrayQueue<100, u8>,
     #[cfg(not(feature = "custom_ds"))]
     buffer: SegQueue<u8>,
+    #[cfg(feature = "custom_ds")]
     read_lock: Mutex<()>,
 }
 
@@ -35,6 +37,7 @@ impl SerialBackend {
             buffer: ChunkedArrayQueue::new(),
             #[cfg(not(feature = "custom_ds"))]
             buffer: SegQueue::new(),
+            #[cfg(feature = "custom_ds")]
             read_lock: Mutex::new(()),
         })
     }
@@ -88,6 +91,7 @@ pub struct FbBackend {
     buffer: ChunkedArrayQueue<100, u8>,
     #[cfg(not(feature = "custom_ds"))]
     buffer: SegQueue<u8>,
+    #[cfg(feature = "custom_ds")]
     read_lock: Mutex<()>,
 }
 
@@ -98,6 +102,7 @@ impl FbBackend {
             buffer: ChunkedArrayQueue::new(),
             #[cfg(not(feature = "custom_ds"))]
             buffer: SegQueue::new(),
+            #[cfg(feature = "custom_ds")]
             read_lock: Mutex::new(()),
         })
     }

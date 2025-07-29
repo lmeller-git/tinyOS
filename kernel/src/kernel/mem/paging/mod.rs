@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod alloc;
 mod frame;
 mod map;

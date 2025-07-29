@@ -1,8 +1,11 @@
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::{
+    hint::unreachable_unchecked,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use super::{
     ProcessEntry, ThreadingError,
-    task::{SimpleTask, Task, TaskBuilder, TaskID, TaskPtr, TaskRepr},
+    task::{SimpleTask, TaskBuilder, TaskID, TaskPtr, TaskRepr},
 };
 use crate::{
     arch::{
@@ -25,19 +28,6 @@ use conquer_once::spin::OnceCell;
 pub mod testing;
 
 mod round_robin;
-
-pub trait Scheduler {
-    fn new() -> Self;
-    fn add_task(&mut self, task: Task);
-    fn yield_now(&mut self);
-    fn cleanup(&mut self);
-    fn kill(&mut self, id: TaskID);
-    fn switch(&mut self, ctx: TaskCtx) -> Option<&TaskCtx>;
-    fn init(&mut self);
-    fn current(&self) -> Option<&Task>;
-    fn num_tasks(&self) -> usize;
-    fn reschedule(&mut self, order: ScheduleOrder);
-}
 
 pub trait OneOneScheduler {
     fn new() -> Self;
@@ -74,10 +64,12 @@ pub fn get<'a>() -> Option<MutexGuard<'a, GlobalScheduler>> {
 }
 
 pub unsafe fn get_unchecked<'a>() -> MutexGuard<'a, GlobalScheduler> {
-    GLOBAL_SCHEDULER.get_unchecked().lock()
+    unsafe { GLOBAL_SCHEDULER.get_unchecked() }.lock()
 }
 
 //SAFETY This function is EXTREMELY unsafe and the caller must ensure that no other function runs in parallel to this one, as well as keeping the state of sched consistent
+#[deprecated]
+#[allow(unsafe_op_in_unsafe_fn)]
 pub unsafe fn with_scheduler_unckecked<F, R>(f: F) -> R
 where
     F: FnOnce(&mut GlobalScheduler) -> R,
@@ -137,43 +129,23 @@ pub unsafe extern "C" fn context_switch_local(rsp: u64) {
 
     // GKL (in particular sched + the current running task) need to be completely unlocked, as even reentrancy would lead to deadlock
     // (task n holds lock to itself -> switch -> goes through due to reentrancy -> task n+1 runs -> switch -> we try to lock. But does not work as lock is still held by task n -> repeat)
+    #[cfg(feature = "gkl")]
     if GKL.is_locked() {
         return;
     }
-    #[cfg(not(feature = "gkl"))]
-    {
-        let Ok(sched) = GLOBAL_SCHEDULER.get().unwrap().try_lock() else {
-            return;
-        };
-        if let Some(task) = sched.current() {
-            if task.raw().try_read().is_err() || task.raw().try_write().is_err() {
-                return;
-            }
-        }
-    }
+
     if let Ok(mut lock) = GLOBAL_SCHEDULER.get().unwrap().try_lock() {
         if let Some(current) = lock.current_mut() {
-            // #[cfg(not(feature = "test_run"))]
-            // serial_println!(
-            //     "old krsp: {:#x}, new krsp: {:#x}",
-            //     current.read_inner().krsp,
-            //     rsp
-            // );
-            //
             let Ok(mut current) = current.raw().try_write() else {
+                serial_println!("current locked");
                 return;
             };
             current.krsp = VirtAddr::new(rsp);
         }
         if let Some(new) = lock.switch() {
-            // #[cfg(not(feature = "test_run"))]
-            // serial_println!("new task, {:#?}", new);
-            // serial_println!("hello 2");
-            // unsafe { GLOBAL_SCHEDULER.get_unchecked().force_unlock() };
             let Ok(guard) = new.raw().try_read() else {
                 panic!("task we wanted to switch to is write locked");
             };
-            // let task: *const GlobalTask = &*guard as *const _;
             let task = TaskState::from_task(&*guard);
             set_current_pid(guard.pid.get_inner());
             drop(guard);
@@ -184,6 +156,8 @@ pub unsafe extern "C" fn context_switch_local(rsp: u64) {
             unreachable!()
         }
     }
+    #[cfg(not(feature = "gkl"))]
+    serial_println!("sched locked");
 }
 
 #[allow(unsafe_op_in_unsafe_fn)]

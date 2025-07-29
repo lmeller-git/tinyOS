@@ -76,7 +76,6 @@ impl PrimitiveGlyph<'_> {
                     target,
                 )
                 .map(|_| ()),
-            _ => Err(GraphicsError::NotImplemented),
         }
     }
 }
@@ -212,11 +211,13 @@ where
     B: FrameBuffer,
 {
     unsafe fn copy_row(&self, from: *const u32, len: usize, x: usize, y: usize) {
-        core::ptr::copy_nonoverlapping(
-            from,
-            self.fb.addr().add(self.fb.pixel_offset(x, y)).cast::<u32>(),
-            len,
-        );
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                from,
+                self.fb.addr().add(self.fb.pixel_offset(x, y)).cast::<u32>(),
+                len,
+            )
+        };
     }
 
     fn copy_rect<F: FrameBuffer>(&self, area: &BoundingBox, buf: &F) {
@@ -227,7 +228,7 @@ where
         for row in area.y..area.y + area.height {
             unsafe {
                 self.copy_row(
-                    unsafe { buf.addr().add(buf.pixel_offset(area.x, row)).cast::<u32>() },
+                    buf.addr().add(buf.pixel_offset(area.x, row)).cast::<u32>(),
                     area.width,
                     area.x,
                     row,

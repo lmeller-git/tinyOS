@@ -1,7 +1,5 @@
 use core::{convert::Infallible, str::FromStr};
 
-use super::{TestCase, TestConfig};
-
 #[repr(C)]
 pub struct RawStr {
     start: *const u8,

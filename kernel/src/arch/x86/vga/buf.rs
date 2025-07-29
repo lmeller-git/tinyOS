@@ -25,6 +25,7 @@ pub enum VGAColor {
     White = 15,
 }
 
+// This is just lazy
 pub struct Volatile<T> {
     inner: T,
 }
@@ -185,7 +186,6 @@ impl VGAWriter {
     pub fn write_byte(&mut self, byte: u8) {
         match byte {
             b'\n' => {
-                // self.write_byte(b' ');
                 self.shift_up();
             }
             byte => {
@@ -230,7 +230,6 @@ impl VGAWriter {
                 self.write_char_unchecked(character, row + 1, col);
             }
         }
-        // self.clear_row(0);
         self.column = BUFFER_WIDTH - 1;
     }
 
@@ -266,7 +265,7 @@ impl VGAWriter {
         self.select(row, col)
     }
 
-    pub fn select_row(&mut self, row: usize) -> Option<ScreenRow> {
+    pub fn select_row(&mut self, row: usize) -> Option<ScreenRow<'_>> {
         self.buffer
             .get_row_mut(row)
             .map(|row| ScreenRow { chars: row })

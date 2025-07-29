@@ -4,9 +4,7 @@
     unused_imports,
     unreachable_code,
     unsafe_op_in_unsafe_fn,
-    dead_code,
     unused_doc_comments,
-    unused_must_use,
     unused_variables,
     private_interfaces
 )]
@@ -103,7 +101,7 @@ unsafe extern "C" fn kmain() -> ! {
 
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
-    with_devices!(
+    _ = with_devices!(
         |devices| {
             let fb: FdEntry<SinkTag> = DeviceBuilder::tty().fb();
             let serial: FdEntry<EDebugSinkTag> = DeviceBuilder::tty().serial();
@@ -136,7 +134,7 @@ extern "C" fn idle() -> usize {
     threading::finalize();
     serial_println!("threads finalized");
 
-    let mut binaries: Vec<&'static [u8]> = get_binaries();
+    let binaries: Vec<&'static [u8]> = get_binaries();
 
     serial_println!("adding {} user tasks", binaries.len());
     for bin in &binaries {
@@ -150,9 +148,8 @@ extern "C" fn idle() -> usize {
     }
     serial_println!("{} user tasks added", binaries.len());
 
-    add_named_ktask(grahics, "graphic drawer".into());
-    // add_named_ktask(rand, "random".into());
-    add_named_ktask(listen, "term".into());
+    _ = add_named_ktask(grahics, "graphic drawer".into());
+    _ = add_named_ktask(listen, "term".into());
     cross_println!("startup tasks started");
 
     // just block forever, as there is nothing left to do
@@ -161,15 +158,6 @@ extern "C" fn idle() -> usize {
     loop {
         threading::yield_now();
     }
-
-    unreachable!()
-}
-
-#[with_default_args]
-extern "C" fn rand() -> usize {
-    serial_println!("hello 0 from task");
-    random_stuff();
-    0
 }
 
 #[with_default_args]
@@ -207,118 +195,6 @@ extern "C" fn grahics() -> usize {
     0
 }
 
-fn random_stuff() {
-    serial_println!("hello from task");
-
-    get_device!(FdEntryType::Graphics, RawFdEntry::GraphicsBackend(id, backend) => {
-        backend.draw_glyph(
-            &Line {
-                start: tiny_os::services::graphics::shapes::Point { x: 0, y: 0 },
-                end: tiny_os::services::graphics::shapes::Point { x: 200, y: 200 },
-            },
-            &tiny_os::drivers::graphics::colors::ColorCode::White,
-        );
-
-        backend.draw_glyph(
-            &Line {
-                start: tiny_os::services::graphics::shapes::Point { x: 400, y: 200 },
-                end: tiny_os::services::graphics::shapes::Point { x: 600, y: 0 },
-            },
-            &tiny_os::drivers::graphics::colors::ColorCode::White,
-        );
-
-        backend.draw_glyph(
-            &Line {
-                start: tiny_os::services::graphics::shapes::Point { x: 400, y: 400 },
-                end: tiny_os::services::graphics::shapes::Point { x: 600, y: 600 },
-            },
-            &tiny_os::drivers::graphics::colors::ColorCode::White,
-        );
-        backend.draw_glyph(
-            &Line {
-                start: tiny_os::services::graphics::shapes::Point { x: 200, y: 400 },
-                end: tiny_os::services::graphics::shapes::Point { x: 0, y: 600 },
-            },
-            &tiny_os::drivers::graphics::colors::ColorCode::White,
-        );
-        backend.draw_glyph(
-            &Rect {
-                top_left: tiny_os::services::graphics::shapes::Point { x: 200, y: 200 },
-                bottom_right: tiny_os::services::graphics::shapes::Point { x: 400, y: 400 },
-            },
-            &tiny_os::drivers::graphics::colors::ColorCode::Red,
-        );
-        backend.draw_glyph(
-            &Rect {
-                top_left: tiny_os::services::graphics::shapes::Point { x: 0, y: 0 },
-                bottom_right: tiny_os::services::graphics::shapes::Point { x: 600, y: 600 },
-            },
-            &tiny_os::drivers::graphics::colors::ColorCode::Green,
-        );
-        backend.draw_glyph(
-            &Rect {
-                top_left: tiny_os::services::graphics::shapes::Point { x: 250, y: 250 },
-                bottom_right: tiny_os::services::graphics::shapes::Point { x: 350, y: 350 },
-            },
-            &tiny_os::drivers::graphics::colors::ColorCode::Blue,
-        );
-        backend.draw_glyph(
-            &Circle {
-                center: Point { x: 300, y: 300 },
-                rad: 50,
-            },
-            &tiny_os::drivers::graphics::colors::ColorCode::Yellow,
-        );
-
-        let s = PrimitiveGlyph::Circle(
-            embedded_graphics::primitives::Circle {
-                top_left: embedded_graphics::prelude::Point { x: 275, y: 275 },
-                diameter: 150,
-            },
-            PrimitiveStyle::with_stroke(ColorCode::Pink.into(), 2),
-        );
-
-        let circle = embedded_graphics::primitives::Circle::new(
-            embedded_graphics::prelude::Point::new(275, 275),
-            50,
-        );
-        backend.draw_primitive(&PrimitiveGlyph::Circle(
-            circle,
-            PrimitiveStyle::with_stroke(ColorCode::Magenta.into(), 1),
-        ));
-
-        let builder = embedded_graphics::mono_font::MonoTextStyleBuilder::new()
-            .text_color(ColorCode::White.into())
-            .background_color(ColorCode::Red.into())
-            .font(&mono_font::ascii::FONT_10X20)
-            .build();
-        backend.draw_primitive(&PrimitiveGlyph::Text(
-            &builder,
-            "Hello World",
-            embedded_graphics::prelude::Point { x: 300, y: 300 },
-        ));
-        backend.draw_primitive(&PrimitiveGlyph::Text(
-            &builder,
-            "Hey there",
-            embedded_graphics::prelude::Point { x: 300, y: 350 },
-        ));
-    });
-
-    let bounds = BoundingBox {
-        x: 0,
-        y: 0,
-        width: GLOBAL_FRAMEBUFFER.width(),
-        height: GLOBAL_FRAMEBUFFER.height(),
-    };
-
-    sys_write(
-        FdEntryType::Graphics as usize,
-        &bounds as *const BoundingBox as *const u8,
-        1,
-    );
-    cross_println!("copied contents into Global Framebuffer");
-}
-
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     #[cfg(feature = "test_run")]
@@ -331,11 +207,12 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
             .flatten()
         {
             if let Some(current) = sched.current_mut() {
-                //TODO kill with info
                 current.write_inner().kill_with_code(1);
             }
         }
     }
 
-    arch::hcf()
+    loop {
+        threading::yield_now();
+    }
 }

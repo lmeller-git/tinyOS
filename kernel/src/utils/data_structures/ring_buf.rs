@@ -8,13 +8,13 @@ use core::{
     usize,
 };
 use linked_list_allocator::Heap;
+use spin::Mutex;
 
 use crate::{kernel::threading, serial_println};
 // TODO use my thread safe mutex, however this currently does not work due to gkl policy
 // TODO the current implementation has a bug presumably in read() causing (index related?), potentially recursive panics -> deadlocks, double faults, ...
 // This NEEDS to be fixed before using it again. Should also rework tests, which do not currently catch this bug
 
-use spin::Mutex;
 pub struct ChunkedArrayQueue<const N: usize, T>
 where
     T: Copy,
@@ -164,6 +164,7 @@ impl<const N: usize, T: Copy> ChunkedArrayQueue<N, T> {
         let start = Self::to_idx(old_tail);
         let end = Self::to_idx(old_tail + chunk.len());
 
+        #[allow(unused_mut)]
         let mut buffer = unsafe { self.get_mut_buf() };
 
         // SAFETY: we copy <= chunk.len() Ts into buffer with chunk.len() <= buffer.len()

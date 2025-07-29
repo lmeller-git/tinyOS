@@ -28,7 +28,6 @@ pub extern "C" fn kernel_return_trampoline(ret: ProcessReturn, info: &mut TaskEx
     // restore cpu context
     // call correct next func
     // just stay on tasks stack
-    // serial_println!("trampoline");
     (info.callback.inner)(ret);
 }
 
@@ -83,7 +82,7 @@ impl Default for TaskExitInfo {
 
 impl Debug for TaskExitInfo {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        writeln!(f, "trampoline: {:#x}", self.trampoline);
+        _ = writeln!(f, "trampoline: {:#x}", self.trampoline);
         Ok(())
     }
 }

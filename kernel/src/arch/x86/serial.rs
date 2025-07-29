@@ -49,14 +49,14 @@ pub fn _raw_print(slice: &[u8]) {
 pub unsafe fn _force_raw_print(slice: &[u8]) {
     without_interrupts(|| {
         let locked = SERIAL1.is_locked();
-        SERIAL1.force_unlock();
+        unsafe { SERIAL1.force_unlock() };
         let mut lock = SERIAL1.lock();
         for byte in slice {
             lock.send(*byte);
         }
         drop(lock);
         if locked {
-            SERIAL1.force_lock();
+            unsafe { SERIAL1.force_lock() };
         }
     })
 }
@@ -66,10 +66,12 @@ pub unsafe fn _force_raw_print(slice: &[u8]) {
 pub unsafe fn _force_print(input: Arguments) {
     without_interrupts(|| {
         let locked = SERIAL1.is_locked();
-        SERIAL1.force_unlock();
-        SERIAL1.lock().write_fmt(input);
+        unsafe { SERIAL1.force_unlock() };
+        _ = SERIAL1.lock().write_fmt(input);
         if locked {
-            SERIAL1.force_lock();
+            unsafe {
+                SERIAL1.force_lock();
+            }
         }
     })
 }

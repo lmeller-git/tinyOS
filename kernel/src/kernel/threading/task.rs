@@ -180,12 +180,12 @@ impl Arg {
     }
 
     pub unsafe fn as_val<T>(&self) -> T {
-        let boxed = Box::from_raw(self.0 as *mut T);
+        let boxed = unsafe { Box::from_raw(self.0 as *mut T) };
         *boxed
     }
 
     pub unsafe fn as_closure(&self) -> Box<dyn FnOnce() + 'static + Send + Sync> {
-        *Box::from_raw(self.0 as *mut Box<dyn FnOnce() + 'static + Send + Sync>)
+        unsafe { *Box::from_raw(self.0 as *mut Box<dyn FnOnce() + 'static + Send + Sync>) }
     }
 }
 
@@ -221,10 +221,11 @@ impl Args {
 }
 
 #[macro_export]
+#[allow(unused_mut)]
 macro_rules! args {
     ($($arg:expr),* $(,)?) => {{
         const MAX_ARGS: usize = 6;
-        let mut arr = [crate::kernel::threading::task::Arg::default(); MAX_ARGS];
+        let mut arr = [$crate::kernel::threading::task::Arg::default(); MAX_ARGS];
         let mut idx = 0;
         $(
             if idx < MAX_ARGS {
@@ -249,12 +250,14 @@ impl<'data> Init<'data> {
     }
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for Init<'_> {
     fn default() -> Self {
         Self { elf_data: None }
     }
 }
 
+#[allow(dead_code)]
 pub struct Ready<I> {
     inner: I,
     exit: TaskExitInfo,
@@ -398,7 +401,7 @@ impl TaskBuilder<SimpleTask, Init<'_>> {
         let mut tbl =
             create_new_pagedir::<'a, '_>().map_err(|e| ThreadingError::PageDirNotBuilt)?;
         let usr_end = allocate_userstack(&mut tbl)?;
-        // let kstack = allocate_userkstack(&mut tbl)?;
+
         *self.inner.krsp() = kstack;
         self.inner.privilege = PrivilegeLevel::User;
 
@@ -418,7 +421,7 @@ impl TaskBuilder<SimpleTask, Init<'_>> {
         );
 
         let _marker = ExtendedUsrTaskInfo {
-            info: info,
+            info,
             _phatom: PhantomData,
         }
         .into();
@@ -436,19 +439,16 @@ impl TaskBuilder<SimpleTask, Init<'_>> {
 
 impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
     pub fn build(mut self) -> T {
-        // serial_println!("data: {:#?}", self._marker.inner);
-        // serial_println!("task: {:#?}", self.inner);
-
         unsafe {
             interrupt::disable();
         }
 
-        copy_ustack_mappings_into(self.inner.mut_pagdir(), &mut *PAGETABLE.lock());
+        copy_ustack_mappings_into(self.inner.mut_pagdir(), &mut PAGETABLE.lock());
 
         let next_top =
             unsafe { init_usr_task(&self._marker.inner.info, self.inner.exit_info(), &self.data) };
 
-        unmap_ustack_mappings(&mut *PAGETABLE.lock());
+        unmap_ustack_mappings(&mut PAGETABLE.lock());
         unsafe {
             interrupt::enable();
         }
@@ -461,131 +461,17 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
 
 impl<T: TaskRepr> TaskBuilder<T, Ready<KTaskInfo>> {
     pub fn build(mut self) -> T {
-        // serial_println!("spawnning task");
-        // #[cfg(not(feature = "test_run"))]
-        // serial_println!("krsp: {:#x}", self.inner.krsp());
-        // #[cfg(not(feature = "test_run"))]
-        // serial_println!("task info: {:#?}", self._marker.inner);
-
-        // serial_println!("task data: {:#?}", self.data.args);
         let next_top =
             unsafe { init_kernel_task(&self._marker.inner, self.inner.exit_info(), &self.data) };
-
-        // #[cfg(not(feature = "test_run"))]
-        // serial_println!("krsp after pushes: {:#x}", next_top);
         *self.inner.krsp() = next_top;
         self.inner
     }
 }
 
-impl TaskBuilder<Task, Uninit> {
-    pub unsafe fn from_addr(
-        addr: VirtAddr,
-    ) -> Result<TaskBuilder<Task, Init<'static>>, ThreadingError> {
-        todo!()
-    }
-}
-
-#[derive(Debug)]
-pub struct Task {
-    // pub(super) kstack_rsp: Option<VirtAddr>,
-    pub(super) ctx: TaskCtx,
-    pub(super) state: TaskState,
-    pub(super) parent: Option<TaskID>,
-    pub(super) root_frame: PhysFrame<Size4KiB>,
-    pub(super) frame_flags: Cr3Flags,
-    pub(super) kstack_top: Option<VirtAddr>,
-    pid: TaskID,
-}
-
-impl Task {
-    pub fn new_kernel(entry: extern "C" fn()) -> Result<Self, ThreadingError> {
-        let stack_top = allocate_kstack()?;
-        let (tbl, flags) = current_page_tbl();
-        Ok(Self {
-            pid: get_pid(),
-            ctx: TaskCtx::new_kernel(entry as usize, stack_top),
-            state: TaskState::new(),
-            parent: None,
-            root_frame: tbl,
-            frame_flags: flags,
-            kstack_top: None,
-        })
-    }
-
-    pub fn new_user(entry: extern "C" fn()) -> Result<Self, ThreadingError> {
-        let (tbl, flags) = current_page_tbl();
-        let mut new_tbl = create_new_pagedir().map_err(|_| ThreadingError::PageDirNotBuilt)?;
-        // let kstack_top = allocate_userkstack(&mut new_tbl)?;
-        let kstack_top = allocate_kstack()?;
-        let stack_top = allocate_userstack(&mut new_tbl)?;
-
-        Ok(Self {
-            pid: get_pid(),
-            ctx: TaskCtx::new_user(entry as usize, stack_top),
-            state: TaskState::new(),
-            parent: None,
-            root_frame: new_tbl.root,
-            frame_flags: flags, // ?
-            kstack_top: Some(kstack_top),
-        })
-    }
-
-    pub fn pid(&self) -> &TaskID {
-        &self.pid
-    }
-}
-
-impl TaskRepr for Task {
-    fn krsp(&mut self) -> &mut VirtAddr {
-        todo!()
-    }
-
-    fn get_krsp(&self) -> &VirtAddr {
-        todo!()
-    }
-
-    fn kill(&mut self) {
-        self.state = TaskState::Zombie(ExitInfo {
-            exit_code: 1,
-            signal: None,
-        })
-    }
-
-    fn kill_with_code(&mut self, code: usize) {
-        self.state = TaskState::Zombie(ExitInfo {
-            exit_code: code as u32,
-            signal: None,
-        })
-    }
-    fn exit_info(&self) -> &TaskExitInfo {
-        todo!()
-    }
-    fn get_mut_exit_info(&mut self) -> &mut TaskExitInfo {
-        todo!()
-    }
-    fn block(&mut self) {
-        todo!()
-    }
-
-    fn wake(&mut self) {
-        todo!()
-    }
-
-    fn get_devices(&self) -> &TaskDevices {
-        todo!()
-    }
-    fn get_devices_mut(&mut self) -> &mut TaskDevices {
-        todo!()
-    }
-    fn privilege_level(&self) -> PrivilegeLevel {
-        todo!()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum TaskState {
     Running,
+    #[default]
     Ready,
     Blocking,
     Sleeping,
@@ -669,12 +555,17 @@ impl<T: TaskRepr> TaskPtr<T> {
         func(&mut *guard)
     }
 
-    pub fn read_inner(&self) -> RwLockReadGuard<T> {
+    pub fn read_inner(&self) -> RwLockReadGuard<'_, T> {
         self.inner.read()
     }
 
-    pub fn write_inner(&self) -> RwLockWriteGuard<T> {
+    pub fn write_inner(&self) -> RwLockWriteGuard<'_, T> {
         self.inner.write()
+    }
+
+    #[allow(clippy::mut_from_ref)]
+    pub unsafe fn inner_unchecked(&self) -> &mut T {
+        unsafe { self.inner.inner_unchecked() }
     }
 }
 

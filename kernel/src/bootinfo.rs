@@ -5,22 +5,14 @@ use limine::{
     memory_map::{Entry, EntryType},
 };
 
-// lazy_static! {
-//     static ref MMAP_RESPONSE: Mutex<MemoryMapResponse> =
-//         Mutex::new(MMAP_REQUEST.get_response().expect("could nto get mmap"));
-// }
-
 pub fn get() {
     assert!(BASE_REVISION.is_supported());
 }
-
-// pub const HHDM_OFFSET: u64 = HHDM_REQUEST.get_response().unwrap().offset();
 
 pub fn stack_size() -> u64 {
     if STACK_SIZE_REQUEST.get_response().is_some() {
         STACK_SIZE_REQUEST.size()
     } else {
-        // TODO default??
         4096 * 5
     }
 }
@@ -34,11 +26,6 @@ pub fn rdsp_addr() -> usize {
     RSDP_REQUEST.get_response().unwrap().address()
 }
 
-// pub fn mmap_entries<'a>() -> &'a mut [&'a mut Entry] {
-//     // MMAP_REQUEST
-//     MMAP_RESPONSE.lock().entries_mut()
-// }
-
 pub fn usable_mmap_entries() -> impl Iterator<Item = UsableMRegion> {
     MMAP_REQUEST
         .get_response()
@@ -50,8 +37,7 @@ pub fn usable_mmap_entries() -> impl Iterator<Item = UsableMRegion> {
                 start: if e.base >= 0x100000000 {
                     e.base + get_phys_offset()
                 } else {
-                    // ??
-                    e.base //+ get_phys_offset()
+                    e.base
                 },
                 length: e.length,
             }),

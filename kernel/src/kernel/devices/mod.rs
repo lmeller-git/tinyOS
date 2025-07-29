@@ -118,6 +118,7 @@ pub struct DeviceIDBuilder {
     inner: RawDeviceID,
 }
 
+#[allow(dead_code)]
 impl DeviceIDBuilder {
     fn new() -> Self {
         Self {
@@ -137,6 +138,7 @@ pub struct RawDeviceID {
     inner: u64,
 }
 
+#[allow(dead_code)]
 impl RawDeviceID {
     fn new(num: u64) -> Self {
         Self { inner: num }
@@ -247,7 +249,7 @@ impl RawFdEntry {
                 let RawFdEntry::TTYSink(s) = entry else {
                     unreachable!()
                 };
-                own.extend(s); //.extend_from_slice(&s);
+                own.extend(s);
             }
             Self::TTYSource(id1, own) => {
                 let RawFdEntry::TTYSource(id2, backend2) = entry else {
@@ -263,7 +265,6 @@ impl RawFdEntry {
                 *id1 = id2;
                 *backend1 = backend2;
             }
-            _ => {}
         }
     }
 
@@ -282,7 +283,6 @@ impl RawFdEntry {
                     *backend_id = RawDeviceID::new(0)
                 }
             }
-            _ => {}
         }
     }
 
@@ -298,7 +298,6 @@ impl RawFdEntry {
             Self::TTYSink(sinks) => sinks.len(),
             Self::TTYSource(_, _) => 1,
             Self::GraphicsBackend(_, _) => 1,
-            _ => 0,
         }
     }
 }
@@ -442,26 +441,6 @@ mod tests {
 
     use super::*;
 
-    // #[kernel_test(verbose)]
-    // pub fn test_id_only() {
-    //     let mut test_map: HashMap<u32, u32> = HashMap::new();
-    //     println!("huuh");
-    //     println!("map: {:#?}", test_map);
-    //     test_map.insert(0, 42);
-    //     println!("iqugdiguq");
-    //     let s = format!("{:#?}", test_map);
-    //     println!("Test map: {}", s);
-    //     let id = RawDeviceID::default();
-    //     println!("t: {:?}", id);
-    //     let id = DeviceID::<StdInTag>::new(RawDeviceID::new(42));
-    //     println!("Before debug");
-    //     println!("ID: {:?}", id.inner); // Print just the raw u32
-    //     let s = format!("{:#?}", id);
-    //     println!("huhu");
-    //     serial_println!("ID: {}", s);
-    //     println!("After debug");
-    // }
-
     #[kernel_test(verbose)]
     pub fn basic() {
         let mut devices = TaskDevices::new();
@@ -480,7 +459,6 @@ mod tests {
         for _ in 0..200 {
             s.push('_');
         }
-        // println!("{}", s);
 
         id.detach(&mut devices);
         id2.detach(&mut devices);
@@ -497,10 +475,6 @@ mod tests {
 
         let sink2: FdEntry<StdOutTag> = DeviceBuilder::tty().fb();
         let sink2_id = devices.attach(sink2.clone());
-        // let s = format!("{:#?}", devices);
-        // println!("{}", s);
-        // let s = format!("{:#?}", sink_id);
-        // println!("ids: {}", s);
         let RawFdEntry::TTYSink(stderr) = devices.get(FdEntryType::StdErr).as_ref().unwrap() else {
             unreachable!()
         };
@@ -515,12 +489,6 @@ mod tests {
             unreachable!()
         };
 
-        // println!("{:#?}", devices);
-        // println!("ids: {:#?}, {:#?}", sink_id, sink2_id);
-
-        // assert!(Arc::ptr_eq(stdin.get(0).unwrap(), inner.get(0).unwrap()));
-        // assert!(Arc::ptr_eq(stderr.get(0).unwrap(), inner.get(0).unwrap()));
-        // assert!(Arc::ptr_eq(debug.get(0).unwrap(), inner.get(0).unwrap()));
-        // assert!(Arc::ptr_eq(stdin.get(1).unwrap(), inner2.get(0).unwrap()));
+        // TODO
     }
 }

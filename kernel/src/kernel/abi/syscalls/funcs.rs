@@ -35,7 +35,6 @@ use crate::{
 use super::SysRetCode;
 
 const USER_DEVICE_MAP: VirtAddr = VirtAddr::new(0x0000_3000_0000);
-const USER_MAP_EDGE: VirtAddr = VirtAddr::new(0x0000_4000_000);
 
 pub fn sys_exit(status: i64) {
     with_current_task(|task| task.with_inner_mut(|task| task.kill_with_code(status as usize)));

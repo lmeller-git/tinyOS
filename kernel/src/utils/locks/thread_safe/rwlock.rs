@@ -45,17 +45,6 @@ impl<T> RwLock<T> {
             if let Ok(writer) = self.try_write() {
                 return writer;
             }
-            // if GLOBAL_SCHEDULER.is_initialized() {
-            //     unsafe {
-            //         with_scheduler_unckecked(|sched| {
-            //             if let Some(current) = sched.current_mut().as_mut() {
-            //                 if current.raw().try_write().map(|mut t| t.block()).is_ok() {
-            //                     self.waker_queue.push(current.clone());
-            //                 }
-            //             }
-            //         })
-            //     }
-            // }
             threading::yield_now();
         }
     }
@@ -75,16 +64,6 @@ impl<T> RwLock<T> {
             if let Ok(guard) = self.try_read() {
                 return guard;
             }
-            // if GLOBAL_SCHEDULER.is_initialized() {
-            //     unsafe {
-            //         with_scheduler_unckecked(|sched| {
-            //             if let Some(current) = sched.current_mut().as_mut() {
-            //                 _ = current.raw().try_write().map(|mut t| t.block());
-            //                 self.waker_queue.push(current.clone());
-            //             }
-            //         })
-            //     }
-            // }
             threading::yield_now();
         }
     }
@@ -103,26 +82,10 @@ impl<T> RwLock<T> {
 
     pub fn drop_read(&self) {
         self.lock.fetch_sub(1, Ordering::Release);
-        // if self.lock.load(Ordering::Acquire) == 0 {
-        //     if let Some(task) = self.waker_queue.pop() {
-        //         if let Some(mut sched) = schedule::get() {
-        //             // gives a potential writer the chance to acquire the lock
-        //             task.with_inner_mut(|inner| inner.wake());
-        //             sched.wake(&task.read_inner().pid);
-        //         }
-        //     }
-        // }
     }
 
     pub fn drop_write(&self) {
         self.lock.store(0, Ordering::Release);
-        // if let Some(task) = self.waker_queue.pop() {
-        //     if let Some(mut sched) = schedule::get() {
-        //         // gives a potential writer/reader the chance to acquire the lock
-        //         task.with_inner_mut(|inner| inner.wake());
-        //         sched.wake(&task.read_inner().pid);
-        //     }
-        // }
     }
 
     pub fn into_inner(self) -> T {
@@ -137,6 +100,11 @@ impl<T> RwLock<T> {
         let guard = self.write();
         func(guard)
     }
+
+    #[allow(clippy::mut_from_ref)]
+    pub unsafe fn inner_unchecked(&self) -> &mut T {
+        unsafe { self.value.as_mut_unchecked() }
+    }
 }
 
 impl<T> From<T> for RwLock<T> {
@@ -145,6 +113,7 @@ impl<T> From<T> for RwLock<T> {
     }
 }
 
+#[allow(dead_code)]
 pub struct RwLockWriteGuard<'a, T> {
     inner: &'a RwLock<T>,
     gkl: GklGuard<'a>,
@@ -174,6 +143,7 @@ impl<T> Drop for RwLockWriteGuard<'_, T> {
     }
 }
 
+#[allow(dead_code)]
 pub struct RwLockReadGuard<'a, T> {
     inner: &'a RwLock<T>,
     gkl: GklGuard<'a>,

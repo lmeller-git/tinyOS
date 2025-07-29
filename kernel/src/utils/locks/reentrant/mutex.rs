@@ -38,17 +38,6 @@ impl<T> Mutex<T> {
             if let Ok(guard) = self.try_lock() {
                 return guard;
             }
-            // if GLOBAL_SCHEDULER.is_initialized() {
-            //     unsafe {
-            //         with_scheduler_unckecked(|sched| {
-            //             if let Some(current) = sched.current_mut().as_mut() {
-            //                 if current.raw().try_write().map(|mut t| t.block()).is_ok() {
-            //                     self.waker_queue.push(current.clone());
-            //                 }
-            //             }
-            //         })
-            //     }
-            // }
             threading::yield_now();
         }
     }
@@ -77,13 +66,6 @@ impl<T> Mutex<T> {
             self.held_by.store(0, Ordering::Release); // this is not strictly necessary, as the next locker will set this to self
             self.lock.store(false, Ordering::Release);
         }
-        // if let Some(task) = self.waker_queue.pop() {
-        //     if let Some(mut sched) = schedule::get() {
-        //         // gives a potential writer the chance to acquire the lock
-        //         task.with_inner_mut(|inner| inner.wake());
-        //         sched.wake(&task.read_inner().pid);
-        //     }
-        // }
     }
 
     pub const fn new(value: T) -> Self {
@@ -103,14 +85,8 @@ impl<T> Mutex<T> {
     pub unsafe fn force_unlock(&self) {
         self.count.fetch_sub(1, Ordering::Release);
         self.lock.store(false, Ordering::Release);
-        // if let Some(task) = self.waker_queue.pop() {
-        //     if let Some(mut sched) = schedule::get() {
-        //         // gives a potential writer the chance to acquire the lock
-        //         task.with_inner_mut(|inner| inner.wake());
-        //         sched.wake(&task.read_inner().pid);
-        //     }
-        // }
     }
+
     pub unsafe fn force_lock(&self) {
         self.count.fetch_add(1, Ordering::Release);
         self.lock.store(true, Ordering::Release);
@@ -118,6 +94,11 @@ impl<T> Mutex<T> {
 
     pub fn is_locked(&self) -> bool {
         self.lock.load(Ordering::Acquire)
+    }
+
+    #[allow(clippy::mut_from_ref)]
+    pub unsafe fn inner_unchecked(&self) -> &mut T {
+        unsafe { self.value.as_mut_unchecked() }
     }
 }
 
@@ -127,6 +108,7 @@ impl<T> From<T> for Mutex<T> {
     }
 }
 
+#[allow(dead_code)]
 pub struct MutexGuard<'a, T> {
     inner: &'a Mutex<T>,
     gkl: GklGuard<'a>,

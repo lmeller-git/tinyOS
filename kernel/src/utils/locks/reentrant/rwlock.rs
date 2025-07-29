@@ -58,22 +58,19 @@ impl<T> RwLock<T> {
         let Ok(gkl) = GKL.try_lock() else {
             return Err(RwLockError::IsLocked);
         };
-        if let Ok(_) =
-            self.lock
-                .compare_exchange(0, WRITER_LOCK, Ordering::Acquire, Ordering::Relaxed)
-        // .map_err(|_| RwLockError::IsLocked)
-        // .map(|_| RwLockWriteGuard { inner: self, gkl })
+        if self
+            .lock
+            .compare_exchange(0, WRITER_LOCK, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
         {
             self.held_by.store(current_pid(), Ordering::Release);
             self.count.fetch_add(1, Ordering::Release);
             Ok(RwLockWriteGuard { inner: self, gkl })
+        } else if self.held_by.load(Ordering::Acquire) == current_pid() {
+            self.count.fetch_add(1, Ordering::Release);
+            Ok(RwLockWriteGuard { inner: self, gkl })
         } else {
-            if self.held_by.load(Ordering::Acquire) == current_pid() {
-                self.count.fetch_add(1, Ordering::Release);
-                Ok(RwLockWriteGuard { inner: self, gkl })
-            } else {
-                Err(RwLockError::IsLocked)
-            }
+            Err(RwLockError::IsLocked)
         }
     }
 
@@ -122,6 +119,11 @@ impl<T> RwLock<T> {
         let guard = self.write();
         func(guard)
     }
+
+    #[allow(clippy::mut_from_ref)]
+    pub unsafe fn inner_unchecked(&self) -> &mut T {
+        unsafe { self.value.as_mut_unchecked() }
+    }
 }
 
 impl<T> From<T> for RwLock<T> {
@@ -130,6 +132,7 @@ impl<T> From<T> for RwLock<T> {
     }
 }
 
+#[allow(dead_code)]
 pub struct RwLockWriteGuard<'a, T> {
     inner: &'a RwLock<T>,
     gkl: GklGuard<'a>,
@@ -159,6 +162,7 @@ impl<T> Drop for RwLockWriteGuard<'_, T> {
     }
 }
 
+#[allow(dead_code)]
 pub struct RwLockReadGuard<'a, T> {
     inner: &'a RwLock<T>,
     gkl: GklGuard<'a>,

@@ -56,8 +56,14 @@ impl<T> Mutex<T> {
     pub fn is_locked(&self) -> bool {
         self.lock.load(Ordering::Acquire)
     }
+
+    #[allow(clippy::mut_from_ref)]
+    pub unsafe fn inner_unchecked(&self) -> &mut T {
+        unsafe { self.value.as_mut_unchecked() }
+    }
 }
 
+#[allow(dead_code)]
 pub struct MutexGuard<'a, T> {
     inner: &'a Mutex<T>,
     gkl: GklGuard<'a>,

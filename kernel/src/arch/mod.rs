@@ -69,7 +69,9 @@ pub fn _raw_serial_print(slice: &[u8]) {
 #[doc(hidden)]
 pub unsafe fn _force_raw_serial_print(slice: &[u8]) {
     #[cfg(target_arch = "x86_64")]
-    x86::serial::_force_raw_print(slice);
+    unsafe {
+        x86::serial::_force_raw_print(slice)
+    };
     #[cfg(not(any(target_arch = "x86_64")))]
     compile_error!("arch not supported")
 }
@@ -77,7 +79,9 @@ pub unsafe fn _force_raw_serial_print(slice: &[u8]) {
 #[doc(hidden)]
 pub unsafe fn _force_serial_print(input: Arguments) {
     #[cfg(target_arch = "x86_64")]
-    x86::serial::_force_print(input);
+    unsafe {
+        x86::serial::_force_print(input)
+    };
     #[cfg(not(any(target_arch = "x86_64")))]
     compile_error!("arch not supported")
 }
