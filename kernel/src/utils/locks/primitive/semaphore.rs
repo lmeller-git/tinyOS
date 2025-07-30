@@ -1,5 +1,6 @@
 use core::sync::atomic::{AtomicUsize, Ordering};
 
+use lock_api::RawMutex;
 use os_macros::kernel_test;
 
 #[cfg(feature = "gkl")]
