@@ -10,13 +10,10 @@ use crate::{
 mod primitive;
 
 pub mod locks {
-    use crate::sync::{
-        YieldWaiter,
-        primitive::{rwlock::SemaRwLock, semaphore::StaticSemaphore},
-    };
+    use crate::sync::{YieldWaiter, primitive::semaphore::StaticSemaphore};
 
     pub type Mutex<T> = lock_api::Mutex<StaticSemaphore<1, YieldWaiter>, T>;
-    pub type RwLock<T> = lock_api::RwLock<SemaRwLock<YieldWaiter>, T>;
+    pub type RwLock<T> = lock_api::RwLock<StaticSemaphore<{ usize::MAX }, YieldWaiter>, T>;
 }
 
 #[derive(Debug, Error, PartialEq, Eq, Clone)]
