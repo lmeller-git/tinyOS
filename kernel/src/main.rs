@@ -37,6 +37,7 @@ use tiny_os::drivers::graphics::framebuffers::FrameBuffer;
 use tiny_os::drivers::graphics::framebuffers::LimineFrameBuffer;
 use tiny_os::drivers::graphics::text::draw_str;
 use tiny_os::drivers::start_drivers;
+use tiny_os::eprintln;
 use tiny_os::exit_qemu;
 use tiny_os::get_device;
 use tiny_os::include_bins::get_binaries;
@@ -199,7 +200,14 @@ extern "C" fn graphics() -> usize {
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     #[cfg(feature = "test_run")]
     tiny_os::test_panic_handler(info);
-    serial_println!("{:#?}, {}", info, interrupt::are_enabled());
+    eprintln!("{:#?}, {}", info, interrupt::are_enabled());
+    #[cfg(feature = "gkl")]
+    {
+        if GKL.is_locked() {
+            eprintln!("GKL is locked, but the thread is killed.\nUnlocking GKL...");
+            unsafe { GKL.unlock_unchecked() };
+        }
+    }
     if let Ok(current) = current_task() {
         current.write_inner().kill_with_code(1);
     }

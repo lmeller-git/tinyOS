@@ -68,6 +68,14 @@ impl Gkl {
             self.lock.store(false, Ordering::Release);
         }
     }
+
+    pub unsafe fn unlock_unchecked(&self) {
+        #[cfg(not(feature = "gkl"))]
+        return;
+        self.count.store(0, Ordering::Release);
+        self.currently_held.store(0, Ordering::Release);
+        self.lock.store(false, Ordering::Release);
+    }
 }
 
 impl Default for Gkl {

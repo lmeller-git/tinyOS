@@ -70,15 +70,10 @@ pub struct JoinHandle<R> {
 impl<R> JoinHandle<R> {
     pub fn wait(&self) -> Result<R, ThreadingError> {
         while !(self.inner.finished() || !self.is_task_alive().is_some_and(|v| v)) {
-            // serial_println!(
-            //     "yielding, {:#?}",
-            //     self.task.as_ref().unwrap().raw().read().state
-            // );
             yield_now();
         }
-        // serial_println!("finished");
-        // serial_println!("{:#?}, {}", self.task, self.inner.finished());
-        let r = self.inner.get_return().map_err(|_| {
+
+        let r = self.inner.get_return().map_err(|e| {
             if let TaskState::Zombie(ExitInfo {
                 exit_code,
                 signal: _,
@@ -86,7 +81,7 @@ impl<R> JoinHandle<R> {
             {
                 ThreadingError::Unknown(format!("task terminated with {}", exit_code))
             } else {
-                unreachable!()
+                panic!("something unexpected happend. Error: {:#?}", e);
             }
         })?;
         Ok(r)
@@ -166,9 +161,8 @@ pub fn spawn_fn(
         .as_kernel()?
         .with_exit_info(TaskExitInfo::new_with_default_trampoline(
             move |v: usize| {
-                with_current_task(|task| task.write_inner().kill_with_code(v));
-
                 raw.val.write().replace(v);
+                with_current_task(|task| task.write_inner().kill_with_code(v));
                 raw.finished.store(true, Ordering::Release);
                 yield_now();
             },
@@ -193,7 +187,6 @@ where
         let ret = func();
         raw.val.write().replace(ret);
         raw.finished.store(true, Ordering::Release);
-        yield_now();
     };
 
     let mut args = args!();
@@ -217,16 +210,16 @@ mod tests {
         let handle: JoinHandle<usize> = JoinHandle::default();
         let raw = handle.inner.clone();
         (move || {
-            raw.finished.store(true, Ordering::Relaxed);
             raw.val.write().replace(42);
+            raw.finished.store(true, Ordering::Relaxed);
         })();
         assert_eq!(handle.wait(), Ok(42));
 
         let handle: JoinHandle<&str> = JoinHandle::default();
         let raw = handle.inner.clone();
         (move || {
-            raw.finished.store(true, Ordering::Relaxed);
             raw.val.write().replace("hello");
+            raw.finished.store(true, Ordering::Relaxed);
         })();
         assert_eq!(handle.wait(), Ok("hello"));
     }

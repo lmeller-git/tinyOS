@@ -96,6 +96,8 @@ extern "C" fn kernel_test_runner() -> ProcessReturn {
     use arch::interrupt::handlers::current_tick;
     use common::get_kernel_tests;
     use kernel::threading::spawn_fn;
+
+    use crate::kernel::threading;
     let tests = unsafe { get_kernel_tests() };
     println!("running {} tests...", tests.len());
     let mut tests_failed = false;
@@ -155,6 +157,8 @@ extern "C" fn kernel_test_runner() -> ProcessReturn {
             }
         };
     }
+    // to allow background threads to clean up remaining resources
+    threading::yield_now();
     exit_qemu(if tests_failed {
         QemuExitCode::Failed
     } else {
@@ -172,6 +176,15 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
         task::{ExitInfo, TaskState},
     };
     eprintln!("\ntest {}", info);
+    #[cfg(feature = "gkl")]
+    {
+        use crate::utils::locks::GKL;
+
+        if GKL.is_locked() {
+            eprintln!("GKL is locked, but the thread is killed.\nUnlocking GKL...");
+            unsafe { GKL.unlock_unchecked() };
+        }
+    }
     with_current_task(|task| {
         task.raw().write().state = TaskState::Zombie(ExitInfo {
             exit_code: 1,

@@ -158,3 +158,128 @@ unsafe impl<const N: usize, S: WaitStrategy> RawSemaphore for StaticSemaphore<N,
         }
     }
 }
+
+#[cfg(feature = "test_run")]
+mod tests {
+    use alloc::vec;
+    use alloc::{sync::Arc, vec::Vec};
+    use os_macros::kernel_test;
+
+    use crate::kernel::threading;
+    use crate::serial_println;
+    use crate::sync::{SpinWaiter, YieldWaiter};
+
+    use super::*;
+
+    #[kernel_test(verbose)]
+    fn sema_basic() {
+        let sema: StaticSemaphore<2, SpinWaiter> = StaticSemaphore::new();
+
+        assert_eq!(sema.inner.counter.load(Ordering::Relaxed), 2);
+
+        assert!(sema.try_down().is_ok());
+        assert!(sema.try_down().is_ok());
+        assert!(sema.try_down().is_err());
+        assert_eq!(sema.inner.counter.load(Ordering::Relaxed), 0);
+
+        unsafe { sema.up() };
+        assert!(sema.try_down().is_ok());
+
+        unsafe { sema.up_n(5) };
+        unsafe { sema.up_n(0) }
+
+        assert_eq!(sema.inner.counter.load(Ordering::Relaxed), 5);
+    }
+
+    #[kernel_test(verbose)]
+    fn sema_concurrent_pc() {
+        let sema: Arc<StaticSemaphore<0, YieldWaiter>> = Arc::new(StaticSemaphore::new());
+
+        let mut prod = Vec::new();
+        for _ in 0..3 {
+            let sema = sema.clone();
+            prod.push(
+                threading::spawn(move || {
+                    for i in 0..5 {
+                        #[cfg(feature = "gkl")]
+                        // to safely unlock gkl later
+                        sema.down_n(0);
+                        unsafe { sema.up() };
+                        threading::yield_now();
+                    }
+                })
+                .unwrap(),
+            );
+        }
+
+        let mut consumer = Vec::new();
+        for _ in 0..3 {
+            let sema = sema.clone();
+            consumer.push(
+                threading::spawn(move || {
+                    let mut items = vec![];
+                    for _ in 0..5 {
+                        sema.down();
+                        items.push(1);
+                        #[cfg(feature = "gkl")]
+                        // to unlock gkl
+                        unsafe {
+                            sema.up_n(0)
+                        }
+                    }
+                    items
+                })
+                .unwrap(),
+            );
+        }
+
+        for p in prod {
+            assert!(p.wait().is_ok());
+        }
+
+        let items: usize = consumer
+            .into_iter()
+            .map(|c| c.wait().unwrap().iter().sum::<usize>())
+            .sum();
+        assert_eq!(items, 5 * 3);
+        assert_eq!(sema.inner.counter.load(Ordering::Relaxed), 0);
+    }
+
+    #[kernel_test]
+    fn sema_concurrent_simple() {
+        let sema: Arc<StaticSemaphore<0, YieldWaiter>> = Arc::new(StaticSemaphore::new());
+
+        let t1 = {
+            let sema = sema.clone();
+            threading::spawn(move || {
+                let mut ret = 0;
+                for _ in 0..10 {
+                    sema.down();
+                    ret += 1;
+                    #[cfg(feature = "gkl")]
+                    // to unlock gkl
+                    unsafe {
+                        sema.up_n(0)
+                    }
+                }
+                ret
+            })
+            .unwrap()
+        };
+
+        let t2 = threading::spawn(move || {
+            for _ in 0..10 {
+                #[cfg(feature = "gkl")]
+                // to safely unlock gkl later
+                sema.down_n(0);
+                unsafe { sema.up() };
+                threading::yield_now();
+            }
+        })
+        .unwrap();
+
+        assert!(t2.wait().is_ok());
+
+        assert_eq!(t1.wait().unwrap(), 10);
+    }
+}

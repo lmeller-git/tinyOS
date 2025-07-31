@@ -1,7 +1,8 @@
 use lock_api::{GuardSend, RawMutex};
+use os_macros::kernel_test;
 
 use crate::sync::{
-    WaitStrategy,
+    SpinWaiter, WaitStrategy,
     primitive::semaphore::{RawSemaphore, StaticSemaphore},
 };
 
@@ -20,4 +21,20 @@ unsafe impl<S: WaitStrategy> RawMutex for StaticSemaphore<1, S> {
     unsafe fn unlock(&self) {
         unsafe { self.up() };
     }
+}
+
+#[kernel_test]
+fn mutex_basic() {
+    let m: StaticSemaphore<1, SpinWaiter> = StaticSemaphore::new();
+
+    assert!(m.try_lock());
+    assert!(m.is_locked());
+    assert!(!m.try_lock());
+
+    unsafe { m.unlock() };
+
+    assert!(!m.is_locked());
+    assert!(m.try_lock());
+
+    unsafe { m.unlock() }
 }

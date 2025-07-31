@@ -68,3 +68,112 @@ impl StatelessWaitStrategy for YieldWaiter {
         threading::yield_now();
     }
 }
+
+#[cfg(feature = "test_run")]
+mod tests {
+    use alloc::{sync::Arc, vec::Vec};
+    use lock_api::RwLockWriteGuard;
+    use os_macros::kernel_test;
+
+    use crate::serial_println;
+
+    use super::*;
+
+    #[kernel_test]
+    fn mutex_basic() {
+        let mutex = locks::Mutex::new(0);
+
+        let mut guard = mutex.try_lock().unwrap();
+        assert!(mutex.try_lock().is_none());
+        assert!(mutex.is_locked());
+
+        *guard = 42;
+
+        drop(guard);
+
+        assert!(!mutex.is_locked());
+        assert_eq!(*mutex.try_lock().unwrap(), 42);
+    }
+
+    #[kernel_test(verbose)]
+    fn mutex_concurrent() {
+        let mutex: Arc<locks::Mutex<i32>> = Arc::new(locks::Mutex::new(0));
+
+        let mut threads = Vec::new();
+
+        for _ in 0..5 {
+            threads.push({
+                let mutex = mutex.clone();
+                threading::spawn(move || {
+                    for _ in 0..10 {
+                        *mutex.lock() += 10;
+                        threading::yield_now();
+                    }
+                })
+                .unwrap()
+            });
+        }
+
+        for t in &threads {
+            assert!(t.wait().is_ok());
+        }
+
+        assert_eq!(*mutex.lock(), 500);
+    }
+
+    #[kernel_test]
+    fn rwlock_basic() {
+        let rw = locks::RwLock::new(0);
+
+        let r1 = rw.try_read().unwrap();
+        let r2 = rw.try_read().unwrap();
+        assert!(rw.is_locked());
+        assert!(!rw.is_locked_exclusive());
+        assert!(rw.try_write().is_none());
+        assert_eq!(*r1, 0);
+        drop(r1);
+        drop(r2);
+
+        let mut w1 = rw.try_write().unwrap();
+        assert!(rw.is_locked_exclusive());
+        assert!(rw.try_write().is_none());
+        assert!(rw.try_read().is_none());
+        *w1 = 42;
+
+        let r1 = RwLockWriteGuard::downgrade(w1);
+        assert!(!rw.is_locked_exclusive());
+        let r2 = rw.try_read().unwrap();
+        assert_eq!(*r1, 42);
+    }
+
+    #[kernel_test]
+    fn rwlock_concurrent() {
+        let rw = Arc::new(locks::RwLock::new(0));
+        let mut threads = Vec::new();
+
+        let mut write = rw.write();
+
+        for i in 0..5 {
+            threads.push({
+                let rw = rw.clone();
+                threading::spawn(move || {
+                    let guard = rw.read();
+                    assert_eq!(*guard, 42);
+                })
+                .unwrap()
+            });
+        }
+
+        for _ in 0..4 {
+            *write += 10;
+            threading::yield_now();
+        }
+        *write += 2;
+        assert_eq!(*write, 42);
+        drop(write);
+
+        for t in threads {
+            assert!(t.wait().is_ok());
+        }
+    }
+}
