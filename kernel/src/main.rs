@@ -102,6 +102,7 @@ unsafe extern "C" fn kmain() -> ! {
 
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
+
     _ = with_devices!(
         |devices| {
             let fb: FdEntry<SinkTag> = DeviceBuilder::tty().fb();
@@ -154,7 +155,7 @@ extern "C" fn idle() -> usize {
     cross_println!("startup tasks started");
 
     // just block forever, as there is nothing left to do
-    with_current_task(|task| task.write_inner().block());
+    with_current_task(|task| task.write().block());
 
     loop {
         threading::yield_now();
@@ -209,7 +210,7 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
         }
     }
     if let Ok(current) = current_task() {
-        current.write_inner().kill_with_code(1);
+        current.write().kill_with_code(1);
     }
 
     loop {

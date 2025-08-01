@@ -40,7 +40,7 @@ pub extern "C" fn test_kernel_return_trampoline(ret: ProcessReturn, returnto: ex
 
 pub fn default_exit(ret: usize) {
     serial_println!("default exit");
-    with_current_task(|task| task.write_inner().kill_with_code(ret));
+    with_current_task(|task| task.write().kill_with_code(ret));
     unsafe { context_switch_local(0) };
     hcf();
 }

@@ -14,12 +14,12 @@ use crate::{
             RawFrameBuffer,
         },
     },
-    locks::reentrant::Mutex,
     serial_println,
     services::graphics::{
         BlitTarget, Glyph, GraphicsBackend, GraphicsError, PrimitiveDrawTarget, PrimitiveGlyph,
         Simplegraphics,
     },
+    sync::locks::Mutex,
 };
 
 use super::{FdEntry, FdTag, Null, RawDeviceID, RawFdEntry};
@@ -98,7 +98,7 @@ impl GFXManager for Null {
     fn draw_glyph(&self, glyph: &dyn Glyph, color: &ColorCode) {}
 }
 
-pub trait GFXManager: Debug {
+pub trait GFXManager: Debug + Send + Sync {
     fn draw_primitive(&self, primitive: &PrimitiveGlyph) -> Result<(), GraphicsError>;
     fn draw_batched_primitives(&self, primitives: &[&PrimitiveGlyph]) -> Result<(), GraphicsError>;
     fn draw_glyph(&self, glyph: &dyn Glyph, color: &ColorCode);
@@ -107,14 +107,17 @@ pub trait GFXManager: Debug {
 
 pub struct SimpleGFXManager<B>
 where
-    B: PrimitiveDrawTarget + DrawTarget<Color = RGBColor, Error = GraphicsError>,
+    B: PrimitiveDrawTarget + DrawTarget<Color = RGBColor, Error = GraphicsError> + Send,
 {
     inner: Mutex<B>,
 }
 
 impl<B> SimpleGFXManager<B>
 where
-    B: PrimitiveDrawTarget + DrawTarget<Color = RGBColor, Error = GraphicsError> + GraphicsBackend,
+    B: PrimitiveDrawTarget
+        + DrawTarget<Color = RGBColor, Error = GraphicsError>
+        + GraphicsBackend
+        + Send,
 {
     fn new(backend: B) -> Self {
         Self {
@@ -125,7 +128,10 @@ where
 
 impl<B> GFXManager for SimpleGFXManager<B>
 where
-    B: PrimitiveDrawTarget + DrawTarget<Color = RGBColor, Error = GraphicsError> + GraphicsBackend,
+    B: PrimitiveDrawTarget
+        + DrawTarget<Color = RGBColor, Error = GraphicsError>
+        + GraphicsBackend
+        + Send,
 {
     fn draw_primitive(&self, primitive: &PrimitiveGlyph) -> Result<(), GraphicsError> {
         primitive.render_in(&mut *self.inner.lock())
@@ -146,7 +152,10 @@ where
 
 impl<B> Debug for SimpleGFXManager<B>
 where
-    B: PrimitiveDrawTarget + DrawTarget<Color = RGBColor, Error = GraphicsError> + GraphicsBackend,
+    B: PrimitiveDrawTarget
+        + DrawTarget<Color = RGBColor, Error = GraphicsError>
+        + GraphicsBackend
+        + Send,
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "SimpleGFXManager")

@@ -54,18 +54,17 @@ fn map_region(start: VirtAddr, len: usize, flags: PageTableFlags) -> Result<(), 
     } else {
         with_current_task(|task| {
             let mut alloc = GLOBAL_FRAME_ALLOCATOR.lock();
-            task.with_inner_mut(|task| {
-                let pagedir = task.mut_pagdir();
-                for page in Page::range_inclusive(start, end) {
-                    let frame = alloc
-                        .allocate_frame()
-                        .ok_or::<String>("could not allocate frame".into())?;
-                    unsafe { pagedir.table.map_to(page, frame, flags, &mut *alloc) }
-                        .map_err(|e| format!("{:?}", e))?
-                        .flush();
-                }
-                Ok(())
-            })
+            let mut task = task.write();
+            let pagedir = task.mut_pagdir();
+            for page in Page::range_inclusive(start, end) {
+                let frame = alloc
+                    .allocate_frame()
+                    .ok_or::<String>("could not allocate frame".into())?;
+                unsafe { pagedir.table.map_to(page, frame, flags, &mut *alloc) }
+                    .map_err(|e| format!("{:?}", e))?
+                    .flush();
+            }
+            Ok(())
         })
         .ok_or::<String>("could not access task".into())?
     }

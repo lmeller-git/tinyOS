@@ -3,8 +3,10 @@ use core::marker::PhantomData;
 use thiserror::Error;
 
 use crate::{
-    arch,
+    arch::{self, hcf},
     kernel::threading::{self, task::TaskID},
+    locks::GKL,
+    serial_println,
 };
 
 mod primitive;
@@ -13,7 +15,12 @@ pub mod locks {
     use crate::sync::{YieldWaiter, primitive::semaphore::StaticSemaphore};
 
     pub type Mutex<T> = lock_api::Mutex<StaticSemaphore<1, YieldWaiter>, T>;
+    pub type MutexGuard<'a, T> = lock_api::MutexGuard<'a, StaticSemaphore<1, YieldWaiter>, T>;
     pub type RwLock<T> = lock_api::RwLock<StaticSemaphore<{ usize::MAX }, YieldWaiter>, T>;
+    pub type RwLockReadGuard<'a, T> =
+        lock_api::RwLockReadGuard<'a, StaticSemaphore<{ usize::MAX }, YieldWaiter>, T>;
+    pub type RwLockWriteGuard<'a, T> =
+        lock_api::RwLockWriteGuard<'a, StaticSemaphore<{ usize::MAX }, YieldWaiter>, T>;
 }
 
 #[derive(Debug, Error, PartialEq, Eq, Clone)]
@@ -25,11 +32,11 @@ pub enum SyncErr {
     GKLHeld,
 }
 
-pub(crate) trait StatelessWaitStrategy {
+pub trait StatelessWaitStrategy {
     fn wait();
 }
 
-pub(crate) trait WaitStrategy {
+pub trait WaitStrategy {
     const INIT: Self;
     fn wait(&self);
     fn signal(&self) {}
@@ -51,7 +58,7 @@ where
     }
 }
 
-struct SpinWaiter;
+pub struct SpinWaiter;
 
 impl StatelessWaitStrategy for SpinWaiter {
     #[inline]
@@ -60,7 +67,7 @@ impl StatelessWaitStrategy for SpinWaiter {
     }
 }
 
-struct YieldWaiter;
+pub struct YieldWaiter;
 
 impl StatelessWaitStrategy for YieldWaiter {
     #[inline]

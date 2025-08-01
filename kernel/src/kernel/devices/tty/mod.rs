@@ -13,12 +13,12 @@ pub mod io;
 pub mod sink;
 pub mod source;
 
-pub trait TTYSink: Debug {
+pub trait TTYSink: Debug + Send + Sync {
     fn write(&self, bytes: &[u8]);
     fn flush(&self);
 }
 
-pub trait TTYSource: Debug {
+pub trait TTYSource: Debug + Send + Sync {
     fn read(&self) -> Option<u8>;
 }
 

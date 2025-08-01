@@ -1,4 +1,4 @@
-use super::{ProcessEntry, ThreadingError, schedule::TaskPtr_};
+use super::{ProcessEntry, ThreadingError};
 use crate::{
     add_device,
     arch::{
@@ -16,8 +16,11 @@ use crate::{
         mem::paging::{PAGETABLE, TaskPageTable, create_new_pagedir},
         threading::trampoline::TaskExitInfo,
     },
-    locks::reentrant::{RwLockReadGuard, RwLockWriteGuard},
     serial_println,
+    sync::{
+        self,
+        locks::{RwLock, RwLockReadGuard, RwLockWriteGuard},
+    },
 };
 use alloc::{boxed::Box, format, string::String, sync::Arc, vec::Vec};
 use core::{
@@ -490,12 +493,17 @@ pub struct ExitInfo {
     pub signal: Option<u8>,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Copy, PartialOrd, Ord, Default)]
+#[repr(transparent)]
 pub struct TaskID {
     inner: u64,
 }
 
 impl TaskID {
+    pub fn new() -> Self {
+        get_pid()
+    }
+
     pub fn get_inner(&self) -> u64 {
         self.inner
     }
@@ -504,6 +512,18 @@ impl TaskID {
 impl From<u64> for TaskID {
     fn from(value: u64) -> Self {
         Self { inner: value }
+    }
+}
+
+impl From<AtomicU64> for TaskID {
+    fn from(value: AtomicU64) -> Self {
+        value.load(Ordering::Acquire).into()
+    }
+}
+
+impl From<&AtomicU64> for TaskID {
+    fn from(value: &AtomicU64) -> Self {
+        value.load(Ordering::Acquire).into()
     }
 }
 
@@ -517,11 +537,11 @@ pub fn get_pid() -> TaskID {
 #[repr(C)]
 #[derive(Debug, Default)]
 pub struct TaskPtr<T: TaskRepr> {
-    inner: TaskPtr_<T>,
+    inner: Arc<RwLock<T>>,
 }
 
 impl<T: TaskRepr> TaskPtr<T> {
-    pub fn new(ptr: TaskPtr_<T>) -> Self {
+    pub fn new(ptr: Arc<RwLock<T>>) -> Self {
         Self { inner: ptr }
     }
 
@@ -531,48 +551,32 @@ impl<T: TaskRepr> TaskPtr<T> {
             .map(|inner| inner.into_inner())
     }
 
-    pub fn into_raw(self) -> TaskPtr_<T> {
+    pub fn into_raw(self) -> Arc<RwLock<T>> {
         self.inner
     }
 
-    pub fn raw(&self) -> &TaskPtr_<T> {
+    pub fn raw(&self) -> &Arc<RwLock<T>> {
         &self.inner
     }
 
-    pub fn with_inner<F, R>(&self, func: F) -> R
-    where
-        F: FnOnce(&T) -> R,
-    {
-        let guard = self.inner.read();
-        func(&*guard)
-    }
-
-    pub fn with_inner_mut<F, R>(&self, func: F) -> R
-    where
-        F: FnOnce(&mut T) -> R,
-    {
-        let mut guard = self.inner.write();
-        func(&mut *guard)
-    }
-
-    pub fn read_inner(&self) -> RwLockReadGuard<'_, T> {
+    pub fn read(&self) -> RwLockReadGuard<'_, T> {
         self.inner.read()
     }
 
-    pub fn write_inner(&self) -> RwLockWriteGuard<'_, T> {
+    pub fn write(&self) -> RwLockWriteGuard<'_, T> {
         self.inner.write()
     }
 
     #[allow(clippy::mut_from_ref)]
     pub unsafe fn inner_unchecked(&self) -> &mut T {
-        unsafe { self.inner.inner_unchecked() }
+        unsafe { &mut *self.inner.data_ptr() }
     }
 }
 
 impl<T: TaskRepr> From<T> for TaskPtr<T> {
     fn from(value: T) -> Self {
         Self {
-            inner: TaskPtr_::new(value.into()),
+            inner: Arc::new(RwLock::new((value.into()))),
         }
     }
 }

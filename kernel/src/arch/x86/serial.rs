@@ -1,6 +1,6 @@
 use core::fmt::{Arguments, Write};
 
-use crate::{arch::interrupt, locks::primitive::Mutex};
+use crate::{arch::interrupt, sync::locks::Mutex};
 use lazy_static::lazy_static;
 use uart_16550::SerialPort;
 use x86_64::instructions::interrupts::without_interrupts;
@@ -27,7 +27,7 @@ pub fn _try_print(args: Arguments) -> Result<(), SerialErr> {
     SERIAL1
         .try_lock()
         .map(|mut s| s.write_fmt(args).map_err(|_| SerialErr::WriteErr))
-        .map_err(|_| SerialErr::IsLocked)?
+        .ok_or(SerialErr::IsLocked)?
 }
 
 #[derive(Debug, Clone)]
@@ -48,15 +48,9 @@ pub fn _raw_print(slice: &[u8]) {
 #[doc(hidden)]
 pub unsafe fn _force_raw_print(slice: &[u8]) {
     without_interrupts(|| {
-        let locked = SERIAL1.is_locked();
-        unsafe { SERIAL1.force_unlock() };
-        let mut lock = SERIAL1.lock();
+        let mut lock = unsafe { &mut *SERIAL1.data_ptr() };
         for byte in slice {
             lock.send(*byte);
-        }
-        drop(lock);
-        if locked {
-            unsafe { SERIAL1.force_lock() };
         }
     })
 }
@@ -65,13 +59,7 @@ pub unsafe fn _force_raw_print(slice: &[u8]) {
 #[doc(hidden)]
 pub unsafe fn _force_print(input: Arguments) {
     without_interrupts(|| {
-        let locked = SERIAL1.is_locked();
-        unsafe { SERIAL1.force_unlock() };
-        _ = SERIAL1.lock().write_fmt(input);
-        if locked {
-            unsafe {
-                SERIAL1.force_lock();
-            }
-        }
+        let mut guard = unsafe { &mut *SERIAL1.data_ptr() };
+        _ = guard.write_fmt(input);
     })
 }

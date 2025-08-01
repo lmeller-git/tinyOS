@@ -12,7 +12,7 @@ use hashbrown::HashMap;
 use os_macros::{FDTable, fd_composite_tag, kernel_test};
 use tty::{TTYBuilder, TTYSink, TTYSource};
 
-use crate::{locks::reentrant::Mutex, services::graphics::PrimitiveDrawTarget};
+use crate::{serial_println, services::graphics::PrimitiveDrawTarget, sync::locks::Mutex};
 
 pub mod graphics;
 pub mod tty;
@@ -26,7 +26,7 @@ pub mod tty;
 // want:
 // FdEntry<T> has method attach, which calls the method of its cgpprovider
 
-static DEFAULT_DEVICES: OnceCell<Mutex<Box<dyn Fn(&mut TaskDevices)>>> = OnceCell::uninit();
+static DEFAULT_DEVICES: OnceCell<Mutex<Box<dyn Fn(&mut TaskDevices) + Send>>> = OnceCell::uninit();
 
 #[derive(Debug)]
 pub struct TaskDevices {
@@ -358,7 +358,7 @@ fn init_default() {
     });
 }
 
-pub fn get_default_device_init() -> Option<&'static Mutex<Box<dyn Fn(&mut TaskDevices)>>> {
+pub fn get_default_device_init() -> Option<&'static Mutex<Box<dyn Fn(&mut TaskDevices) + Send>>> {
     DEFAULT_DEVICES.get()
 }
 
@@ -367,20 +367,22 @@ where
     F: FnOnce(&TaskDevices) -> R,
 {
     let binding = crate::kernel::threading::schedule::current_task().ok()?;
-    let tasks = &binding.read_inner().devices;
+    let tasks = &binding.read().devices;
     Some(f(tasks))
 }
 
-pub fn with_device_init<F, R>(init: Box<dyn Fn(&mut TaskDevices)>, f: F) -> Option<R>
+pub fn with_device_init<F, R>(init: Box<dyn Fn(&mut TaskDevices) + Send>, f: F) -> Option<R>
 where
     F: FnOnce() -> R,
 {
     use core::mem;
     let mut guard = get_default_device_init()?.lock();
     let old = mem::replace(&mut *guard, init);
+    drop(guard);
 
     let r = f();
 
+    let mut guard = get_default_device_init()?.lock();
     *guard = old;
     Some(r)
 }

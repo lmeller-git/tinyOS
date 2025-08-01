@@ -37,8 +37,7 @@ use super::SysRetCode;
 const USER_DEVICE_MAP: VirtAddr = VirtAddr::new(0x0000_3000_0000);
 
 pub fn sys_exit(status: i64) {
-    with_current_task(|task| task.with_inner_mut(|task| task.kill_with_code(status as usize)));
-
+    with_current_task(|task| task.write().kill_with_code(status as usize));
     yield_now();
 }
 
@@ -145,10 +144,10 @@ pub fn sys_heap(size: usize) -> *mut u8 {
     let end_page: Page<Size4KiB> = Page::containing_address(end_addr);
 
     with_current_task(|task| {
-        task.with_inner_mut(|task| {
             let flags = PageTableFlags::PRESENT
                 | PageTableFlags::USER_ACCESSIBLE
                 | PageTableFlags::WRITABLE;
+            let mut task = task.write();
             let pagedir = task.mut_pagdir();
             let mut alloc = GLOBAL_FRAME_ALLOCATOR.lock();
             for page in Page::range_inclusive(start_page, end_page) {
@@ -161,8 +160,8 @@ pub fn sys_heap(size: usize) -> *mut u8 {
                     .flush();
             }
             task.heap_size += size;
-        })
-    });
+        });
+    
     base_addr.as_mut_ptr()
 }
 
@@ -184,7 +183,7 @@ pub fn sys_map_device(device_type: usize, addr: *mut ()) -> Result<*mut (), SysR
             let addr = VirtAddr::from_ptr(addr);
             serial_println!("building fb");
             let entry: FdEntry<GraphicsTag> = DeviceBuilder::gfx().blit_user(addr);
-            with_current_task(|task| task.raw().write().devices.attach(entry));
+            with_current_task(|task| task.write().devices.attach(entry));
         }
         _ => todo!(),
     }

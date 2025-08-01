@@ -15,11 +15,9 @@ use crate::{
         mem::VirtAddr,
     },
     kernel::threading::task::Uninit,
-    locks::{
-        GKL,
-        reentrant::{Mutex, MutexGuard, RwLock},
-    },
+    locks::GKL,
     serial_println,
+    sync::locks::{Mutex, RwLock},
 };
 use alloc::{string::String, sync::Arc};
 use conquer_once::spin::OnceCell;
@@ -44,11 +42,17 @@ pub trait OneOneScheduler {
     fn wake(&mut self, id: &TaskID);
 }
 
+pub trait Scheduler {
+    fn new() -> Self;
+    fn reschedule(&self);
+    fn switch(&self) -> TaskID;
+    fn add_task(&self, id: TaskID);
+}
+
 pub enum ScheduleOrder {}
 
 pub type GlobalScheduler = round_robin::OneOneRoundRobin;
 pub type GlobalTask = SimpleTask;
-pub type TaskPtr_<T: TaskRepr> = Arc<RwLock<T>>;
 pub type GlobalTaskPtr = TaskPtr<GlobalTask>;
 
 static GLOBAL_SCHEDULER: OnceCell<Mutex<GlobalScheduler>> = OnceCell::uninit();
@@ -111,7 +115,7 @@ pub unsafe extern "C" fn context_switch_local(rsp: u64) {
         return;
     }
 
-    if let Ok(mut lock) = GLOBAL_SCHEDULER.get().unwrap().try_lock() {
+    if let Some(mut lock) = GLOBAL_SCHEDULER.get().unwrap().try_lock() {
         if let Some(current) = lock.current_mut() {
             // let Ok(mut current) = current.raw().try_write() else {
             //     serial_println!("current locked");

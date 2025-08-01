@@ -6,8 +6,8 @@ use crate::{
         colors::{ColorCode, RGBColor},
         text::CharRenderer,
     },
-    locks::primitive::Mutex,
     services::graphics::GraphicsError,
+    sync::locks::Mutex,
 };
 use core::{
     fmt::{Debug, Write},
@@ -338,7 +338,7 @@ impl<const X: usize, const Y: usize> TermCharBuffer<X, Y> {
 
 pub struct BasicTermRender<'a, B, const X: usize, const Y: usize>
 where
-    B: DrawTarget<Color = RGBColor, Error = GraphicsError>,
+    B: DrawTarget<Color = RGBColor, Error = GraphicsError> + 'a,
 {
     backend: &'a Mutex<B>,
     cursor: TermPosition,
