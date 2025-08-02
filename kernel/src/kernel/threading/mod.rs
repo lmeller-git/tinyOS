@@ -235,7 +235,7 @@ mod tests {
     }
 
     #[kernel_test]
-    fn spawn_fn_() {
+    fn spawn_fn_test() {
         let handle = spawn_fn(foo, args!()).unwrap();
         let handle2 = spawn_fn(bar, args!()).unwrap();
         assert_eq!(handle.wait(), Ok(42));

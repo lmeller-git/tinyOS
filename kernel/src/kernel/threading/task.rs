@@ -241,11 +241,12 @@ macro_rules! args {
         const MAX_ARGS: usize = 6;
         #[allow(unused_mut)]
         let mut arr = [$crate::kernel::threading::task::Arg::default(); MAX_ARGS];
-        #[allow(unused_mut)]
+        #[allow(unused_mut, unused_assignments)]
         let mut idx = 0;
         $(
             if idx < MAX_ARGS {
                 arr[idx] = $crate::kernel::threading::task::Arg::from_val($arg);
+                #[allow(unused_asignments)]
                 idx += 1;
             }
         )*
@@ -344,7 +345,7 @@ impl<S> TaskBuilder<Task, S> {
         self
     }
 
-    pub fn with_device<T>(mut self, device: FdEntry<T>) -> TaskBuilder<Task, S>
+    pub fn with_device<T>(self, device: FdEntry<T>) -> TaskBuilder<Task, S>
     where
         T: FdTag,
         FdEntry<T>: Attacheable,
@@ -459,7 +460,7 @@ impl TaskBuilder<Task, Init<'_>> {
 }
 
 impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
-    pub fn build(mut self) -> T {
+    pub fn build(self) -> T {
         unsafe {
             interrupt::disable();
         }
@@ -484,7 +485,7 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
 }
 
 impl<T: TaskRepr> TaskBuilder<T, Ready<KTaskInfo>> {
-    pub fn build(mut self) -> T {
+    pub fn build(self) -> T {
         let next_top =
             unsafe { init_kernel_task(&self._marker.inner, self.inner.exit_info(), &self.data) };
         self.inner.set_krsp(&next_top);
@@ -622,7 +623,8 @@ mod tests {
         #[derive(Debug, Eq, PartialEq)]
         struct Foo {
             a: usize,
-        };
+        }
+
         let args = args!(1, "hello", Foo { a: 1 }, Box::new(42));
         unsafe {
             assert_eq!(args.0[0].as_val::<usize>(), 1);

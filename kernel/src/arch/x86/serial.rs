@@ -48,7 +48,7 @@ pub fn _raw_print(slice: &[u8]) {
 #[doc(hidden)]
 pub unsafe fn _force_raw_print(slice: &[u8]) {
     without_interrupts(|| {
-        let mut lock = unsafe { &mut *SERIAL1.data_ptr() };
+        let lock = unsafe { &mut *SERIAL1.data_ptr() };
         for byte in slice {
             lock.send(*byte);
         }
@@ -59,7 +59,7 @@ pub unsafe fn _force_raw_print(slice: &[u8]) {
 #[doc(hidden)]
 pub unsafe fn _force_print(input: Arguments) {
     without_interrupts(|| {
-        let mut guard = unsafe { &mut *SERIAL1.data_ptr() };
+        let guard = unsafe { &mut *SERIAL1.data_ptr() };
         _ = guard.write_fmt(input);
     })
 }
