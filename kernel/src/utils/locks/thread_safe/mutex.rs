@@ -11,7 +11,7 @@ use os_macros::kernel_test;
 use crate::{
     kernel::threading::{
         self,
-        schedule::{self, GlobalTaskPtr, OneOneScheduler, current_task},
+        schedule::{self, GlobalTaskPtr, current_task},
         task::TaskRepr,
     },
     locks::{GKL, GklGuard},

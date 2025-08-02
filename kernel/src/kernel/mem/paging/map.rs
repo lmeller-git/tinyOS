@@ -54,8 +54,7 @@ fn map_region(start: VirtAddr, len: usize, flags: PageTableFlags) -> Result<(), 
     } else {
         with_current_task(|task| {
             let mut alloc = GLOBAL_FRAME_ALLOCATOR.lock();
-            let mut task = task.write();
-            let pagedir = task.mut_pagdir();
+            let mut pagedir = task.pagedir().unwrap().lock();
             for page in Page::range_inclusive(start, end) {
                 let frame = alloc
                     .allocate_frame()

@@ -13,7 +13,7 @@ $(call USER_VARIABLE,QEMUFLAGS,-m 12G)
 
 IMAGE_NAME ?= tiny_os-$(KARCH)
 CARGO_TARGET_DIR ?= target/
-CARGO_FLAGS ?= --features gkl
+CARGO_FLAGS ?=
 RUST_PROFILE ?= dev
 KERNEL_BIN ?= kernel
 QEMU_WRAPPER = ./run_qemu.sh

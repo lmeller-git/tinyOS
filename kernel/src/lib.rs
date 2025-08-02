@@ -125,13 +125,10 @@ extern "C" fn kernel_test_runner() -> ProcessReturn {
             let now = current_tick();
             if now - start_time >= MAX_TEST_TIME {
                 arch::interrupt::without_interrupts(|| {
+                    use crate::kernel::threading::tls;
+
                     print!("\x1b[31m[TASK TIMEOUT] \x1b[0m");
-                    handle
-                        .get_task()
-                        .expect("no task attached to handle")
-                        .raw()
-                        .write()
-                        .kill();
+                    tls::task_data().kill(&handle.get_task().unwrap().pid(), 1);
                 })
             } else {
                 threading::yield_now();
@@ -175,6 +172,8 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
         schedule::with_current_task,
         task::{ExitInfo, TaskState},
     };
+
+    use crate::kernel::threading::tls;
     eprintln!("\ntest {}", info);
     #[cfg(feature = "gkl")]
     {
@@ -185,12 +184,7 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
             unsafe { GKL.unlock_unchecked() };
         }
     }
-    with_current_task(|task| {
-        task.raw().write().state = TaskState::Zombie(ExitInfo {
-            exit_code: 1,
-            signal: None,
-        })
-    });
+    tls::task_data().kill(&tls::task_data().current_pid(), 1);
     loop {
         threading::yield_now();
     }

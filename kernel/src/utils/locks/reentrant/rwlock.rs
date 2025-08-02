@@ -11,9 +11,7 @@ use os_macros::kernel_test;
 use crate::{
     kernel::threading::{
         self,
-        schedule::{
-            self, GlobalTaskPtr, OneOneScheduler, current_pid, current_task, with_current_task,
-        },
+        schedule::{self, GlobalTaskPtr, current_pid, current_task, with_current_task},
         task::TaskRepr,
     },
     locks::{GKL, GklGuard, thread_safe::RwLockError},
@@ -236,7 +234,7 @@ impl<T: Default> Default for RwLock<T> {
     }
 }
 
-#[kernel_test]
+#[kernel_test(verbose)]
 fn reentrancy() {
     let lock = RwLock::new("hello");
     let writer1 = lock.write();

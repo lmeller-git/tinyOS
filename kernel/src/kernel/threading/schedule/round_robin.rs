@@ -1,99 +1,30 @@
-use super::{GlobalTaskPtr, OneOneScheduler};
+use super::GlobalTaskPtr;
 use crate::{
-    arch::context::TaskCtx,
+    arch::{context::TaskCtx, interrupt},
     kernel::threading::{
         self,
         schedule::Scheduler,
-        task::{SimpleTask, TaskID, TaskState},
+        task::{TaskID, TaskRepr, TaskState},
         tls,
     },
-    serial_println,
+    serial_print, serial_println,
     sync::{self, locks::RwLock},
 };
 use alloc::{collections::vec_deque::VecDeque, vec::Vec};
 use hashbrown::HashMap;
 
-pub struct OneOneRoundRobin {
-    ready: VecDeque<GlobalTaskPtr>,
-    lookup: HashMap<TaskID, GlobalTaskPtr>,
-    running: Option<GlobalTaskPtr>,
-}
-
-impl OneOneScheduler for OneOneRoundRobin {
-    fn new() -> Self {
-        Self {
-            ready: VecDeque::new(),
-            lookup: HashMap::new(),
-            running: None,
-        }
-    }
-
-    fn add_task(&mut self, task: GlobalTaskPtr) {
-        self.lookup.insert(task.read().pid.clone(), task.clone());
-        self.ready.push_back(task);
-    }
-
-    fn yield_now(&mut self) {
-        threading::yield_now();
-    }
-
-    fn cleanup(&mut self) {
-        todo!()
-    }
-
-    fn kill(&mut self, id: crate::kernel::threading::task::TaskID) {
-        todo!()
-    }
-
-    fn switch(&mut self) -> Option<GlobalTaskPtr> {
-        while let Some(next) = self.ready.pop_front() {
-            if next.read().state != TaskState::Ready {
-                // TODO do something with these tasks, instead of just ignoring
-                // for now: they simply get popped and later added again via wake() (potentially). They continue to be stored in lookup, unless cleaned up
-                continue;
-            }
-            if let Some(current) = self.running.replace(next) {
-                // it is fine to push all tasks, as non rerady tasks will be popped in the (next) switch
-                self.ready.push_back(current);
-            }
-            return self.current();
-        }
-        None
-    }
-
-    fn init(&mut self) {
-        todo!()
-    }
-
-    fn current(&self) -> Option<GlobalTaskPtr> {
-        self.running.clone()
-    }
-
-    fn num_tasks(&self) -> usize {
-        // this potentially includes zombie tasks, ...
-        self.lookup.len()
-    }
-
-    fn reschedule(&mut self, order: super::ScheduleOrder) {
-        // removes all non ready tasks from queue and adds back ready tasks
-        todo!()
-    }
-
-    fn current_mut(&mut self) -> &mut Option<GlobalTaskPtr> {
-        &mut self.running
-    }
-
-    fn wake(&mut self, id: &TaskID) {
-        if let Some(task) = self.lookup.get(id)
-            && !self.ready.iter().any(|task| task.read().pid == *id)
-        {
-            self.ready.push_back(task.clone());
-        }
-    }
-}
-
+#[derive(Debug)]
 pub struct LazyRoundRobin {
     queue: sync::locks::Mutex<VecDeque<TaskID>>,
+}
+
+impl LazyRoundRobin {
+    pub fn log_all(&self) {
+        serial_println!("LazyRoundRobin: tasks:");
+        for t in self.queue.lock().iter() {
+            serial_println!("{:?}", tls::task_data().get(t));
+        }
+    }
 }
 
 impl Scheduler for LazyRoundRobin {
@@ -107,34 +38,34 @@ impl Scheduler for LazyRoundRobin {
         // TODO return if not dirty
         let manager = tls::task_data();
 
-        let table = manager.get_table();
-
+        let table = manager.get_table().read();
         let mut queue = self.queue.lock();
-        queue.clear();
 
-        for (id, task) in table.read().iter() {
-            if task.read().state == TaskState::Ready {
-                queue.push_back(*id);
+        interrupt::without_interrupts(|| {
+            queue.clear();
+            for (id, task) in table.iter() {
+                if task.state() == TaskState::Ready || task.state() == TaskState::Running {
+                    queue.push_back(task.pid());
+                }
             }
-        }
+        })
     }
 
-    fn switch(&self) -> TaskID {
-        let mut queue = self.queue.lock();
+    fn switch(&self) -> Option<TaskID> {
+        let mut queue = self.queue.try_lock()?;
         while let Some(id) = queue.pop_front() {
-            let Some(data) = tls::task_data().get(&id) else {
+            let Some(task) = tls::task_data().try_get(&id) else {
                 // Task was likely killed and removed from task manager
                 continue;
             };
-            if data.read().state != TaskState::Ready {
-                tls::task_data().update(&data);
+            if task.state() != TaskState::Ready {
                 continue;
             }
             tls::task_data().update_current(id);
             queue.push_back(id);
-            return id;
+            return Some(id);
         }
-        TaskID::default()
+        None
     }
 
     fn add_task(&self, id: TaskID) {

@@ -14,7 +14,7 @@ use crate::{
         mem::paging::{GLOBAL_FRAME_ALLOCATOR, PAGETABLE, TaskPageTable},
         threading::{
             ThreadingError,
-            task::{SimpleTask, TaskData, TaskRepr},
+            task::{TaskData, TaskRepr},
             trampoline::TaskExitInfo,
         },
     },
@@ -470,7 +470,7 @@ pub struct TaskState {
 impl TaskState {
     pub fn from_task<T: TaskRepr>(task: &T) -> Self {
         Self {
-            rsp: task.get_krsp().as_u64(),
+            rsp: task.krsp().as_u64(),
         }
     }
 }

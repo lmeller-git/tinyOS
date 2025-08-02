@@ -12,7 +12,10 @@ use hashbrown::HashMap;
 use os_macros::{FDTable, fd_composite_tag, kernel_test};
 use tty::{TTYBuilder, TTYSink, TTYSource};
 
-use crate::{serial_println, services::graphics::PrimitiveDrawTarget, sync::locks::Mutex};
+use crate::{
+    kernel::threading::task::TaskRepr, serial_println, services::graphics::PrimitiveDrawTarget,
+    sync::locks::Mutex,
+};
 
 pub mod graphics;
 pub mod tty;
@@ -367,7 +370,7 @@ where
     F: FnOnce(&TaskDevices) -> R,
 {
     let binding = crate::kernel::threading::schedule::current_task().ok()?;
-    let tasks = &binding.read().devices;
+    let tasks = &*binding.devices().read();
     Some(f(tasks))
 }
 
