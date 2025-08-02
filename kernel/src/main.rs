@@ -57,18 +57,22 @@ use tiny_os::kernel::devices::StdOutTag;
 use tiny_os::kernel::devices::with_device_init;
 use tiny_os::kernel::threading;
 use tiny_os::kernel::threading::schedule;
-use tiny_os::kernel::threading::schedule::OneOneScheduler;
+use tiny_os::kernel::threading::schedule::Scheduler;
+use tiny_os::kernel::threading::schedule::add_built_task;
 use tiny_os::kernel::threading::schedule::add_ktask;
 use tiny_os::kernel::threading::schedule::add_named_ktask;
 use tiny_os::kernel::threading::schedule::add_named_usr_task;
 use tiny_os::kernel::threading::schedule::current_task;
+use tiny_os::kernel::threading::schedule::get_scheduler;
 use tiny_os::kernel::threading::schedule::with_current_task;
 use tiny_os::kernel::threading::spawn;
 use tiny_os::kernel::threading::spawn_fn;
 use tiny_os::kernel::threading::task::Arg;
 use tiny_os::kernel::threading::task::Args;
 use tiny_os::kernel::threading::task::TaskBuilder;
+use tiny_os::kernel::threading::task::TaskID;
 use tiny_os::kernel::threading::task::TaskRepr;
+use tiny_os::kernel::threading::tls;
 use tiny_os::locks::GKL;
 use tiny_os::println;
 use tiny_os::serial_print;
@@ -102,6 +106,7 @@ unsafe extern "C" fn kmain() -> ! {
 
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
+
     _ = with_devices!(
         |devices| {
             let fb: FdEntry<SinkTag> = DeviceBuilder::tty().fb();
@@ -121,9 +126,7 @@ unsafe extern "C" fn kmain() -> ! {
         || { add_named_ktask(idle, "idle".into()) }
     );
     serial_println!("idle task started");
-
     enable_threading_interrupts();
-    assert!(!GKL.is_locked());
     threading::yield_now();
     unreachable!()
 }
@@ -131,6 +134,7 @@ unsafe extern "C" fn kmain() -> ! {
 #[with_default_args]
 extern "C" fn idle() -> usize {
     use core::arch::asm;
+
     start_drivers();
     threading::finalize();
     serial_println!("threads finalized");
@@ -152,11 +156,15 @@ extern "C" fn idle() -> usize {
     _ = add_named_ktask(graphics, "graphic drawer".into());
     _ = add_named_ktask(listen, "term".into());
     cross_println!("startup tasks started");
-
-    // just block forever, as there is nothing left to do
-    with_current_task(|task| task.write_inner().block());
+    get_scheduler().reschedule();
 
     loop {
+        for _ in 0..5 {
+            threading::yield_now();
+        }
+        let scheduler = get_scheduler();
+        tls::task_data().cleanup();
+        scheduler.reschedule();
         threading::yield_now();
     }
 }
@@ -190,6 +198,9 @@ extern "C" fn graphics() -> usize {
         &Into::<BoundingBox>::into(c.bounding_box()) as *const BoundingBox as *const u8,
         1,
     );
+
+    serial_println!("exiting task {:?}", tls::task_data().current_pid());
+
     sys_exit(0);
 
     unreachable!();
@@ -200,6 +211,10 @@ extern "C" fn graphics() -> usize {
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     #[cfg(feature = "test_run")]
     tiny_os::test_panic_handler(info);
+    eprintln!(
+        "unrecoverable error in task {:?}",
+        tls::task_data().current_pid()
+    );
     eprintln!("{:#?}, {}", info, interrupt::are_enabled());
     #[cfg(feature = "gkl")]
     {
@@ -209,7 +224,7 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
         }
     }
     if let Ok(current) = current_task() {
-        current.write_inner().kill_with_code(1);
+        tls::task_data().kill(&tls::task_data().current_pid(), 1);
     }
 
     loop {

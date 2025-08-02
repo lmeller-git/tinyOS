@@ -7,9 +7,9 @@ use crate::{
         keyboard::{KEYBOARD_BUFFER, parse_scancode},
     },
     kernel::devices::tty::io::read_all,
-    locks::primitive::Mutex,
     print,
     services::graphics,
+    sync::locks::Mutex,
 };
 use conquer_once::spin::OnceCell;
 use core::fmt::{Arguments, Write};

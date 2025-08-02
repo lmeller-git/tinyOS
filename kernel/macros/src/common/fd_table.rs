@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
-    parse::Parse, punctuated::Punctuated, Data, DataEnum, DeriveInput, Ident, ItemStruct, Token,
+    Data, DataEnum, DeriveInput, Ident, ItemStruct, Token, parse::Parse, punctuated::Punctuated,
 };
 
 pub fn derive_fd_table(input: DeriveInput) -> TokenStream {

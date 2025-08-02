@@ -1,9 +1,9 @@
 //TODO
 
-use crate::utils::locks::reentrant::Mutex;
 use crate::{
     arch::mem::{FrameAllocator, FrameDeallocator, PhysAddr, PhysFrame, Size4KiB},
     bootinfo::usable_mmap_entries,
+    sync::locks::Mutex,
 };
 use lazy_static::lazy_static;
 

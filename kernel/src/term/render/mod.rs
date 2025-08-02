@@ -6,8 +6,8 @@ use crate::{
         colors::{ColorCode, RGBColor},
         text::CharRenderer,
     },
-    locks::primitive::Mutex,
     services::graphics::GraphicsError,
+    sync::locks::Mutex,
 };
 use core::{
     fmt::{Debug, Write},
@@ -338,7 +338,7 @@ impl<const X: usize, const Y: usize> TermCharBuffer<X, Y> {
 
 pub struct BasicTermRender<'a, B, const X: usize, const Y: usize>
 where
-    B: DrawTarget<Color = RGBColor, Error = GraphicsError>,
+    B: DrawTarget<Color = RGBColor, Error = GraphicsError> + 'a,
 {
     backend: &'a Mutex<B>,
     cursor: TermPosition,
@@ -527,7 +527,9 @@ mod tests {
             super::super::FOOBAR.get_unchecked().lock().cursor.col.inner = 0;
         };
         println!("test");
-        threading::yield_now();
+        for _ in 0..3 {
+            threading::yield_now();
+        }
         let mut row = [None; super::super::MAX_CHARS_X];
         row[0].replace('t');
         row[1].replace('e');
@@ -547,7 +549,9 @@ mod tests {
             )
         };
         print!("test2");
-        threading::yield_now();
+        for _ in 0..3 {
+            threading::yield_now();
+        }
         unsafe { assert_eq!(row, super::super::BAR.inner[0]) };
         row[4].replace('2');
         unsafe { assert_eq!(row, super::super::BAR.inner[1]) };
@@ -564,7 +568,9 @@ mod tests {
             )
         };
         print!("hey");
-        threading::yield_now();
+        for _ in 0..3 {
+            threading::yield_now();
+        }
         row[5].replace('h');
         row[6].replace('e');
         row[7].replace('y');
@@ -598,8 +604,9 @@ mod tests {
         println!("test");
         println!("42");
         println!("world");
-        threading::yield_now();
-
+        for _ in 0..3 {
+            threading::yield_now();
+        }
         unsafe { super::super::BAR.shift_up() };
 
         let mut row = [None; super::super::MAX_CHARS_X];
