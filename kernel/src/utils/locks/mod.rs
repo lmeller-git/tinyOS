@@ -1,9 +1,5 @@
 //TODO refactor this to reduce code duplication
 
-mod primitive;
-mod reentrant;
-mod thread_safe;
-
 mod gkl;
 
 pub use gkl::*;
