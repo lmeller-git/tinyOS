@@ -1,10 +1,12 @@
-use super::idt::InterruptIndex;
-use crate::{arch::x86::mem::*, bootinfo, println};
-use acpi::AcpiTables;
 use core::ptr::NonNull;
+
+use acpi::AcpiTables;
 use lazy_static::lazy_static;
 use spin::Mutex;
 use x86_64::instructions::port::Port;
+
+use super::idt::InterruptIndex;
+use crate::{arch::x86::mem::*, bootinfo, println};
 
 lazy_static! {
     pub static ref LAPIC_ADDR: Mutex<LAPICAddress> = Mutex::new(LAPICAddress::new()); // Needs to be initialized

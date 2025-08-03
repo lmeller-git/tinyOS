@@ -49,24 +49,26 @@ impl PixelColor for RGBColor {
 }
 
 impl RgbColor for RGBColor {
-    const MAX_R: u8 = u8::MAX;
-    const MAX_G: u8 = u8::MAX;
-    const MAX_B: u8 = u8::MAX;
     const BLACK: Self = Self(0, 0, 0);
-    const RED: Self = Self(Self::MAX_R, 0, 0);
-    const GREEN: Self = Self(0, Self::MAX_G, 0);
     const BLUE: Self = Self(0, 0, Self::MAX_B);
-    const YELLOW: Self = Self(Self::MAX_R, Self::MAX_G, 0);
-    const MAGENTA: Self = Self(Self::MAX_R, 0, Self::MAX_B);
     const CYAN: Self = Self(0, Self::MAX_G, Self::MAX_B);
+    const GREEN: Self = Self(0, Self::MAX_G, 0);
+    const MAGENTA: Self = Self(Self::MAX_R, 0, Self::MAX_B);
+    const MAX_B: u8 = u8::MAX;
+    const MAX_G: u8 = u8::MAX;
+    const MAX_R: u8 = u8::MAX;
+    const RED: Self = Self(Self::MAX_R, 0, 0);
     const WHITE: Self = Self(Self::MAX_R, Self::MAX_G, Self::MAX_B);
+    const YELLOW: Self = Self(Self::MAX_R, Self::MAX_G, 0);
 
     fn r(&self) -> u8 {
         self.0
     }
+
     fn g(&self) -> u8 {
         self.1
     }
+
     fn b(&self) -> u8 {
         self.2
     }

@@ -1,17 +1,19 @@
-use core::ptr::null;
+use elf::endian::AnyEndian;
 
 use crate::{
-    arch::{
-        interrupt,
-        mem::{
-            Cr3, Cr3Flags, FrameAllocator, Mapper, OffsetPageTable, Page, PageSize, PageTableFlags,
-            Size4KiB, VirtAddr,
-        },
+    arch::mem::{
+        FrameAllocator,
+        Mapper,
+        OffsetPageTable,
+        Page,
+        PageSize,
+        PageTableFlags,
+        Size4KiB,
+        VirtAddr,
     },
     kernel::mem::paging::{PAGETABLE, TaskPageTable, get_frame_alloc},
     serial_println,
 };
-use elf::endian::AnyEndian;
 
 pub fn apply(
     bytes: &elf::ElfBytes<AnyEndian>,

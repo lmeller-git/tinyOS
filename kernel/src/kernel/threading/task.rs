@@ -1,36 +1,35 @@
-use super::{ProcessEntry, ThreadingError};
-use crate::{
-    add_device,
-    arch::{
-        self,
-        context::{
-            KTaskInfo, TaskCtx, UsrTaskInfo, allocate_kstack, allocate_userstack,
-            copy_ustack_mappings_into, init_kernel_task, init_usr_task, unmap_ustack_mappings,
-        },
-        current_page_tbl, interrupt,
-        mem::{Cr3Flags, PhysFrame, Size4KiB, VirtAddr},
-    },
-    kernel::{
-        devices::{Attacheable, CompositeAttacheable, FdEntry, FdTag, TaskDevices},
-        elf::apply,
-        mem::paging::{PAGETABLE, TaskPageTable, create_new_pagedir},
-        threading::trampoline::TaskExitInfo,
-    },
-    serial_println,
-    sync::{
-        self,
-        locks::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard},
-    },
-};
-use alloc::{boxed::Box, format, string::String, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, format, string::String, sync::Arc};
 use core::{
     fmt::{Debug, LowerHex},
     marker::PhantomData,
     pin::Pin,
     sync::atomic::{AtomicU8, AtomicU64, AtomicUsize, Ordering},
 };
-use elf::{ElfBytes, endian::AnyEndian};
-use hashbrown::HashMap;
+
+use super::{ProcessEntry, ThreadingError};
+use crate::{
+    arch::{
+        context::{
+            KTaskInfo,
+            UsrTaskInfo,
+            allocate_kstack,
+            allocate_userstack,
+            copy_ustack_mappings_into,
+            init_kernel_task,
+            init_usr_task,
+            unmap_ustack_mappings,
+        },
+        interrupt,
+        mem::VirtAddr,
+    },
+    kernel::{
+        devices::{Attacheable, FdEntry, FdTag, TaskDevices},
+        elf::apply,
+        mem::paging::{PAGETABLE, TaskPageTable, create_new_pagedir},
+        threading::trampoline::TaskExitInfo,
+    },
+    sync::locks::{Mutex, RwLock},
+};
 
 pub trait TaskRepr: Debug {
     fn pid(&self) -> TaskID;
@@ -585,9 +584,10 @@ pub fn get_pid() -> TaskID {
 
 #[cfg(feature = "test_run")]
 mod tests {
+    use os_macros::{kernel_test, with_default_args};
+
     use super::*;
     use crate::kernel::threading::{ProcessReturn, spawn_fn};
-    use os_macros::{kernel_test, with_default_args};
 
     #[kernel_test]
     fn zero_args() {

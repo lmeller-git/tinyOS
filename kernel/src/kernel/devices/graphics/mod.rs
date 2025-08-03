@@ -1,28 +1,27 @@
+use alloc::{boxed::Box, sync::Arc};
 use core::{fmt::Debug, marker::PhantomData};
 
-use alloc::{boxed::Box, sync::Arc};
 use embedded_graphics::prelude::DrawTarget;
-use hashbrown::HashMap;
 
+use super::{FdEntry, FdTag, Null, RawDeviceID, RawFdEntry};
 use crate::{
-    bootinfo,
     drivers::graphics::{
         GLOBAL_FRAMEBUFFER,
         colors::{ColorCode, RGBColor},
-        framebuffers::{
-            BoundingBox, FrameBuffer, GlobalFrameBuffer, HasFrameBuffer, LimineFrameBuffer,
-            RawFrameBuffer,
-        },
+        framebuffers::{BoundingBox, FrameBuffer, HasFrameBuffer, RawFrameBuffer},
     },
     serial_println,
     services::graphics::{
-        BlitTarget, Glyph, GraphicsBackend, GraphicsError, PrimitiveDrawTarget, PrimitiveGlyph,
+        BlitTarget,
+        Glyph,
+        GraphicsBackend,
+        GraphicsError,
+        PrimitiveDrawTarget,
+        PrimitiveGlyph,
         Simplegraphics,
     },
     sync::locks::Mutex,
 };
-
-use super::{FdEntry, FdTag, Null, RawDeviceID, RawFdEntry};
 
 pub struct GFXBuilder {
     id: RawDeviceID,
@@ -79,6 +78,7 @@ impl PrimitiveDrawTarget for Null {
     ) -> Result<(), crate::services::graphics::GraphicsError> {
         Ok(())
     }
+
     fn clear(
         &mut self,
         color: crate::drivers::graphics::colors::RGBColor,
@@ -95,6 +95,7 @@ impl GFXManager for Null {
     fn draw_batched_primitives(&self, primitives: &[&PrimitiveGlyph]) -> Result<(), GraphicsError> {
         Ok(())
     }
+
     fn draw_glyph(&self, glyph: &dyn Glyph, color: &ColorCode) {}
 }
 

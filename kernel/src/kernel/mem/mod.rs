@@ -1,9 +1,6 @@
 use os_macros::kernel_test;
 
-use crate::{
-    kernel::mem::paging::{GlobalFrameAllocator, init_frame_alloc},
-    sync::locks::Mutex,
-};
+use crate::kernel::mem::paging::init_frame_alloc;
 
 pub mod addr;
 pub mod alloc;

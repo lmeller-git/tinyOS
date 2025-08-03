@@ -1,7 +1,6 @@
 #![no_std]
 #![no_main]
 #![allow(
-    unused_imports,
     unreachable_code,
     unsafe_op_in_unsafe_fn,
     unused_doc_comments,
@@ -12,80 +11,50 @@
 extern crate alloc;
 extern crate tiny_os;
 
-use alloc::boxed::Box;
-use alloc::vec;
 use alloc::vec::Vec;
-use core::arch::global_asm;
-use embedded_graphics::mono_font;
-use embedded_graphics::prelude::Dimensions;
-use embedded_graphics::primitives::PrimitiveStyle;
-use embedded_graphics::primitives::StyledDrawable;
-use embedded_graphics::text::renderer::TextRenderer;
+
+use embedded_graphics::{prelude::Dimensions, primitives::PrimitiveStyle};
 use os_macros::with_default_args;
-use tiny_os::alloc::string::String;
-use tiny_os::arch;
-use tiny_os::arch::hcf;
-use tiny_os::arch::interrupt;
-use tiny_os::arch::interrupt::enable_threading_interrupts;
-use tiny_os::args;
-use tiny_os::bootinfo;
-use tiny_os::cross_println;
-use tiny_os::drivers::graphics::GLOBAL_FRAMEBUFFER;
-use tiny_os::drivers::graphics::colors::ColorCode;
-use tiny_os::drivers::graphics::framebuffers::BoundingBox;
-use tiny_os::drivers::graphics::framebuffers::FrameBuffer;
-use tiny_os::drivers::graphics::framebuffers::LimineFrameBuffer;
-use tiny_os::drivers::graphics::text::draw_str;
-use tiny_os::drivers::start_drivers;
-use tiny_os::eprintln;
-use tiny_os::exit_qemu;
-use tiny_os::get_device;
-use tiny_os::include_bins::get_binaries;
-use tiny_os::kernel;
-use tiny_os::kernel::abi::syscalls::SysRetCode;
-use tiny_os::kernel::abi::syscalls::funcs::sys_exit;
-use tiny_os::kernel::abi::syscalls::funcs::sys_write;
-use tiny_os::kernel::devices::DeviceBuilder;
-use tiny_os::kernel::devices::EDebugSinkTag;
-use tiny_os::kernel::devices::FdEntry;
-use tiny_os::kernel::devices::FdEntryType;
-use tiny_os::kernel::devices::GraphicsTag;
-use tiny_os::kernel::devices::RawFdEntry;
-use tiny_os::kernel::devices::SinkTag;
-use tiny_os::kernel::devices::StdInTag;
-use tiny_os::kernel::devices::StdOutTag;
-use tiny_os::kernel::devices::with_device_init;
-use tiny_os::kernel::threading;
-use tiny_os::kernel::threading::schedule;
-use tiny_os::kernel::threading::schedule::Scheduler;
-use tiny_os::kernel::threading::schedule::add_built_task;
-use tiny_os::kernel::threading::schedule::add_ktask;
-use tiny_os::kernel::threading::schedule::add_named_ktask;
-use tiny_os::kernel::threading::schedule::add_named_usr_task;
-use tiny_os::kernel::threading::schedule::current_task;
-use tiny_os::kernel::threading::schedule::get_scheduler;
-use tiny_os::kernel::threading::schedule::with_current_task;
-use tiny_os::kernel::threading::spawn;
-use tiny_os::kernel::threading::spawn_fn;
-use tiny_os::kernel::threading::task::Arg;
-use tiny_os::kernel::threading::task::Args;
-use tiny_os::kernel::threading::task::TaskBuilder;
-use tiny_os::kernel::threading::task::TaskID;
-use tiny_os::kernel::threading::task::TaskRepr;
-use tiny_os::kernel::threading::tls;
-use tiny_os::locks::GKL;
-use tiny_os::println;
-use tiny_os::serial_print;
-use tiny_os::serial_println;
-use tiny_os::services::graphics::Glyph;
-use tiny_os::services::graphics::PrimitiveGlyph;
-use tiny_os::services::graphics::Simplegraphics;
-use tiny_os::services::graphics::shapes::Circle;
-use tiny_os::services::graphics::shapes::Line;
-use tiny_os::services::graphics::shapes::Point;
-use tiny_os::services::graphics::shapes::Rect;
-use tiny_os::term;
-use tiny_os::with_devices;
+use tiny_os::{
+    arch,
+    arch::{interrupt, interrupt::enable_threading_interrupts},
+    bootinfo,
+    cross_println,
+    drivers::{
+        graphics::{colors::ColorCode, framebuffers::BoundingBox},
+        start_drivers,
+    },
+    eprintln,
+    get_device,
+    include_bins::get_binaries,
+    kernel,
+    kernel::{
+        abi::syscalls::funcs::{sys_exit, sys_write},
+        devices::{
+            DeviceBuilder,
+            EDebugSinkTag,
+            FdEntry,
+            FdEntryType,
+            GraphicsTag,
+            RawFdEntry,
+            SinkTag,
+            StdInTag,
+            StdOutTag,
+        },
+        threading,
+        threading::{
+            schedule,
+            schedule::{Scheduler, add_named_ktask, current_task, get_scheduler},
+            task::TaskBuilder,
+            tls,
+        },
+    },
+    locks::GKL,
+    serial_println,
+    services::graphics::PrimitiveGlyph,
+    term,
+    with_devices,
+};
 
 #[unsafe(no_mangle)]
 unsafe extern "C" fn kmain() -> ! {
@@ -131,8 +100,6 @@ unsafe extern "C" fn kmain() -> ! {
 
 #[with_default_args]
 extern "C" fn idle() -> usize {
-    use core::arch::asm;
-
     start_drivers();
     threading::finalize();
     serial_println!("threads finalized");

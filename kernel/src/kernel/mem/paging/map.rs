@@ -1,15 +1,24 @@
-use alloc::format;
-use alloc::string::String;
+use alloc::{format, string::String};
 
-use crate::arch::mem::{
-    FrameAllocator, FrameDeallocator, Mapper, Page, PageSize, PageTableFlags, Size4KiB, VirtAddr,
+use crate::{
+    arch::mem::{
+        FrameAllocator,
+        FrameDeallocator,
+        Mapper,
+        Page,
+        PageSize,
+        PageTableFlags,
+        Size4KiB,
+        VirtAddr,
+    },
+    kernel::{
+        mem::{
+            addr::{PhysAddr as paddr, VirtAddr as vaddr},
+            paging::{PAGETABLE, get_frame_alloc},
+        },
+        threading::{task::TaskRepr, tls},
+    },
 };
-use crate::kernel::mem::addr::{PhysAddr as paddr, VirtAddr as vaddr};
-use crate::kernel::mem::paging::{PAGETABLE, get_frame_alloc};
-use crate::kernel::threading::schedule::{current_task, with_current_task};
-use crate::kernel::threading::task::{PrivilegeLevel, TaskRepr};
-use crate::kernel::threading::{self, tls};
-use crate::serial_println;
 
 pub struct PageTableMapper {}
 

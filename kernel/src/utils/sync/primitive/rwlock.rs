@@ -1,8 +1,6 @@
 use core::usize;
 
-use lock_api::{
-    GuardSend, RawRwLock, RawRwLockDowngrade, RawRwLockUpgrade, RawRwLockUpgradeDowngrade,
-};
+use lock_api::{GuardSend, RawRwLock, RawRwLockDowngrade};
 
 use crate::sync::{
     WaitStrategy,
@@ -10,8 +8,9 @@ use crate::sync::{
 };
 
 unsafe impl<S: WaitStrategy> RawRwLock for StaticSemaphore<{ usize::MAX }, S> {
-    const INIT: Self = Self::new();
     type GuardMarker = GuardSend;
+
+    const INIT: Self = Self::new();
 
     fn lock_shared(&self) {
         self.down();
@@ -53,10 +52,10 @@ unsafe impl<S: WaitStrategy> RawRwLockDowngrade for StaticSemaphore<{ usize::MAX
 
 #[cfg(feature = "test_run")]
 mod tests {
-    use crate::sync::SpinWaiter;
+    use os_macros::kernel_test;
 
     use super::*;
-    use os_macros::kernel_test;
+    use crate::sync::SpinWaiter;
 
     #[kernel_test]
     fn basic_rwlock() {

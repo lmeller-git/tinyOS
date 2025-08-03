@@ -7,7 +7,6 @@ use crate::{
         threading,
     },
     locks::GKL,
-    serial_println,
 };
 
 //TODO add wake up logic

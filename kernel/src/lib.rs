@@ -14,22 +14,21 @@
 pub extern crate alloc;
 
 #[cfg(feature = "test_run")]
-use crate::kernel::threading::schedule::testing::{self, GLOBAL_TEST_SCHEDULER, TestRunner};
-#[cfg(feature = "test_run")]
-use alloc::vec::Vec;
-use arch::hcf;
-#[cfg(feature = "test_run")]
 use core::panic::PanicInfo;
+
 #[cfg(feature = "test_run")]
-use kernel::threading::{self, JoinHandle, schedule::add_named_ktask, spawn_fn, yield_now};
+use kernel::threading::{schedule::add_named_ktask, yield_now};
 use kernel::{
     devices::{DeviceBuilder, FdEntry, GraphicsTag, SinkTag, StdErrTag, StdInTag, TaskDevices},
     threading::task::{Arg, TaskRepr},
 };
-use os_macros::{kernel_test, tests, with_default_args};
+use os_macros::{kernel_test, with_default_args};
 use thiserror::Error;
 use tiny_os_common::testing::TestCase;
 pub use utils::*;
+
+#[cfg(feature = "test_run")]
+use crate::kernel::threading::schedule::testing::{self, TestRunner};
 
 pub mod arch;
 pub mod bootinfo;
@@ -166,12 +165,7 @@ extern "C" fn kernel_test_runner() -> ProcessReturn {
 
 #[cfg(feature = "test_run")]
 pub fn test_panic_handler(info: &PanicInfo) -> ! {
-    use arch::hcf;
-    use kernel::threading::{
-        self,
-        schedule::with_current_task,
-        task::{ExitInfo, TaskState},
-    };
+    use kernel::threading::{self};
 
     use crate::kernel::threading::tls;
     eprintln!("\ntest {}", info);

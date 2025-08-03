@@ -1,10 +1,16 @@
-use limine::BaseRevision;
-use limine::paging;
-use limine::request::HhdmRequest;
-use limine::request::RsdpRequest;
-use limine::request::{
-    FramebufferRequest, MemoryMapRequest, PagingModeRequest, RequestsEndMarker,
-    RequestsStartMarker, StackSizeRequest,
+use limine::{
+    BaseRevision,
+    paging,
+    request::{
+        FramebufferRequest,
+        HhdmRequest,
+        MemoryMapRequest,
+        PagingModeRequest,
+        RequestsEndMarker,
+        RequestsStartMarker,
+        RsdpRequest,
+        StackSizeRequest,
+    },
 };
 
 /// Sets the base revision to the latest revision supported by the crate.

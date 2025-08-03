@@ -1,22 +1,16 @@
+use alloc::format;
 use core::fmt::Arguments;
 
-use super::{
-    TTYSink,
-    sink::{FBBACKEND, FbBackend, SERIALBACKEND, SerialBackend},
-};
+use super::TTYSink;
 use crate::{
     arch::{self, interrupt},
     get_device,
     kernel::{
-        devices::{
-            FdEntryType, RawFdEntry, tty::source::KEYBOARDBACKEND, with_current_device_list,
-        },
-        threading::{self, schedule::current_task},
+        devices::{FdEntryType, RawFdEntry},
+        threading::{self},
     },
-    serial_print, serial_println, term,
+    term,
 };
-use alloc::format;
-use x86_64::instructions::interrupts::without_interrupts;
 
 //TODO write a macro for these (and others)
 pub fn __write_stdout(input: Arguments) {

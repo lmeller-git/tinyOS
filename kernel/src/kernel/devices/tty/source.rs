@@ -1,9 +1,9 @@
 use alloc::sync::Arc;
+
 use conquer_once::spin::OnceCell;
 
-use crate::drivers::keyboard::get_current_next;
-
 use super::TTYSource;
+use crate::drivers::keyboard::get_current_next;
 
 pub static KEYBOARDBACKEND: OnceCell<Arc<KeyboardBackend>> = OnceCell::uninit();
 

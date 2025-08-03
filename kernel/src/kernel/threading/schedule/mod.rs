@@ -1,16 +1,15 @@
-use core::{
-    hint::unreachable_unchecked,
-    sync::atomic::{AtomicU64, Ordering},
-};
+use alloc::{string::String, sync::Arc};
+
+use conquer_once::spin::OnceCell;
 
 use super::{
-    ProcessEntry, ThreadingError,
+    ProcessEntry,
+    ThreadingError,
     task::{TaskBuilder, TaskID, TaskRepr},
 };
 use crate::{
     arch::{
-        self,
-        context::{TaskCtx, TaskState, switch_and_apply},
+        context::{TaskState, switch_and_apply},
         interrupt::gdt::set_tss_kstack,
         mem::VirtAddr,
     },
@@ -19,11 +18,7 @@ use crate::{
         tls,
     },
     locks::GKL,
-    serial_println,
-    sync::locks::{Mutex, RwLock},
 };
-use alloc::{string::String, sync::Arc};
-use conquer_once::spin::OnceCell;
 
 #[cfg(feature = "test_run")]
 pub mod testing;

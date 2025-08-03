@@ -1,17 +1,10 @@
-use alloc::{boxed::Box, sync::Arc};
+use alloc::boxed::Box;
+use core::fmt::Debug;
+
 use os_macros::with_default_args;
 
-use super::{
-    ProcessReturn,
-    schedule::context_switch_local,
-    task::{Arg, TaskRepr},
-};
-use crate::{
-    arch::{context::return_trampoline_stub, hcf},
-    kernel::threading::{schedule::with_current_task, tls},
-    serial_println,
-};
-use core::{arch::asm, fmt::Debug, pin::Pin};
+use super::{ProcessReturn, schedule::context_switch_local, task::Arg};
+use crate::{arch::hcf, kernel::threading::tls};
 
 #[unsafe(no_mangle)]
 #[with_default_args]

@@ -1,6 +1,20 @@
 #![allow(dead_code, unused_variables)]
 #![cfg_attr(feature = "test_run", allow(static_mut_refs))]
 
+use core::{
+    fmt::{Debug, Write},
+    ops::{Add, Range},
+};
+
+use embedded_graphics::{
+    mono_font::{MonoTextStyle, MonoTextStyleBuilder, ascii},
+    prelude::{DrawTarget, Point, Size},
+    primitives::Rectangle,
+    text::Baseline,
+};
+use os_macros::kernel_test;
+use thiserror::Error;
+
 use crate::{
     drivers::graphics::{
         colors::{ColorCode, RGBColor},
@@ -9,18 +23,6 @@ use crate::{
     services::graphics::GraphicsError,
     sync::locks::Mutex,
 };
-use core::{
-    fmt::{Debug, Write},
-    ops::{Add, Range},
-};
-use embedded_graphics::{
-    mono_font::{MonoTextStyle, MonoTextStyleBuilder, ascii},
-    prelude::{DrawTarget, Point, Size},
-    primitives::Rectangle,
-    text::Baseline,
-};
-use os_macros::{kernel_test, tests};
-use thiserror::Error;
 
 mod layout;
 mod text;
@@ -48,6 +50,7 @@ impl TermPixel {
 
 impl Add for TermPixel {
     type Output = Self;
+
     fn add(self, rhs: Self) -> Self::Output {
         Self {
             inner: self.inner + rhs.inner,
@@ -513,8 +516,7 @@ where
 
 mod tests {
     use super::*;
-    use crate::kernel::devices::SinkTag;
-    use crate::kernel::threading;
+    use crate::kernel::{devices::SinkTag, threading};
 
     #[kernel_test(devices = [framebuffer(SinkTag)])]
     fn print_to_buffer() {

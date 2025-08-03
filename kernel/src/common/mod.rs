@@ -16,6 +16,7 @@ impl TestCase for KernelTest {
     fn name(&self) -> &str {
         self.name.to_str()
     }
+
     fn run_in(&self, runner: &dyn TestRunner) -> Result<(), TestingError> {
         runner.run_guarded(foo, &self.config, self.name());
         Ok(())

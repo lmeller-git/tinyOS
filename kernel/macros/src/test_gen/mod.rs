@@ -3,7 +3,11 @@ use std::{env, fs, path::Path};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, format_ident, quote};
 use syn::{
-    Expr, Ident, ItemFn, Lit, PathSegment,
+    Expr,
+    Ident,
+    ItemFn,
+    Lit,
+    PathSegment,
     parse::{Parse, Parser},
     punctuated::Punctuated,
 };

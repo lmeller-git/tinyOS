@@ -7,10 +7,10 @@ use core::{
     sync::atomic::{AtomicUsize, Ordering},
     usize,
 };
-use linked_list_allocator::Heap;
+
 use spin::Mutex;
 
-use crate::{kernel::threading, serial_println};
+use crate::kernel::threading;
 // TODO use my thread safe mutex, however this currently does not work due to gkl policy
 // TODO the current implementation has a bug presumably in read() causing (index related?), potentially recursive panics -> deadlocks, double faults, ...
 // This NEEDS to be fixed before using it again. Should also rework tests, which do not currently catch this bug
@@ -278,6 +278,7 @@ pub enum QueueErr {
 
 mod tests {
     use alloc::sync::Arc;
+
     use os_macros::kernel_test;
 
     use super::*;

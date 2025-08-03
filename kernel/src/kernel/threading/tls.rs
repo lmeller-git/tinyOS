@@ -1,6 +1,6 @@
+use alloc::collections::{btree_map::BTreeMap, vec_deque::VecDeque};
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use alloc::collections::{btree_map::BTreeMap, vec_deque::VecDeque};
 use conquer_once::spin::OnceCell;
 
 use crate::{
@@ -8,7 +8,6 @@ use crate::{
         schedule::GlobalTaskPtr,
         task::{ExitInfo, TaskID, TaskRepr, TaskState, TaskStateData},
     },
-    serial_println,
     sync::locks::{Mutex, RwLock},
 };
 

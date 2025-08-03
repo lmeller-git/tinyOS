@@ -2,13 +2,15 @@ use lock_api::{GuardSend, RawMutex};
 use os_macros::kernel_test;
 
 use crate::sync::{
-    SpinWaiter, WaitStrategy,
+    SpinWaiter,
+    WaitStrategy,
     primitive::semaphore::{RawSemaphore, StaticSemaphore},
 };
 
 unsafe impl<S: WaitStrategy> RawMutex for StaticSemaphore<1, S> {
-    const INIT: Self = Self::new();
     type GuardMarker = GuardSend;
+
+    const INIT: Self = Self::new();
 
     fn try_lock(&self) -> bool {
         self.try_down().is_ok()

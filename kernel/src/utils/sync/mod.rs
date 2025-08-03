@@ -1,13 +1,9 @@
-use core::marker::PhantomData;
-
 use crossbeam::queue::SegQueue;
 use thiserror::Error;
 
 use crate::{
-    arch::{self, hcf},
+    arch::{self},
     kernel::threading::{self, task::TaskID, tls},
-    locks::GKL,
-    serial_println,
 };
 
 mod primitive;
@@ -110,12 +106,12 @@ impl WaitStrategy for BlockingWaiter {
 #[cfg(feature = "test_run")]
 mod tests {
     use alloc::{sync::Arc, vec::Vec};
+
     use lock_api::RwLockWriteGuard;
     use os_macros::kernel_test;
 
-    use crate::{serial_println, sync::locks::GenericMutex};
-
     use super::*;
+    use crate::sync::locks::GenericMutex;
 
     #[kernel_test]
     fn mutex_basic() {

@@ -4,7 +4,12 @@ mod alloc;
 mod frame;
 mod map;
 mod table;
+pub use alloc::{GlobalFrameAllocator, get_frame_alloc, init_frame_alloc};
 use core::{fmt::Debug, mem::ManuallyDrop};
+
+use lazy_static::lazy_static;
+pub use map::{kernel_map_region, map_region, unmap_region, user_map_region};
+use spin::Mutex;
 
 //TODO make arch agnostic / abstract arch stuff away
 use crate::{
@@ -15,10 +20,6 @@ use crate::{
     bootinfo,
     kernel::mem::heap::map_heap,
 };
-pub use alloc::{GlobalFrameAllocator, get_frame_alloc, init_frame_alloc};
-use lazy_static::lazy_static;
-pub use map::{kernel_map_region, map_region, unmap_region, user_map_region};
-use spin::Mutex;
 
 // reads current p4 rom cpu (CR3) and returns pointer
 unsafe fn active_level_4_table() -> &'static mut PageTable {

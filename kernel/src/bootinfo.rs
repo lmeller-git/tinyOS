@@ -1,9 +1,10 @@
-use crate::requests::*;
 use lazy_static::lazy_static;
 use limine::{
     framebuffer::Framebuffer,
     memory_map::{Entry, EntryType},
 };
+
+use crate::requests::*;
 
 pub fn get() {
     assert!(BASE_REVISION.is_supported());

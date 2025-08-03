@@ -1,21 +1,19 @@
-use alloc::{boxed::Box, sync::Arc, vec::Vec};
-use conquer_once::spin::OnceCell;
+use alloc::{boxed::Box, sync::Arc};
 use core::{
     array,
     fmt::Debug,
     marker::PhantomData,
     ops::{Add, AddAssign},
-    sync::atomic::{AtomicPtr, AtomicU64},
+    sync::atomic::AtomicU64,
 };
+
+use conquer_once::spin::OnceCell;
 use graphics::{GFXBuilder, GFXManager};
 use hashbrown::HashMap;
-use os_macros::{FDTable, fd_composite_tag, kernel_test};
+use os_macros::{FDTable, fd_composite_tag};
 use tty::{TTYBuilder, TTYSink, TTYSource};
 
-use crate::{
-    kernel::threading::task::TaskRepr, serial_println, services::graphics::PrimitiveDrawTarget,
-    sync::locks::Mutex,
-};
+use crate::{kernel::threading::task::TaskRepr, sync::locks::Mutex};
 
 pub mod graphics;
 pub mod tty;
@@ -160,6 +158,7 @@ impl AddAssign for RawDeviceID {
 
 impl Add for RawDeviceID {
     type Output = Self;
+
     fn add(self, rhs: Self) -> Self::Output {
         Self {
             inner: self.inner + rhs.inner,
@@ -339,6 +338,7 @@ impl DeviceBuilder {
     pub fn tty() -> TTYBuilder {
         TTYBuilder::new(next_device_id())
     }
+
     pub fn gfx() -> GFXBuilder {
         GFXBuilder::new(next_device_id())
     }
@@ -440,10 +440,9 @@ macro_rules! with_devices {
 }
 
 mod tests {
-    use alloc::{format, string::String};
-    use os_macros::kernel_test;
+    use alloc::string::String;
 
-    use crate::{println, serial_println};
+    use os_macros::kernel_test;
 
     use super::*;
 

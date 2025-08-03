@@ -1,17 +1,15 @@
-use super::GlobalTaskPtr;
+use alloc::collections::vec_deque::VecDeque;
+
 use crate::{
-    arch::{context::TaskCtx, interrupt},
+    arch::interrupt,
     kernel::threading::{
-        self,
         schedule::Scheduler,
         task::{TaskID, TaskRepr, TaskState},
         tls,
     },
-    serial_print, serial_println,
-    sync::{self, locks::RwLock},
+    serial_println,
+    sync::{self},
 };
-use alloc::{collections::vec_deque::VecDeque, vec::Vec};
-use hashbrown::HashMap;
 
 #[derive(Debug)]
 pub struct LazyRoundRobin {

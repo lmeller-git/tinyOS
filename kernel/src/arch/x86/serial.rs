@@ -1,9 +1,10 @@
 use core::fmt::{Arguments, Write};
 
-use crate::{arch::interrupt, sync::locks::Mutex};
 use lazy_static::lazy_static;
 use uart_16550::SerialPort;
 use x86_64::instructions::interrupts::without_interrupts;
+
+use crate::sync::locks::Mutex;
 
 lazy_static! {
     static ref SERIAL1: Mutex<SerialPort> = {

@@ -2,7 +2,14 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
 use syn::{
-    Ident, ItemFn, LitInt, Type, parse::Parse, parse_macro_input, parse_quote, spanned::Spanned,
+    Ident,
+    ItemFn,
+    LitInt,
+    Type,
+    parse::Parse,
+    parse_macro_input,
+    parse_quote,
+    spanned::Spanned,
 };
 
 pub fn default_arg_parser(attr: TokenStream, input: TokenStream) -> TokenStream {

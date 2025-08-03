@@ -1,6 +1,5 @@
 use core::{
     hint::spin_loop,
-    ops::Deref,
     sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 };
 

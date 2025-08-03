@@ -1,10 +1,13 @@
+use core::arch::global_asm;
+
+use lazy_static::lazy_static;
+use spin::Mutex;
+use x86_64::{registers::rflags::RFlags, structures::paging::OffsetPageTable};
+
 use super::interrupt::gdt::get_user_selectors;
 use crate::{
     arch::{
-        mem::{
-            FrameAllocator, FrameDeallocator, Mapper, Page, PageSize, PageTableFlags, Size4KiB,
-            VirtAddr,
-        },
+        mem::{Mapper, Page, PageSize, PageTableFlags, Size4KiB, VirtAddr},
         x86::{
             interrupt::{gdt::get_kernel_selectors, handlers::InterruptStackFrame},
             mem::PhysAddr,
@@ -18,12 +21,7 @@ use crate::{
             trampoline::TaskExitInfo,
         },
     },
-    serial_println,
 };
-use core::arch::global_asm;
-use lazy_static::lazy_static;
-use spin::Mutex;
-use x86_64::{registers::rflags::RFlags, structures::paging::OffsetPageTable};
 
 const KSTACK_AREA_START: VirtAddr = VirtAddr::new(0xffff_f000_c000_0000); // random location
 

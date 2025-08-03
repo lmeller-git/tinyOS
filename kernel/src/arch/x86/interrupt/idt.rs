@@ -1,19 +1,21 @@
+use lazy_static::lazy_static;
+use x86_64::{PrivilegeLevel, VirtAddr, structures::idt::InterruptDescriptorTable};
+
+use super::gdt;
 use crate::arch::{
     interrupt::{
         gdt::get_kernel_selectors,
         handlers::{syscall_stub, timer_interrupt_stub_local},
     },
     x86::interrupt::handlers::{
-        SPURIOUS_VECTOR, breakpoint_handler, double_fault_handler, gpf_handler,
-        keyboard_interrupt_handler, page_fault_handler, spurious_interrupt_handler,
+        SPURIOUS_VECTOR,
+        breakpoint_handler,
+        double_fault_handler,
+        gpf_handler,
+        keyboard_interrupt_handler,
+        page_fault_handler,
+        spurious_interrupt_handler,
     },
-};
-
-use super::gdt;
-use lazy_static::lazy_static;
-use x86_64::{
-    PrivilegeLevel, VirtAddr,
-    structures::{gdt::SegmentSelector, idt::InterruptDescriptorTable},
 };
 
 lazy_static! {

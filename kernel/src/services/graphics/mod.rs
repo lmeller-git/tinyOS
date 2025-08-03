@@ -1,6 +1,6 @@
+use alloc::vec::Vec;
 use core::fmt::Debug;
 
-use alloc::{boxed::Box, vec::Vec};
 use embedded_graphics::{
     mono_font::MonoTextStyle,
     prelude::{DrawTarget, OriginDimensions},
@@ -133,6 +133,7 @@ where
 {
     type Color = RGBColor;
     type Error = GraphicsError;
+
     fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
     where
         I: IntoIterator<Item = embedded_graphics::Pixel<Self::Color>>,
@@ -163,6 +164,7 @@ where
     fn draw_pixel(&self, p: &Point, color: &ColorCode) {
         self.fb.set_pixel(&color.into(), p.x, p.y);
     }
+
     fn draw_line(&self, start: &Point, end: &Point, color: &ColorCode) {
         // TODO optimize
         // bresenham:
@@ -198,9 +200,11 @@ where
             }
         }
     }
+
     fn width(&self) -> usize {
         self.fb.width()
     }
+
     fn height(&self) -> usize {
         self.fb.height()
     }

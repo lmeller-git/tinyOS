@@ -1,16 +1,11 @@
 mod scheduler;
 
-use crate::{
-    arch::context::switch_and_apply,
-    kernel::threading::{
-        ThreadingError,
-        task::TaskBuilder,
-        trampoline::{TaskExitInfo, test_kernel_return_trampoline},
-    },
-};
-use conquer_once::spin::OnceCell;
 use core::panic::PanicInfo;
+
+use conquer_once::spin::OnceCell;
 pub use scheduler::*;
+
+use crate::kernel::threading::ThreadingError;
 
 pub trait TestRunner {
     fn new() -> Self;

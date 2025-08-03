@@ -1,16 +1,17 @@
-use crate::{
-    arch::{context::SysCallCtx, x86::interrupt::pic::end_interrupt},
-    kernel::{abi::syscalls::syscall_handler, threading::schedule::context_switch_local},
-    serial_println,
-};
 use core::{
     arch::global_asm,
     sync::atomic::{AtomicU64, Ordering},
 };
-use x86_64::instructions::interrupts::without_interrupts;
+
 pub use x86_64::{
     instructions::port::Port,
     structures::idt::{InterruptStackFrame, PageFaultErrorCode},
+};
+
+use crate::{
+    arch::{context::SysCallCtx, x86::interrupt::pic::end_interrupt},
+    kernel::{abi::syscalls::syscall_handler, threading::schedule::context_switch_local},
+    serial_println,
 };
 
 static TOTAL_TIMER_TICKS: AtomicU64 = AtomicU64::new(0);

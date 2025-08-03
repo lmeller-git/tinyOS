@@ -3,8 +3,9 @@ use core::{
     ptr::{NonNull, null_mut},
 };
 
+use linked_list_allocator::Heap;
+
 use crate::sync::locks::Mutex;
-use linked_list_allocator::{Heap, LockedHeap};
 
 pub(super) const fn get_alloc() -> SafeHeap {
     SafeHeap::new()

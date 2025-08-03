@@ -22,6 +22,7 @@ impl RawStr {
 // unsafe. s might get dropped
 impl FromStr for RawStr {
     type Err = Infallible;
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(Self {
             start: s.as_ptr(),

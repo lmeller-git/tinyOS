@@ -1,10 +1,12 @@
-use crate::println;
 pub use x86_64::instructions::interrupts::{are_enabled, without_interrupts};
+
+use crate::println;
 pub mod gdt;
 pub mod handlers;
 mod idt;
 mod pic;
 use core::arch::asm;
+
 pub use pic::*;
 
 pub(super) fn init() {

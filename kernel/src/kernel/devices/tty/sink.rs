@@ -1,15 +1,11 @@
-use super::TTYSink;
-use crate::{
-    arch,
-    data_structures::ChunkedArrayQueue,
-    kernel::devices::{FdEntryType, RawFdEntry, with_current_device_list},
-    print, serial_print,
-    sync::locks::Mutex,
-    term::_print,
-};
-use alloc::{collections::vec_deque::VecDeque, sync::Arc, vec::Vec};
+use alloc::sync::Arc;
+
 use conquer_once::spin::OnceCell;
+#[cfg(not(feature = "custom_ds"))]
 use crossbeam::queue::SegQueue;
+
+use super::TTYSink;
+use crate::{arch, data_structures::ChunkedArrayQueue, sync::locks::Mutex, term::_print};
 
 pub static SERIALBACKEND: OnceCell<Arc<SerialBackend>> = OnceCell::uninit();
 pub static FBBACKEND: OnceCell<Arc<FbBackend>> = OnceCell::uninit();

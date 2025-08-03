@@ -1,4 +1,5 @@
 use core::fmt;
+
 use lazy_static::lazy_static;
 use spin::Mutex;
 
@@ -85,14 +86,17 @@ impl ScreenChar {
         self.color_code.fg(color);
         self
     }
+
     pub fn bg(&mut self, color: VGAColor) -> &mut Self {
         self.color_code.bg(color);
         self
     }
+
     pub fn char(&mut self, char: u8) -> &mut Self {
         self.ascii_character = char;
         self
     }
+
     pub fn get_char(&self) -> u8 {
         self.ascii_character
     }
@@ -111,6 +115,7 @@ impl<'a> ScreenRow<'a> {
         });
         self
     }
+
     pub fn bg(&mut self, color: VGAColor) -> &mut Self {
         self.chars.iter_mut().for_each(|c| {
             c.update(|c| {
@@ -119,6 +124,7 @@ impl<'a> ScreenRow<'a> {
         });
         self
     }
+
     pub fn char(&mut self, char: u8) -> &mut Self {
         self.chars.iter_mut().for_each(|c| {
             c.update(|c| {
@@ -270,6 +276,7 @@ impl VGAWriter {
             .get_row_mut(row)
             .map(|row| ScreenRow { chars: row })
     }
+
     pub fn set_prev_pos(&mut self) {
         if self.column > 0 {
             self.column -= 1;
@@ -277,6 +284,7 @@ impl VGAWriter {
             self.shift_down();
         }
     }
+
     pub fn set_next_pos(&mut self) {
         if self.column < BUFFER_WIDTH - 1 {
             self.column += 1;
@@ -284,6 +292,7 @@ impl VGAWriter {
             self.shift_up();
         }
     }
+
     pub fn current_pos(&self) -> (usize, usize) {
         (self.row, self.column)
     }

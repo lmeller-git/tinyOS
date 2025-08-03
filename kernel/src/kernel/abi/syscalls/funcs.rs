@@ -1,35 +1,36 @@
-use core::{arch::global_asm, array, ptr::null_mut, sync::atomic::Ordering};
+use core::{arch::global_asm, ptr::null_mut, sync::atomic::Ordering};
 
+use super::SysRetCode;
 use crate::{
-    add_device,
-    arch::{
-        interrupt::{
-            self,
-            gdt::{get_kernel_selectors, get_user_selectors},
-        },
-        mem::VirtAddr,
-    },
+    arch::{interrupt::gdt::get_kernel_selectors, mem::VirtAddr},
     drivers::graphics::{
-        framebuffers::{get_config, BoundingBox, FrameBuffer}, GLOBAL_FRAMEBUFFER
+        GLOBAL_FRAMEBUFFER,
+        framebuffers::{BoundingBox, FrameBuffer, get_config},
     },
     get_device,
     kernel::{
         devices::{
-            tty::io::read_all, DeviceBuilder, FdEntry, FdEntryType, GraphicsTag, RawDeviceID, RawFdEntry
+            DeviceBuilder,
+            FdEntry,
+            FdEntryType,
+            GraphicsTag,
+            RawDeviceID,
+            RawFdEntry,
+            tty::io::read_all,
         },
         mem::{
-            align_up, heap::{MAX_USER_HEAP_SIZE, USER_HEAP_START}, paging::{get_frame_alloc, map_region}
+            heap::{MAX_USER_HEAP_SIZE, USER_HEAP_START},
+            paging::map_region,
         },
         threading::{
-            self, schedule::{
-                self, context_switch_local, current_task, with_current_task, with_scheduler
-            }, task::{PrivilegeLevel, TaskID, TaskRepr}, tls, yield_now
+            schedule::{context_switch_local, with_current_task},
+            task::TaskRepr,
+            tls,
+            yield_now,
         },
     },
     serial_println,
 };
-
-use super::SysRetCode;
 
 const USER_DEVICE_MAP: VirtAddr = VirtAddr::new(0x0000_3000_0000);
 
@@ -127,9 +128,7 @@ pub fn sys_read(device_type: usize, buf: *mut u8, len: usize) -> isize {
 }
 
 pub fn sys_heap(size: usize) -> *mut u8 {
-    use crate::arch::mem::{
-        FrameAllocator, Mapper, Page, PageSize, PageTableFlags, Size4KiB, VirtAddr,
-    };
+    use crate::arch::mem::{PageSize, PageTableFlags, Size4KiB, VirtAddr};
 
     let current = tls::task_data().get_current().unwrap();
 
@@ -139,17 +138,22 @@ pub fn sys_heap(size: usize) -> *mut u8 {
     }
     let base_addr = VirtAddr::new((USER_HEAP_START + current_size) as u64).align_up(Size4KiB::SIZE);
 
-    let flags = PageTableFlags::PRESENT
-                | PageTableFlags::USER_ACCESSIBLE
-                | PageTableFlags::WRITABLE;
+    let flags =
+        PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE | PageTableFlags::WRITABLE;
 
-
-    if map_region(base_addr, size, flags, &mut *current.pagedir().unwrap().lock().table).is_err() {
+    if map_region(
+        base_addr,
+        size,
+        flags,
+        &mut *current.pagedir().unwrap().lock().table,
+    )
+    .is_err()
+    {
         return null_mut();
     }
-    
+
     current.core.heap_size.fetch_add(size, Ordering::Relaxed);
-    
+
     base_addr.as_mut_ptr()
 }
 

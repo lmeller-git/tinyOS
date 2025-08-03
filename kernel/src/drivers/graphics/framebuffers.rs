@@ -1,6 +1,7 @@
 use conquer_once::spin::OnceCell;
 use embedded_graphics::primitives::Rectangle;
 
+use super::colors::RGBColor;
 use crate::{
     bootinfo,
     drivers::graphics::GLOBAL_FRAMEBUFFER,
@@ -8,10 +9,8 @@ use crate::{
         align_up,
         paging::{kernel_map_region, user_map_region},
     },
-    serial_println, services,
+    serial_println,
 };
-
-use super::colors::RGBColor;
 
 static FB_CONFIG: OnceCell<FramBufferConfig> = OnceCell::uninit();
 
@@ -150,6 +149,7 @@ impl FrameBuffer for LimineFrameBuffer<'_> {
             }
         }
     }
+
     fn fill(&self, value: RGBColor) {
         for y in 0..self.inner.height() as usize {
             for x in 0..self.inner.width() as usize {
@@ -157,6 +157,7 @@ impl FrameBuffer for LimineFrameBuffer<'_> {
             }
         }
     }
+
     fn flush(&self) {}
 
     fn width(&self) -> usize {
@@ -233,6 +234,7 @@ impl FrameBuffer for GlobalFrameBuffer {
             }
         }
     }
+
     fn fill(&self, value: RGBColor) {
         for y in 0..self.inner.height() as usize {
             for x in 0..self.inner.width() as usize {
@@ -240,6 +242,7 @@ impl FrameBuffer for GlobalFrameBuffer {
             }
         }
     }
+
     fn flush(&self) {}
 
     fn width(&self) -> usize {

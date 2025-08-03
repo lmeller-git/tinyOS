@@ -1,7 +1,4 @@
-use core::{
-    marker::PhantomData,
-    sync::atomic::{AtomicUsize, Ordering},
-};
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 use lock_api::GuardSend;
 
@@ -161,15 +158,15 @@ unsafe impl<const N: usize, S: WaitStrategy> RawSemaphore for StaticSemaphore<N,
 
 #[cfg(feature = "test_run")]
 mod tests {
-    use alloc::vec;
-    use alloc::{sync::Arc, vec::Vec};
+    use alloc::{sync::Arc, vec, vec::Vec};
+
     use os_macros::kernel_test;
 
-    use crate::kernel::threading;
-    use crate::serial_println;
-    use crate::sync::{SpinWaiter, YieldWaiter};
-
     use super::*;
+    use crate::{
+        kernel::threading,
+        sync::{SpinWaiter, YieldWaiter},
+    };
 
     #[kernel_test(verbose)]
     fn sema_basic() {

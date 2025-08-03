@@ -1,8 +1,9 @@
-use super::TestRunner as SuperTestRunner;
 use tiny_os_common::{
     log,
     testing::{TestCase, TestRunner},
 };
+
+use super::TestRunner as SuperTestRunner;
 /// runs each Test in a separate thread and reports its outcome
 /// no preemptive multitasking
 //TODO: should have a Runner thread, which spawns new

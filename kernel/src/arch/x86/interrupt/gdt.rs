@@ -1,14 +1,13 @@
 use core::ptr;
 
-use crate::arch::x86::mem::VirtAddr;
-use alloc::boxed::Box;
 use conquer_once::spin::OnceCell;
-use lazy_static::lazy_static;
-use spin::{Mutex, Once};
+use spin::Mutex;
 use x86_64::structures::{
     gdt::{Descriptor, GlobalDescriptorTable, SegmentSelector},
     tss::TaskStateSegment,
 };
+
+use crate::arch::x86::mem::VirtAddr;
 
 pub(super) const DOUBLE_FAULT_IST_INDEX: u16 = 0;
 
@@ -67,8 +66,10 @@ pub fn set_tss_kstack(stack: VirtAddr) {
 }
 
 pub(super) fn init() {
-    use x86_64::instructions::segmentation::{CS, SS, Segment};
-    use x86_64::instructions::tables::load_tss;
+    use x86_64::instructions::{
+        segmentation::{CS, SS, Segment},
+        tables::load_tss,
+    };
 
     let tss = init_tss();
 

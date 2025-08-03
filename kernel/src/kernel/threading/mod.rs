@@ -1,25 +1,19 @@
-use crate::{
-    arch, args,
-    kernel::{
-        abi::syscalls::funcs::sys_yield,
-        threading::{schedule::with_current_task, task::TaskRepr},
-    },
-    serial_println,
-    sync::locks::RwLock,
-};
 use alloc::{format, string::String, sync::Arc};
 use core::{
-    arch::asm,
     hint,
-    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    sync::atomic::{AtomicBool, Ordering},
 };
+
 use os_macros::kernel_test;
-use schedule::{
-    GlobalTaskPtr, add_built_task, add_ktask, add_task_ptr__, context_switch_local, current_task,
-    with_scheduler,
-};
-use task::{Arg, Args, ExitInfo, TaskBuilder, TaskState};
+use schedule::{GlobalTaskPtr, add_task_ptr__};
+use task::{Arg, Args, TaskBuilder, TaskState};
 use trampoline::{TaskExitInfo, closure_trampoline};
+
+use crate::{
+    args,
+    kernel::{abi::syscalls::funcs::sys_yield, threading::task::TaskRepr},
+    sync::locks::RwLock,
+};
 
 pub mod context;
 pub mod schedule;
@@ -201,9 +195,10 @@ where
 
 #[cfg(feature = "test_run")]
 mod tests {
+    use os_macros::with_default_args;
+
     use super::*;
     use crate::args;
-    use os_macros::with_default_args;
 
     #[kernel_test]
     fn join_handle() {

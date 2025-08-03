@@ -2,8 +2,9 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
-use os_macros::{kernel_test, tests};
 use std::sync::atomic::{AtomicBool, AtomicI16, Ordering};
+
+use os_macros::{kernel_test, tests};
 use tiny_os_common::testing::TestCase;
 
 static A: AtomicI16 = AtomicI16::new(0);

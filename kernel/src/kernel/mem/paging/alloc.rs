@@ -2,20 +2,22 @@
 
 use core::ptr::null_mut;
 
+use conquer_once::spin::OnceCell;
+
 use crate::{
-    arch::{
-        hcf,
-        mem::{
-            FrameAllocator, FrameDeallocator, PageSize, PhysAddr, PhysFrame, Size4KiB, VirtAddr,
-            align_down, align_up,
-        },
+    arch::mem::{
+        FrameAllocator,
+        FrameDeallocator,
+        PageSize,
+        PhysAddr,
+        PhysFrame,
+        Size4KiB,
+        align_down,
+        align_up,
     },
     bootinfo::{get_phys_offset, usable_mmap_entries},
-    serial_println,
     sync::locks::Mutex,
 };
-use conquer_once::spin::OnceCell;
-use lazy_static::lazy_static;
 
 pub type GlobalFrameAllocator = LinkedListFrameAllocator;
 pub static GLOBAL_FRAME_ALLOCATOR: OnceCell<Mutex<GlobalFrameAllocator>> = OnceCell::uninit();

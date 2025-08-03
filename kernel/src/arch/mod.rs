@@ -1,9 +1,9 @@
 #[cfg(target_arch = "x86_64")]
 pub mod x86;
+use core::{arch::asm, fmt::Arguments};
+
 #[cfg(target_arch = "x86_64")]
 pub use x86::{context, interrupt, mem};
-
-use core::{arch::asm, fmt::Arguments};
 
 pub fn early_init() {
     #[cfg(target_arch = "x86_64")]

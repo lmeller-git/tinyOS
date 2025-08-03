@@ -1,20 +1,20 @@
 #![allow(dead_code)]
 
+use core::fmt::{Arguments, Write};
+
+use conquer_once::spin::OnceCell;
+use render::BasicTermRender;
+
 use crate::{
-    arch,
     drivers::{
         graphics::{GLOBAL_FRAMEBUFFER, framebuffers::GlobalFrameBuffer},
-        keyboard::{KEYBOARD_BUFFER, parse_scancode},
+        keyboard::parse_scancode,
     },
     kernel::devices::tty::io::read_all,
     print,
     services::graphics,
     sync::locks::Mutex,
 };
-use conquer_once::spin::OnceCell;
-use core::fmt::{Arguments, Write};
-use os_macros::tests;
-use render::BasicTermRender;
 
 mod logic;
 mod parse;

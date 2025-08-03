@@ -1,13 +1,12 @@
+use alloc::sync::Arc;
 use core::fmt::Debug;
 
-use alloc::{sync::Arc, vec};
 use hashbrown::HashMap;
-use sink::{FBBACKEND, FbBackend, SERIALBACKEND, SerialBackend, TTYReceiver};
-use source::{KEYBOARDBACKEND, KeyboardBackend, TTYInput};
-
-use crate::kernel::devices::Null;
+use sink::{FBBACKEND, SERIALBACKEND, TTYReceiver};
+use source::{KEYBOARDBACKEND, TTYInput};
 
 use super::{FdEntry, FdTag, RawDeviceID, RawFdEntry};
+use crate::kernel::devices::Null;
 
 pub mod io;
 pub mod sink;

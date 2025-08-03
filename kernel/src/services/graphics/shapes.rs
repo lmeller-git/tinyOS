@@ -1,8 +1,7 @@
 use core::ops::{Add, Sub};
 
-use crate::drivers::graphics::colors::ColorCode;
-
 use super::Glyph;
+use crate::drivers::graphics::colors::ColorCode;
 
 pub struct Line {
     pub start: Point,
@@ -130,6 +129,7 @@ impl Glyph for Point {
 
 impl Sub for Point {
     type Output = Self;
+
     fn sub(self, rhs: Self) -> Self::Output {
         Self {
             x: self.x - rhs.x,
@@ -140,6 +140,7 @@ impl Sub for Point {
 
 impl Add for Point {
     type Output = Self;
+
     fn add(self, rhs: Self) -> Self::Output {
         Self {
             x: self.x + rhs.x,
@@ -150,6 +151,7 @@ impl Add for Point {
 
 impl Add for &Point {
     type Output = Point;
+
     fn add(self, rhs: Self) -> Self::Output {
         Point {
             x: self.x + rhs.x,
