@@ -1,4 +1,4 @@
-use core::{arch::global_asm, array, ptr::null_mut};
+use core::{arch::global_asm, array, ptr::null_mut, sync::atomic::Ordering};
 
 use crate::{
     add_device,
@@ -21,12 +21,9 @@ use crate::{
             align_up, heap::{MAX_USER_HEAP_SIZE, USER_HEAP_START}, paging::GLOBAL_FRAME_ALLOCATOR
         },
         threading::{
-            self,
-            schedule::{
-                self, context_switch_local, current_task, with_current_task, with_scheduler, OneOneScheduler
-            },
-            task::{PrivilegeLevel, TaskID, TaskRepr},
-            yield_now,
+            self, schedule::{
+                self, context_switch_local, current_task, with_current_task, with_scheduler
+            }, task::{PrivilegeLevel, TaskID, TaskRepr}, tls, yield_now
         },
     },
     serial_println,
@@ -37,13 +34,12 @@ use super::SysRetCode;
 const USER_DEVICE_MAP: VirtAddr = VirtAddr::new(0x0000_3000_0000);
 
 pub fn sys_exit(status: i64) {
-    with_current_task(|task| task.with_inner_mut(|task| task.kill_with_code(status as usize)));
-
+    tls::task_data().kill(&tls::task_data().current_pid(), 0);
     yield_now();
 }
 
 pub fn sys_kill(id: u64, status: i64) -> SysRetCode {
-    with_scheduler(|sched| sched.lock().kill(id.into()));
+    tls::task_data().kill(&id.into(), status as i32);
     SysRetCode::Success
 }
 
@@ -135,7 +131,9 @@ pub fn sys_heap(size: usize) -> *mut u8 {
         FrameAllocator, Mapper, Page, PageSize, PageTableFlags, Size4KiB, VirtAddr,
     };
 
-    let current_size = current_task().unwrap().raw().read().heap_size;
+    let current = tls::task_data().get_current().unwrap();
+
+    let current_size = current.core.heap_size.load(Ordering::Relaxed);
     if current_size + size > MAX_USER_HEAP_SIZE {
         return null_mut();
     }
@@ -144,25 +142,26 @@ pub fn sys_heap(size: usize) -> *mut u8 {
     let start_page: Page<Size4KiB> = Page::containing_address(base_addr);
     let end_page: Page<Size4KiB> = Page::containing_address(end_addr);
 
-    with_current_task(|task| {
-        task.with_inner_mut(|task| {
-            let flags = PageTableFlags::PRESENT
+    let flags = PageTableFlags::PRESENT
                 | PageTableFlags::USER_ACCESSIBLE
                 | PageTableFlags::WRITABLE;
-            let pagedir = task.mut_pagdir();
-            let mut alloc = GLOBAL_FRAME_ALLOCATOR.lock();
-            for page in Page::range_inclusive(start_page, end_page) {
-                if pagedir.table.translate_page(page).is_ok() {
-                    continue;
-                }
-                let frame = alloc.allocate_frame().unwrap();
-                unsafe { pagedir.table.map_to(page, frame, flags, &mut *alloc) }
-                    .unwrap()
-                    .flush();
-            }
-            task.heap_size += size;
-        })
-    });
+
+    let mut pagedir = current.pagedir().unwrap().lock();
+    let mut alloc = GLOBAL_FRAME_ALLOCATOR.lock();
+
+    for page in Page::range_inclusive(start_page, end_page) {
+        if pagedir.table.translate_page(page).is_ok() {
+            continue;
+        }
+
+        let frame = alloc.allocate_frame().unwrap();
+
+        unsafe { pagedir.table.map_to(page, frame, flags, &mut *alloc) }
+            .unwrap()
+            .flush();
+    }
+    current.core.heap_size.fetch_add(size, Ordering::Relaxed);
+    
     base_addr.as_mut_ptr()
 }
 
@@ -184,7 +183,7 @@ pub fn sys_map_device(device_type: usize, addr: *mut ()) -> Result<*mut (), SysR
             let addr = VirtAddr::from_ptr(addr);
             serial_println!("building fb");
             let entry: FdEntry<GraphicsTag> = DeviceBuilder::gfx().blit_user(addr);
-            with_current_task(|task| task.raw().write().devices.attach(entry));
+            with_current_task(|task| task.devices().write().attach(entry));
         }
         _ => todo!(),
     }

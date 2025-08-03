@@ -3,8 +3,8 @@ use crate::{
     arch,
     data_structures::ChunkedArrayQueue,
     kernel::devices::{FdEntryType, RawFdEntry, with_current_device_list},
-    locks::thread_safe::Mutex,
     print, serial_print,
+    sync::locks::Mutex,
     term::_print,
 };
 use alloc::{collections::vec_deque::VecDeque, sync::Arc, vec::Vec};

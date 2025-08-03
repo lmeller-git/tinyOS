@@ -9,7 +9,7 @@ use lock_api::GuardSend;
 use crate::locks::GKL;
 use crate::sync::{SyncErr, WaitStrategy};
 
-pub(crate) unsafe trait RawSemaphore {
+pub unsafe trait RawSemaphore {
     type GuardMaker;
     fn try_down(&self) -> Result<(), SyncErr>;
     fn down(&self);
@@ -21,7 +21,7 @@ pub(crate) unsafe trait RawSemaphore {
 
 // simple strategies (like spin, yield, ...) are zero sized and will thus be zero-cost
 
-pub(crate) struct DynamicSemaphore<S: WaitStrategy> {
+pub struct DynamicSemaphore<S: WaitStrategy> {
     counter: AtomicUsize,
     strategy: S,
 }
@@ -117,7 +117,7 @@ unsafe impl<S: WaitStrategy> RawSemaphore for DynamicSemaphore<S> {
     }
 }
 
-pub(crate) struct StaticSemaphore<const N: usize, S: WaitStrategy> {
+pub struct StaticSemaphore<const N: usize, S: WaitStrategy> {
     inner: DynamicSemaphore<S>,
 }
 

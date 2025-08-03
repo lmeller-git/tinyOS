@@ -1,9 +1,6 @@
 use crate::{
     arch::{context::SysCallCtx, x86::interrupt::pic::end_interrupt},
-    kernel::{
-        abi::syscalls::syscall_handler,
-        threading::schedule::{context_switch, context_switch_local},
-    },
+    kernel::{abi::syscalls::syscall_handler, threading::schedule::context_switch_local},
     serial_println,
 };
 use core::{

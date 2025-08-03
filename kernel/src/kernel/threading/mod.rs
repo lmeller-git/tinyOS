@@ -4,8 +4,8 @@ use crate::{
         abi::syscalls::funcs::sys_yield,
         threading::{schedule::with_current_task, task::TaskRepr},
     },
-    locks::thread_safe::RwLock,
     serial_println,
+    sync::locks::RwLock,
 };
 use alloc::{format, string::String, sync::Arc};
 use core::{
@@ -15,8 +15,8 @@ use core::{
 };
 use os_macros::kernel_test;
 use schedule::{
-    GlobalTaskPtr, OneOneScheduler, add_built_task, add_ktask, add_task_ptr__,
-    context_switch_local, current_task, with_scheduler,
+    GlobalTaskPtr, add_built_task, add_ktask, add_task_ptr__, context_switch_local, current_task,
+    with_scheduler,
 };
 use task::{Arg, Args, ExitInfo, TaskBuilder, TaskState};
 use trampoline::{TaskExitInfo, closure_trampoline};
@@ -24,6 +24,7 @@ use trampoline::{TaskExitInfo, closure_trampoline};
 pub mod context;
 pub mod schedule;
 pub mod task;
+pub mod tls;
 pub mod trampoline;
 
 pub type ProcessReturn = usize;
@@ -74,12 +75,11 @@ impl<R> JoinHandle<R> {
         }
 
         let r = self.inner.get_return().map_err(|e| {
-            if let TaskState::Zombie(ExitInfo {
-                exit_code,
-                signal: _,
-            }) = self.task.as_ref().unwrap().raw().read().state
-            {
-                ThreadingError::Unknown(format!("task terminated with {}", exit_code))
+            if let TaskState::Zombie = self.task.as_ref().unwrap().state() {
+                ThreadingError::Unknown(format!(
+                    "task terminated with {:#?}",
+                    &*self.task.as_ref().unwrap().state_data().lock()
+                ))
             } else {
                 panic!("something unexpected happend. Error: {:#?}", e);
             }
@@ -101,7 +101,7 @@ impl<R> JoinHandle<R> {
     fn is_task_alive(&self) -> Option<bool> {
         self.task
             .as_ref()
-            .map(|task| !matches!(task.raw().read().state, TaskState::Zombie(_)))
+            .map(|task| !matches!(task.state(), TaskState::Zombie))
     }
 
     pub fn attach(&mut self, ptr: GlobalTaskPtr) {
@@ -162,7 +162,7 @@ pub fn spawn_fn(
         .with_exit_info(TaskExitInfo::new_with_default_trampoline(
             move |v: usize| {
                 raw.val.write().replace(v);
-                with_current_task(|task| task.write_inner().kill_with_code(v));
+                tls::task_data().kill(&tls::task_data().current_pid(), 0);
                 raw.finished.store(true, Ordering::Release);
                 yield_now();
             },
@@ -235,7 +235,7 @@ mod tests {
     }
 
     #[kernel_test]
-    fn spawn_fn_() {
+    fn spawn_fn_test() {
         let handle = spawn_fn(foo, args!()).unwrap();
         let handle2 = spawn_fn(bar, args!()).unwrap();
         assert_eq!(handle.wait(), Ok(42));
