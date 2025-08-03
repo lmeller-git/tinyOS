@@ -1,76 +1,103 @@
 //TODO
 
+use core::ptr::null_mut;
+
 use crate::{
-    arch::mem::{FrameAllocator, FrameDeallocator, PhysAddr, PhysFrame, Size4KiB},
-    bootinfo::usable_mmap_entries,
+    arch::{
+        hcf,
+        mem::{
+            FrameAllocator, FrameDeallocator, PageSize, PhysAddr, PhysFrame, Size4KiB, VirtAddr,
+            align_down, align_up,
+        },
+    },
+    bootinfo::{get_phys_offset, usable_mmap_entries},
+    serial_println,
     sync::locks::Mutex,
 };
+use conquer_once::spin::OnceCell;
 use lazy_static::lazy_static;
 
-// Does not free pages
-#[derive(Debug)]
-pub struct SimpleFrameAllocator {
-    current: usize,
+pub type GlobalFrameAllocator = LinkedListFrameAllocator;
+pub static GLOBAL_FRAME_ALLOCATOR: OnceCell<Mutex<GlobalFrameAllocator>> = OnceCell::uninit();
+
+pub fn init_frame_alloc() {
+    GLOBAL_FRAME_ALLOCATOR.init_once(|| Mutex::new(GlobalFrameAllocator::new()));
 }
 
-impl SimpleFrameAllocator {
+pub fn get_frame_alloc<'a>() -> &'a Mutex<GlobalFrameAllocator> {
+    GLOBAL_FRAME_ALLOCATOR.get().unwrap()
+}
+
+pub struct LinkedListFrameAllocator {
+    head: *mut u64,
+    current_batch_end: usize,
+}
+
+impl LinkedListFrameAllocator {
     fn new() -> Self {
-        Self { current: 0 }
+        let initial = null_mut();
+        let mut alloc = Self {
+            head: initial,
+            current_batch_end: 0,
+        };
+        alloc.add_batch();
+        alloc
     }
 
-    // pub fn allocate_frames(
-    //     &mut self,
-    //     mut n: usize,
-    // ) -> impl Iterator<Item = PhysFrame<Size4KiB>> + use<'_> {
-    //     let mut frames = self.usable_frames();
-    //     frames.take_while(|_| {
-    //         if n > 0 {
-    //             self.current += 1;
-    //             n -= 1;
-    //             true
-    //         } else {
-    //             false
-    //         }
-    //     })
-    // }
-
-    fn usable_frames(&self) -> impl Iterator<Item = PhysFrame> {
+    fn add_batch(&mut self) {
         let usable_regions = usable_mmap_entries();
-        usable_regions
-            .map(|r| r.start..r.start + r.length)
+        let frames = usable_regions
+            .map(|r| {
+                align_up(r.start, Size4KiB::SIZE)..align_down(r.start + r.length, Size4KiB::SIZE)
+            })
             .flat_map(|r| r.step_by(4096))
-            .map(|r| PhysFrame::containing_address(PhysAddr::new(r)))
+            .map(|r| PhysFrame::<Size4KiB>::containing_address(PhysAddr::new(r)));
+
+        let next_batch = frames.skip(self.current_batch_end).take(10000);
+        for frame in next_batch {
+            unsafe {
+                self.deallocate_frame(frame);
+            }
+            self.current_batch_end += 1;
+        }
     }
 }
 
-unsafe impl FrameAllocator<Size4KiB> for SimpleFrameAllocator {
-    fn allocate_frame(&mut self) -> Option<PhysFrame<Size4KiB>> {
-        let r = self.usable_frames().nth(self.current);
-        self.current += 1;
-        r
-    }
-}
-
-impl FrameDeallocator<Size4KiB> for SimpleFrameAllocator {
+impl FrameDeallocator<Size4KiB> for LinkedListFrameAllocator {
     unsafe fn deallocate_frame(&mut self, frame: PhysFrame<Size4KiB>) {
-        //TODO
+        // write current head into frame and point head to frame
+
+        let addr = (frame.start_address().as_u64() + get_phys_offset()) as *mut u64;
+        unsafe { addr.write(self.head as u64) };
+        self.head = addr;
     }
 }
 
-// fn init_allocator() -> SimpleFrameAllocator {
-//     let usable_regions = usable_mmap_entries();
-//     let ranges = usable_regions
-//         .map(|r| r.start..r.start + r.length)
-//         .flat_map(|r| r.step_by(4096))
-//         .map(|r| PhysFrame::containing_address(PhysAddr::new(r)));
-//     SimpleFrameAllocator::new()
-// }
+unsafe impl FrameAllocator<Size4KiB> for LinkedListFrameAllocator {
+    fn allocate_frame(&mut self) -> Option<PhysFrame<Size4KiB>> {
+        // get current frame from head and update head to point to next
+        if self.head.is_null() {
+            self.add_batch();
+            if self.head.is_null() {
+                // tried to add more frames, but none are available
+                return None;
+            }
+        }
 
-// lazy_static!{
-//     static ref FRAME_MAP:
-// }
+        let next_head = unsafe { *self.head };
+        let current_phys = self.head as u64 - get_phys_offset();
+        self.head = next_head as *mut u64;
 
-lazy_static! {
-    // pub static ref GlobalFrameAllocator: Mutex<SimpleFrameAllocator> = Mutex::new(init_allocator());
-    pub static ref  GLOBAL_FRAME_ALLOCATOR: Mutex<SimpleFrameAllocator> = Mutex::new(SimpleFrameAllocator::new());
+        let frame = PhysFrame::containing_address(PhysAddr::new(current_phys));
+        unsafe {
+            core::ptr::write_bytes(
+                (frame.start_address().as_u64() + get_phys_offset()) as *mut u8,
+                0,
+                Size4KiB::SIZE as usize,
+            );
+        }
+        Some(frame)
+    }
 }
+
+unsafe impl Send for LinkedListFrameAllocator {}

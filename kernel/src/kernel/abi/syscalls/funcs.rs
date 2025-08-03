@@ -18,7 +18,7 @@ use crate::{
             tty::io::read_all, DeviceBuilder, FdEntry, FdEntryType, GraphicsTag, RawDeviceID, RawFdEntry
         },
         mem::{
-            align_up, heap::{MAX_USER_HEAP_SIZE, USER_HEAP_START}, paging::GLOBAL_FRAME_ALLOCATOR
+            align_up, heap::{MAX_USER_HEAP_SIZE, USER_HEAP_START}, paging::get_frame_alloc
         },
         threading::{
             self, schedule::{
@@ -147,7 +147,7 @@ pub fn sys_heap(size: usize) -> *mut u8 {
                 | PageTableFlags::WRITABLE;
 
     let mut pagedir = current.pagedir().unwrap().lock();
-    let mut alloc = GLOBAL_FRAME_ALLOCATOR.lock();
+    let mut alloc = get_frame_alloc().lock();
 
     for page in Page::range_inclusive(start_page, end_page) {
         if pagedir.table.translate_page(page).is_ok() {

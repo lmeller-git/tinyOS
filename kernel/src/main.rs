@@ -113,12 +113,10 @@ unsafe extern "C" fn kmain() -> ! {
             let serial: FdEntry<EDebugSinkTag> = DeviceBuilder::tty().serial();
             let serial2: FdEntry<StdOutTag> = DeviceBuilder::tty().serial();
             let keyboard: FdEntry<StdInTag> = DeviceBuilder::tty().keyboard();
-            // let gfx: FdEntry<GraphicsTag> = DeviceBuilder::gfx().simple();
             let gfx: FdEntry<GraphicsTag> = DeviceBuilder::gfx()
                 .blit_kernel(crate::arch::mem::VirtAddr::new(0xffff_ffff_f000_0000));
 
             devices.attach(fb);
-            // devices.attach(serial2);
             devices.attach(serial);
             devices.attach(keyboard);
             devices.attach(gfx);
@@ -139,6 +137,10 @@ extern "C" fn idle() -> usize {
     threading::finalize();
     serial_println!("threads finalized");
 
+    _ = add_named_ktask(graphics, "graphic drawer".into());
+    _ = add_named_ktask(listen, "term".into());
+    cross_println!("startup tasks started");
+
     let binaries: Vec<&'static [u8]> = get_binaries();
 
     serial_println!("adding {} user tasks", binaries.len());
@@ -153,9 +155,6 @@ extern "C" fn idle() -> usize {
     }
     serial_println!("{} user tasks added", binaries.len());
 
-    _ = add_named_ktask(graphics, "graphic drawer".into());
-    _ = add_named_ktask(listen, "term".into());
-    cross_println!("startup tasks started");
     get_scheduler().reschedule();
 
     loop {

@@ -15,7 +15,7 @@ use crate::{
     bootinfo,
     kernel::mem::heap::map_heap,
 };
-pub use alloc::GLOBAL_FRAME_ALLOCATOR;
+pub use alloc::{GlobalFrameAllocator, get_frame_alloc, init_frame_alloc};
 use lazy_static::lazy_static;
 pub use map::{kernel_map_region, user_map_region};
 use spin::Mutex;
@@ -44,7 +44,7 @@ pub struct TaskPageTable<'a> {
 }
 
 pub fn create_new_pagedir<'a, 'b>() -> Result<TaskPageTable<'b>, &'a str> {
-    let new_frame = GLOBAL_FRAME_ALLOCATOR
+    let new_frame = get_frame_alloc()
         .lock()
         .allocate_frame()
         .ok_or("no frame available")?;
@@ -84,5 +84,11 @@ pub fn create_new_pagedir<'a, 'b>() -> Result<TaskPageTable<'b>, &'a str> {
 impl Debug for TaskPageTable<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         Ok(())
+    }
+}
+
+impl Drop for TaskPageTable<'_> {
+    fn drop(&mut self) {
+        // unsafe { ManuallyDrop::drop(self.table) };
     }
 }

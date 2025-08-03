@@ -8,7 +8,7 @@ use crate::{
             Size4KiB, VirtAddr,
         },
     },
-    kernel::mem::paging::{GLOBAL_FRAME_ALLOCATOR, PAGETABLE, TaskPageTable},
+    kernel::mem::paging::{PAGETABLE, TaskPageTable, get_frame_alloc},
     serial_println,
 };
 use elf::endian::AnyEndian;
@@ -27,9 +27,9 @@ pub fn apply(
         mapper.map(table, get_pagetableflags(header.p_flags), &mut global_table);
 
         // SAFETY: This is safe, if we can ensure that interrupts will be restored upon ret
-        unsafe {
-            interrupt::disable();
-        }
+        // unsafe {
+        //     interrupt::disable();
+        // }
         copy_to_mem(
             &addr,
             &data[header.p_offset as usize..header.p_offset as usize + header.p_filesz as usize],
@@ -45,9 +45,9 @@ pub fn apply(
         serial_println!("zeroed");
         mapper.unmap(&mut global_table);
 
-        unsafe {
-            interrupt::enable();
-        }
+        // unsafe {
+        //     interrupt::enable();
+        // }
     }
     serial_println!("done");
     Ok(())
@@ -81,7 +81,7 @@ impl PageMapper {
     }
 
     fn map(&self, new: &mut TaskPageTable, flags: PageTableFlags, old: &mut OffsetPageTable<'_>) {
-        let mut alloc = GLOBAL_FRAME_ALLOCATOR.lock();
+        let mut alloc = get_frame_alloc().lock();
         for page in Page::range_inclusive(self.start, self.end) {
             // if new.table.translate_page(page).is_ok() {
             //     continue;

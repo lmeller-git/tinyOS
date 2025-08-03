@@ -1,10 +1,11 @@
 use core::marker::PhantomData;
 
+use crossbeam::queue::SegQueue;
 use thiserror::Error;
 
 use crate::{
     arch::{self, hcf},
-    kernel::threading::{self, task::TaskID},
+    kernel::threading::{self, task::TaskID, tls},
     locks::GKL,
     serial_println,
 };
@@ -12,15 +13,23 @@ use crate::{
 mod primitive;
 
 pub mod locks {
-    use crate::sync::{YieldWaiter, primitive::semaphore::StaticSemaphore};
+    use crate::sync::{WaitStrategy, YieldWaiter, primitive::semaphore::StaticSemaphore};
 
-    pub type Mutex<T> = lock_api::Mutex<StaticSemaphore<1, YieldWaiter>, T>;
-    pub type MutexGuard<'a, T> = lock_api::MutexGuard<'a, StaticSemaphore<1, YieldWaiter>, T>;
-    pub type RwLock<T> = lock_api::RwLock<StaticSemaphore<{ usize::MAX }, YieldWaiter>, T>;
-    pub type RwLockReadGuard<'a, T> =
-        lock_api::RwLockReadGuard<'a, StaticSemaphore<{ usize::MAX }, YieldWaiter>, T>;
-    pub type RwLockWriteGuard<'a, T> =
-        lock_api::RwLockWriteGuard<'a, StaticSemaphore<{ usize::MAX }, YieldWaiter>, T>;
+    pub type GenericMutex<T, S: WaitStrategy> = lock_api::Mutex<StaticSemaphore<1, S>, T>;
+    pub type GenericMutexGuard<'a, T, S: WaitStrategy> =
+        lock_api::MutexGuard<'a, StaticSemaphore<1, S>, T>;
+    pub type GenericRwLock<T, S: WaitStrategy> =
+        lock_api::RwLock<StaticSemaphore<{ usize::MAX }, S>, T>;
+    pub type GenericRwLockReadGuard<'a, T, S: WaitStrategy> =
+        lock_api::RwLockReadGuard<'a, StaticSemaphore<{ usize::MAX }, S>, T>;
+    pub type GenericRwLockWriteGuard<'a, T, S: WaitStrategy> =
+        lock_api::RwLockWriteGuard<'a, StaticSemaphore<{ usize::MAX }, S>, T>;
+
+    pub type Mutex<T> = GenericMutex<T, YieldWaiter>;
+    pub type MutexGuard<'a, T> = GenericMutexGuard<'a, T, YieldWaiter>;
+    pub type RwLock<T> = GenericRwLock<T, YieldWaiter>;
+    pub type RwLockReadGuard<'a, T> = GenericRwLockReadGuard<'a, T, YieldWaiter>;
+    pub type RwLockWriteGuard<'a, T> = GenericRwLockWriteGuard<'a, T, YieldWaiter>;
 }
 
 #[derive(Debug, Error, PartialEq, Eq, Clone)]
@@ -76,13 +85,35 @@ impl StatelessWaitStrategy for YieldWaiter {
     }
 }
 
+pub struct BlockingWaiter {
+    queue: SegQueue<TaskID>,
+}
+
+impl WaitStrategy for BlockingWaiter {
+    const INIT: Self = Self {
+        queue: SegQueue::new(),
+    };
+
+    fn wait(&self) {
+        self.queue.push(tls::task_data().current_pid());
+        tls::task_data().block(&tls::task_data().current_pid());
+        threading::yield_now();
+    }
+
+    fn signal(&self) {
+        if let Some(next) = self.queue.pop() {
+            tls::task_data().wake(&next);
+        }
+    }
+}
+
 #[cfg(feature = "test_run")]
 mod tests {
     use alloc::{sync::Arc, vec::Vec};
     use lock_api::RwLockWriteGuard;
     use os_macros::kernel_test;
 
-    use crate::serial_println;
+    use crate::{serial_println, sync::locks::GenericMutex};
 
     use super::*;
 
@@ -182,5 +213,31 @@ mod tests {
         for t in threads {
             assert!(t.wait().is_ok());
         }
+    }
+
+    #[kernel_test]
+    fn blocking() {
+        let lock: Arc<GenericMutex<i32, BlockingWaiter>> = Arc::new(GenericMutex::new(0));
+
+        let mut threads = Vec::new();
+
+        for _ in 0..5 {
+            threads.push({
+                let lock = lock.clone();
+                threading::spawn(move || {
+                    for _ in 0..10 {
+                        *lock.lock() += 10;
+                        threading::yield_now();
+                    }
+                })
+                .unwrap()
+            });
+        }
+
+        for t in threads {
+            assert!(t.wait().is_ok());
+        }
+
+        assert_eq!(*lock.lock(), 500);
     }
 }

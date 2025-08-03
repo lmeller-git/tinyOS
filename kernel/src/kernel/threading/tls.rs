@@ -14,6 +14,8 @@ use crate::{
 
 static GLOBAL_TASK_MANAGER: OnceCell<TaskManager> = OnceCell::uninit();
 
+// TODO Result instead of Option
+
 #[derive(Debug)]
 pub struct TaskManager {
     tasks: RwLock<BTreeMap<TaskID, GlobalTaskPtr>>,
@@ -116,12 +118,20 @@ impl TaskManager {
         Some(())
     }
 
-    pub fn block(&self, id: &TaskID) {
-        todo!()
+    pub fn block(&self, id: &TaskID) -> Option<()> {
+        let task = self.get(id)?;
+        if task.state() != TaskState::Zombie || task.state() == TaskState::Sleeping {
+            task.set_state(TaskState::Blocking);
+        }
+        Some(())
     }
 
-    pub fn wake(&self, id: &TaskID) {
-        todo!()
+    pub fn wake(&self, id: &TaskID) -> Option<()> {
+        let task = self.get(id)?;
+        if task.state() == TaskState::Blocking || task.state() == TaskState::Sleeping {
+            task.set_state(TaskState::Ready);
+        }
+        Some(())
     }
 }
 

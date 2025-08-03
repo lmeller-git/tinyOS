@@ -1,11 +1,18 @@
 use os_macros::kernel_test;
 
+use crate::{
+    kernel::mem::paging::{GlobalFrameAllocator, init_frame_alloc},
+    sync::locks::Mutex,
+};
+
 pub mod addr;
 pub mod alloc;
 pub mod heap;
 pub mod paging;
 
-pub fn init_paging() {}
+pub fn init_paging() {
+    init_frame_alloc();
+}
 
 pub fn init() {
     heap::init();

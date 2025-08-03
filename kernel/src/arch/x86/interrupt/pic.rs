@@ -138,7 +138,7 @@ impl acpi::AcpiHandler for Foo {
         let end_page: Page<Size4KiB> = Page::containing_address(virt_start + size as u64 - 1);
         {
             let mut mapper = crate::kernel::mem::paging::PAGETABLE.lock();
-            let mut frame_allocator = crate::kernel::mem::paging::GLOBAL_FRAME_ALLOCATOR.lock();
+            let mut frame_allocator = crate::kernel::mem::paging::get_frame_alloc().lock();
 
             for page in Page::range_inclusive(start_page, end_page) {
                 let frame = PhysFrame::containing_address(PhysAddr::new(
@@ -311,7 +311,7 @@ pub(super) fn init_apic() {
     // let phys_apic_base: u32 = acpi_table.find_table::<Madt>().unwrap().local_apic_address;
 
     let mut page_table = crate::kernel::mem::paging::PAGETABLE.lock();
-    let mut frame_allocator = crate::kernel::mem::paging::GLOBAL_FRAME_ALLOCATOR.lock();
+    let mut frame_allocator = crate::kernel::mem::paging::get_frame_alloc().lock();
     match platform_info.interrupt_model {
         acpi::InterruptModel::Apic(apic) => {
             let io_apic_addr = apic.io_apics[0].address;

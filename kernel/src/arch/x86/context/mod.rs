@@ -11,7 +11,7 @@ use crate::{
         },
     },
     kernel::{
-        mem::paging::{GLOBAL_FRAME_ALLOCATOR, PAGETABLE, TaskPageTable},
+        mem::paging::{PAGETABLE, TaskPageTable, get_frame_alloc},
         threading::{
             ThreadingError,
             task::{TaskData, TaskRepr},
@@ -567,11 +567,14 @@ pub fn allocate_kstack() -> Result<VirtAddr, ThreadingError> {
 
     {
         let mut mapper = PAGETABLE.lock();
-        let mut frame_allocator = GLOBAL_FRAME_ALLOCATOR.lock();
+        let mut frame_allocator = get_frame_alloc().lock();
 
         assert!(mapper.translate_page(start_page).is_err());
 
         for page in Page::range_inclusive(start_page, end_page) {
+            if mapper.translate_page(page).is_ok() {
+                continue;
+            }
             let frame = frame_allocator
                 .allocate_frame()
                 .ok_or(ThreadingError::StackNotBuilt)?;
@@ -598,7 +601,7 @@ pub fn free_kstack(top: VirtAddr) -> Result<(), ThreadingError> {
     let end_page = Page::containing_address(top);
     {
         let mut mapper = PAGETABLE.lock();
-        let mut frame_allocator = GLOBAL_FRAME_ALLOCATOR.lock();
+        let mut frame_allocator = get_frame_alloc().lock();
         for page in Page::range_inclusive(start_page, end_page) {
             let (frame, flush) = mapper
                 .unmap(page)
@@ -629,7 +632,7 @@ pub fn allocate_userstack(tbl: &mut TaskPageTable) -> Result<VirtAddr, Threading
 
     {
         let mapper = &mut tbl.table;
-        let mut frame_allocator = GLOBAL_FRAME_ALLOCATOR.lock();
+        let mut frame_allocator = get_frame_alloc().lock();
 
         assert!(mapper.translate_page(start_page).is_err());
 
@@ -663,7 +666,7 @@ pub fn copy_ustack_mappings_into(from: &TaskPageTable, into: &mut OffsetPageTabl
     let end_page: Page<Size4KiB> = Page::containing_address(end - 1);
 
     {
-        let mut frame_allocator = GLOBAL_FRAME_ALLOCATOR.lock();
+        let mut frame_allocator = get_frame_alloc().lock();
         for page in Page::range_inclusive(start_page, end_page) {
             unsafe {
                 let frame = from.table.translate_page(page).unwrap();
@@ -685,7 +688,9 @@ pub fn unmap_ustack_mappings(tbl: &mut OffsetPageTable) {
 
     {
         for page in Page::range_inclusive(start_page, end_page) {
-            tbl.unmap(page).unwrap().1.flush();
+            let (_frame, flush) = tbl.unmap(page).unwrap();
+            flush.flush();
+            // ignore frame, as the frame is still mapped in the users PageTable
         }
     }
 }
@@ -699,7 +704,7 @@ pub fn free_user_stack(top: VirtAddr, tbl: &mut TaskPageTable) -> Result<(), Thr
     let end_page = Page::containing_address(top);
     {
         let mapper = &mut tbl.table;
-        let mut frame_allocator = GLOBAL_FRAME_ALLOCATOR.lock();
+        let mut frame_allocator = get_frame_alloc().lock();
         for page in Page::range_inclusive(start_page, end_page) {
             let (frame, flush) = mapper
                 .unmap(page)

@@ -16,7 +16,7 @@ pub fn init() {
         Page::range_inclusive(heap_start_page, heap_end_page)
     };
     for page in page_range {
-        let mut allocator = paging::GLOBAL_FRAME_ALLOCATOR.lock();
+        let mut allocator = paging::get_frame_alloc().lock();
         let frame = allocator.allocate_frame().unwrap();
         let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
         unsafe {
@@ -41,7 +41,7 @@ pub fn map_heap(tbl: &mut crate::arch::mem::OffsetPageTable) {
     };
 
     let mapper = paging::PAGETABLE.lock();
-    let mut frame_allocator = paging::GLOBAL_FRAME_ALLOCATOR.lock();
+    let mut frame_allocator = paging::get_frame_alloc().lock();
     for page in page_range {
         let frame = mapper.translate_page(page).unwrap();
         unsafe {

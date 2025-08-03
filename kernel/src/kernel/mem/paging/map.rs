@@ -4,7 +4,7 @@ use x86_64::structures::paging::FrameAllocator;
 
 use crate::arch::mem::{Mapper, Page, PageSize, PageTableFlags, Size4KiB, VirtAddr};
 use crate::kernel::mem::addr::{PhysAddr as paddr, VirtAddr as vaddr};
-use crate::kernel::mem::paging::{GLOBAL_FRAME_ALLOCATOR, PAGETABLE};
+use crate::kernel::mem::paging::{PAGETABLE, get_frame_alloc};
 use crate::kernel::threading;
 use crate::kernel::threading::schedule::{current_task, with_current_task};
 use crate::kernel::threading::task::{PrivilegeLevel, TaskRepr};
@@ -41,7 +41,7 @@ fn map_region(start: VirtAddr, len: usize, flags: PageTableFlags) -> Result<(), 
     let end = Page::containing_address(end_addr);
     if !threading::is_running() || !flags.contains(PageTableFlags::USER_ACCESSIBLE) {
         let mut pagedir = PAGETABLE.lock();
-        let mut alloc = GLOBAL_FRAME_ALLOCATOR.lock();
+        let mut alloc = get_frame_alloc().lock();
         for page in Page::range_inclusive(start, end) {
             let frame = alloc
                 .allocate_frame()
@@ -53,7 +53,7 @@ fn map_region(start: VirtAddr, len: usize, flags: PageTableFlags) -> Result<(), 
         Ok(())
     } else {
         with_current_task(|task| {
-            let mut alloc = GLOBAL_FRAME_ALLOCATOR.lock();
+            let mut alloc = get_frame_alloc().lock();
             let mut pagedir = task.pagedir().unwrap().lock();
             for page in Page::range_inclusive(start, end) {
                 let frame = alloc
