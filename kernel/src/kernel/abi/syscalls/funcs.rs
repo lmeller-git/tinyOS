@@ -18,7 +18,7 @@ use crate::{
             tty::io::read_all, DeviceBuilder, FdEntry, FdEntryType, GraphicsTag, RawDeviceID, RawFdEntry
         },
         mem::{
-            align_up, heap::{MAX_USER_HEAP_SIZE, USER_HEAP_START}, paging::get_frame_alloc
+            align_up, heap::{MAX_USER_HEAP_SIZE, USER_HEAP_START}, paging::{get_frame_alloc, map_region}
         },
         threading::{
             self, schedule::{
@@ -138,28 +138,16 @@ pub fn sys_heap(size: usize) -> *mut u8 {
         return null_mut();
     }
     let base_addr = VirtAddr::new((USER_HEAP_START + current_size) as u64).align_up(Size4KiB::SIZE);
-    let end_addr = (base_addr + size as u64).align_up(Size4KiB::SIZE);
-    let start_page: Page<Size4KiB> = Page::containing_address(base_addr);
-    let end_page: Page<Size4KiB> = Page::containing_address(end_addr);
 
     let flags = PageTableFlags::PRESENT
                 | PageTableFlags::USER_ACCESSIBLE
                 | PageTableFlags::WRITABLE;
 
-    let mut pagedir = current.pagedir().unwrap().lock();
-    let mut alloc = get_frame_alloc().lock();
 
-    for page in Page::range_inclusive(start_page, end_page) {
-        if pagedir.table.translate_page(page).is_ok() {
-            continue;
-        }
-
-        let frame = alloc.allocate_frame().unwrap();
-
-        unsafe { pagedir.table.map_to(page, frame, flags, &mut *alloc) }
-            .unwrap()
-            .flush();
+    if map_region(base_addr, size, flags, &mut *current.pagedir().unwrap().lock().table).is_err() {
+        return null_mut();
     }
+    
     current.core.heap_size.fetch_add(size, Ordering::Relaxed);
     
     base_addr.as_mut_ptr()

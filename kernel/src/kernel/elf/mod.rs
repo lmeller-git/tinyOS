@@ -24,12 +24,12 @@ pub fn apply(
         let addr = VirtAddr::new(header.p_vaddr);
         let mapper = PageMapper::init(&addr, header.p_filesz);
         let mut global_table = PAGETABLE.lock();
-        mapper.map(table, get_pagetableflags(header.p_flags), &mut global_table);
 
         // SAFETY: This is safe, if we can ensure that interrupts will be restored upon ret
         // unsafe {
         //     interrupt::disable();
         // }
+        mapper.map(table, get_pagetableflags(header.p_flags), &mut global_table);
         copy_to_mem(
             &addr,
             &data[header.p_offset as usize..header.p_offset as usize + header.p_filesz as usize],

@@ -4,7 +4,6 @@
 #![feature(unsafe_cell_access)]
 #![feature(stmt_expr_attributes)]
 #![allow(
-    unused_imports,
     unreachable_code,
     unused_doc_comments,
     unused_variables,

@@ -11,7 +11,7 @@ use crate::{
         },
     },
     kernel::{
-        mem::paging::{PAGETABLE, TaskPageTable, get_frame_alloc},
+        mem::paging::{PAGETABLE, TaskPageTable, get_frame_alloc, map_region, unmap_region},
         threading::{
             ThreadingError,
             task::{TaskData, TaskRepr},
@@ -562,53 +562,31 @@ pub fn allocate_kstack() -> Result<VirtAddr, ThreadingError> {
     let start = (base + Size4KiB::SIZE).align_up(Size4KiB::SIZE);
     let end = (base + KSTACK_SIZE as u64).align_up(Size4KiB::SIZE);
 
-    let start_page = Page::containing_address(start);
-    let end_page = Page::containing_address(end - 1);
-
     {
-        let mut mapper = PAGETABLE.lock();
-        let mut frame_allocator = get_frame_alloc().lock();
-
-        assert!(mapper.translate_page(start_page).is_err());
-
-        for page in Page::range_inclusive(start_page, end_page) {
-            if mapper.translate_page(page).is_ok() {
-                continue;
-            }
-            let frame = frame_allocator
-                .allocate_frame()
-                .ok_or(ThreadingError::StackNotBuilt)?;
-            unsafe {
-                mapper
-                    .map_to(page, frame, flags, &mut *frame_allocator)
-                    .map_err(|_| ThreadingError::StackNotBuilt)?
-                    .flush();
-            };
-        }
-        assert!(mapper.translate_page(end_page).is_ok());
+        map_region(
+            start,
+            (end - start) as usize - 1,
+            flags,
+            &mut *PAGETABLE.lock(),
+        )
+        .map_err(|_| ThreadingError::StackNotBuilt)?;
     }
     let stack_top = VirtAddr::new((end.as_u64() - 8) & !0xF);
     Ok(stack_top)
 }
 
 pub fn free_kstack(top: VirtAddr) -> Result<(), ThreadingError> {
-    //TODO
     // assuming top is a properly aligned addr in the correct region
     let start = (top + 1 - KSTACK_SIZE as u64).align_up(Size4KiB::SIZE);
     let idx = (start - KSTACK_AREA_START) as usize / KSTACK_SIZE;
 
-    let start_page = Page::containing_address((start + Size4KiB::SIZE).align_up(Size4KiB::SIZE));
-    let end_page = Page::containing_address(top);
     {
-        let mut mapper = PAGETABLE.lock();
-        let mut frame_allocator = get_frame_alloc().lock();
-        for page in Page::range_inclusive(start_page, end_page) {
-            let (frame, flush) = mapper
-                .unmap(page)
-                .map_err(|_| ThreadingError::StackNotFreed)?;
-            flush.flush();
-            unsafe { frame_allocator.deallocate_frame(frame) };
-        }
+        unmap_region(
+            (start + Size4KiB::SIZE).align_up(Size4KiB::SIZE),
+            (top - start) as usize,
+            &mut *PAGETABLE.lock(),
+        )
+        .map_err(|_| ThreadingError::StackNotFreed)?;
     }
     *KSTACKS_IN_USAGE
         .lock()
@@ -626,28 +604,10 @@ pub fn allocate_userstack(tbl: &mut TaskPageTable) -> Result<VirtAddr, Threading
     let base = USER_STACK_START.align_up(Size4KiB::SIZE);
     let start = (base + Size4KiB::SIZE).align_up(Size4KiB::SIZE);
     let end = (base + USER_STACK_SIZE as u64).align_up(Size4KiB::SIZE);
-
-    let start_page = Page::containing_address(start);
-    let end_page = Page::containing_address(end - 1);
-
     {
         let mapper = &mut tbl.table;
-        let mut frame_allocator = get_frame_alloc().lock();
-
-        assert!(mapper.translate_page(start_page).is_err());
-
-        for page in Page::range_inclusive(start_page, end_page) {
-            let frame = frame_allocator
-                .allocate_frame()
-                .ok_or(ThreadingError::StackNotBuilt)?;
-            unsafe {
-                mapper
-                    .map_to(page, frame, flags, &mut *frame_allocator)
-                    .map_err(|_| ThreadingError::StackNotBuilt)?
-                    .flush();
-            }
-        }
-        assert!(mapper.translate_page(end_page).is_ok());
+        map_region(start, (end - start) as usize - 1, flags, &mut *tbl.table)
+            .map_err(|_| ThreadingError::StackNotBuilt)?;
     }
 
     let stack_top = VirtAddr::new((end.as_u64() - 8) & !0xF);
@@ -696,22 +656,13 @@ pub fn unmap_ustack_mappings(tbl: &mut OffsetPageTable) {
 }
 
 pub fn free_user_stack(top: VirtAddr, tbl: &mut TaskPageTable) -> Result<(), ThreadingError> {
-    //TODO
-    // assuming top is a properly aligned addr in the correct region
+    // assuming top is at the very top of the user stack
     let start = (top + 1 - USER_STACK_SIZE as u64).align_up(Size4KiB::SIZE);
 
-    let start_page = Page::containing_address((start + Size4KiB::SIZE).align_up(Size4KiB::SIZE));
-    let end_page = Page::containing_address(top);
-    {
-        let mapper = &mut tbl.table;
-        let mut frame_allocator = get_frame_alloc().lock();
-        for page in Page::range_inclusive(start_page, end_page) {
-            let (frame, flush) = mapper
-                .unmap(page)
-                .map_err(|_| ThreadingError::StackNotFreed)?;
-            flush.flush();
-            unsafe { frame_allocator.deallocate_frame(frame) };
-        }
-    }
-    Ok(())
+    unmap_region(
+        (start + Size4KiB::SIZE).align_up(Size4KiB::SIZE),
+        (top - start) as usize,
+        &mut *tbl.table,
+    )
+    .map_err(|_| ThreadingError::StackNotFreed)
 }
