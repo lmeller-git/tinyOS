@@ -9,11 +9,12 @@ override USER_VARIABLE = $(if $(filter $(origin $(1)),default undefined),$(eval 
 $(call USER_VARIABLE,KARCH,x86_64)
 
 # Default user QEMU flags. These are appended to the QEMU command calls.
-$(call USER_VARIABLE,QEMUFLAGS,-m 12G)
+$(call USER_VARIABLE,QEMUFLAGS,-m 4G -smp 2)
+
+$(call USER_VARIABLE,CARGO_FLAgS,)
 
 IMAGE_NAME ?= tiny_os-$(KARCH)
 CARGO_TARGET_DIR ?= target/
-CARGO_FLAGS ?=
 RUST_PROFILE ?= dev
 KERNEL_BIN ?= kernel
 QEMU_WRAPPER = ./run_qemu.sh

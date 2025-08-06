@@ -3,6 +3,7 @@
 use x86_64::registers::control::{Cr4, Cr4Flags};
 
 pub mod context;
+pub mod cpu;
 pub mod interrupt;
 pub mod mem;
 pub mod serial;

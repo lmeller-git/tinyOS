@@ -1,5 +1,3 @@
-//TODO
-
 use core::ptr::null_mut;
 
 use conquer_once::spin::OnceCell;
@@ -55,7 +53,7 @@ impl LinkedListFrameAllocator {
             .flat_map(|r| r.step_by(4096))
             .map(|r| PhysFrame::<Size4KiB>::containing_address(PhysAddr::new(r)));
 
-        let next_batch = frames.skip(self.current_batch_end).take(10000);
+        let next_batch = frames.skip(self.current_batch_end).take(20000); // 20000 * 4KiB = 8MiB
         for frame in next_batch {
             unsafe {
                 self.deallocate_frame(frame);

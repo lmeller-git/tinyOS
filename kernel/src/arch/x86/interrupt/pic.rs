@@ -1,12 +1,12 @@
-use core::ptr::NonNull;
+use core::{hint::spin_loop, ptr::NonNull};
 
-use acpi::AcpiTables;
+use acpi::{AcpiTables, platform::ProcessorState};
 use lazy_static::lazy_static;
 use spin::Mutex;
 use x86_64::instructions::port::Port;
 
 use super::idt::InterruptIndex;
-use crate::{arch::x86::mem::*, bootinfo, println};
+use crate::{arch::x86::mem::*, bootinfo, println, serial_println};
 
 lazy_static! {
     pub static ref LAPIC_ADDR: Mutex<LAPICAddress> = Mutex::new(LAPICAddress::new()); // Needs to be initialized
@@ -102,30 +102,6 @@ pub enum APICOffset {
 #[derive(Clone)]
 struct Foo;
 
-// impl AcpiHandler for Foo {
-//     #[allow(unsafe_op_in_unsafe_fn)]
-//     unsafe fn map_physical_region<T>(
-//         &self,
-//         physical_address: usize,
-//         size: usize,
-//     ) -> PhysicalMapping<Self, T> {
-//         let phys_addr = PhysAddr::new(physical_address as u64);
-//         let virt_addr = VirtAddr::new(bootinfo::get_phys_offset() + phys_addr.as_u64());
-
-//         PhysicalMapping::new(
-//             physical_address,
-//             NonNull::new(virt_addr.as_mut_ptr()).expect("Failed to get virtual address"),
-//             size,
-//             size,
-//             self.clone(),
-//         )
-//     }
-
-//     fn unmap_physical_region<T>(_region: &PhysicalMapping<Self, T>) {
-//         // No unmapping necessary as we didn't create any new mappings
-//     }
-// }
-
 impl acpi::AcpiHandler for Foo {
     unsafe fn map_physical_region<T>(
         &self,
@@ -135,6 +111,7 @@ impl acpi::AcpiHandler for Foo {
         let phys_start = PhysAddr::new(physical_address as u64);
         let virt_start =
             VirtAddr::new(physical_address as u64 + crate::bootinfo::get_phys_offset());
+        let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE;
 
         let start_page: Page<Size4KiB> = Page::containing_address(virt_start);
         let end_page: Page<Size4KiB> = Page::containing_address(virt_start + size as u64 - 1);
@@ -146,8 +123,6 @@ impl acpi::AcpiHandler for Foo {
                 let frame = PhysFrame::containing_address(PhysAddr::new(
                     page.start_address().as_u64() - crate::bootinfo::get_phys_offset(),
                 ));
-                let flags =
-                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE;
 
                 // if mapper.translate_page(page).is_ok() {
                 //     continue;
@@ -198,6 +173,11 @@ fn map_no_cache(
     let page = Page::containing_address(VirtAddr::new(
         physical_address.as_u64() + bootinfo::get_phys_offset(),
     ));
+
+    if mapper.translate_page(page).is_ok() {
+        return page.start_address();
+    }
+
     let frame = PhysFrame::containing_address(physical_address);
 
     let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE;
@@ -210,6 +190,16 @@ fn map_no_cache(
     }
 
     page.start_address()
+}
+
+fn unmap(physical_address: u64, mapper: &mut impl Mapper<Size4KiB>) {
+    let physical_address = PhysAddr::new(physical_address);
+    let page = Page::containing_address(VirtAddr::new(
+        physical_address.as_u64() + bootinfo::get_phys_offset(),
+    ));
+    unsafe {
+        mapper.unmap(page).unwrap().1.flush();
+    }
 }
 
 #[allow(unsafe_op_in_unsafe_fn)]
@@ -301,16 +291,120 @@ fn disable_pic() {
     }
 }
 
+fn init_ap(apic_id: u32) {
+    let lapic_base = LAPIC_ADDR.lock().address;
+
+    unsafe {
+        // clear APIC errors
+        lapic_base
+            .offset(APICOffset::Esr as isize / 4)
+            .write_volatile(0);
+
+        // select AP
+        let icr_high = lapic_base
+            .offset(APICOffset::Icr2 as isize / 4)
+            .read_volatile()
+            | (apic_id << 24);
+        lapic_base
+            .offset(APICOffset::Icr2 as isize / 4)
+            .write_volatile(icr_high);
+
+        // trigger init IPI
+        let icr_low = (lapic_base
+            .offset(APICOffset::Icr1 as isize / 4)
+            .read_volatile()
+            & 0xfff00000)
+            | 0x00C500;
+        lapic_base
+            .offset(APICOffset::Icr1 as isize / 4)
+            .write_volatile(icr_low);
+
+        // wait for delivery
+        while lapic_base
+            .offset(APICOffset::Icr1 as isize / 4)
+            .read_volatile()
+            & (1 << 12)
+            != 0
+        {
+            spin_loop();
+        }
+
+        // select AP
+        let icr_high = lapic_base
+            .offset(APICOffset::Icr2 as isize / 4)
+            .read_volatile()
+            | (apic_id << 24);
+        lapic_base
+            .offset(APICOffset::Icr2 as isize / 4)
+            .write_volatile(icr_high);
+
+        // deassert
+        let icr_low = lapic_base
+            .offset(APICOffset::Icr1 as isize / 4)
+            .read_volatile()
+            & 0xfff00000
+            | 0x008500;
+        lapic_base
+            .offset(APICOffset::Icr1 as isize / 4)
+            .write_volatile(icr_low);
+
+        // wait for delivery
+        while lapic_base
+            .offset(APICOffset::Icr1 as isize / 4)
+            .read_volatile()
+            & (1 << 12)
+            != 0
+        {
+            spin_loop();
+        }
+
+        // send STARTUP IPI twice
+        for _ in 0..2 {
+            // clear APIC errors
+            lapic_base
+                .offset(APICOffset::Esr as isize / 4)
+                .write_volatile(0);
+
+            // select AP
+            let icr_high = lapic_base
+                .offset(APICOffset::Icr2 as isize / 4)
+                .read_volatile()
+                | (apic_id << 24);
+            lapic_base
+                .offset(APICOffset::Icr2 as isize / 4)
+                .write_volatile(icr_high);
+
+            // trigger STARTUP IPI at 0x8000
+            let icr_low = lapic_base
+                .offset(APICOffset::Icr1 as isize / 4)
+                .read_volatile()
+                & 0xfff0f800
+                | 0x000608;
+            lapic_base
+                .offset(APICOffset::Icr1 as isize / 4)
+                .write_volatile(icr_low);
+
+            // TODO wait for a bit
+            for _ in 0..2000 {
+                spin_loop();
+            }
+
+            while lapic_base
+                .offset(APICOffset::Icr1 as isize / 4)
+                .read_volatile()
+                & (1 << 12)
+                != 0
+            {
+                spin_loop();
+            }
+        }
+    }
+}
+
 pub(super) fn init_apic() {
-    //-> acpi::PhysicalMapping<Foo, Madt> {
-    println!("initig");
     let handler = Foo;
     let acpi_table = unsafe { AcpiTables::from_rsdp(handler, bootinfo::rdsp_addr()).unwrap() };
-    println!("acpi parsed 0");
     let platform_info = acpi_table.platform_info().unwrap();
-    println!("acpi parsed");
-
-    // let phys_apic_base: u32 = acpi_table.find_table::<Madt>().unwrap().local_apic_address;
 
     let mut page_table = crate::kernel::mem::paging::PAGETABLE.lock();
     let mut frame_allocator = crate::kernel::mem::paging::get_frame_alloc().lock();
@@ -324,11 +418,9 @@ pub(super) fn init_apic() {
                     &mut *frame_allocator,
                 );
             };
-            println!("io init");
+            println!("IOAPIC init");
 
             let local_apic_addr = apic.local_apic_address;
-            // cross_println!("addr loc: {:#?}", local_apic_addr as *const u32);
-            // cross_println!("phys: {:#?}", bootinfo::get_phys_offset() as *const u32);
             unsafe {
                 init_local_apic(
                     local_apic_addr as usize,
@@ -336,7 +428,20 @@ pub(super) fn init_apic() {
                     &mut *frame_allocator,
                 )
             };
-            println!("local init");
+            println!("LAPIC init");
+
+            let processor_info = platform_info.processor_info.unwrap();
+            serial_println!(
+                "detected {} aps",
+                processor_info.application_processors.len()
+            );
+            for ap in processor_info.application_processors.iter() {
+                if ap.state == ProcessorState::Disabled || ap.state == ProcessorState::Running {
+                    continue;
+                }
+                init_ap(ap.local_apic_id);
+            }
+            serial_println!("all APs started");
         }
         acpi::InterruptModel::Unknown => {
             todo!()
@@ -346,15 +451,12 @@ pub(super) fn init_apic() {
         }
     }
     disable_pic();
-    // let t = acpi_table.find_table::<Madt>().unwrap();
-    // t
 }
 
 #[unsafe(no_mangle)]
 pub fn end_interrupt() {
     unsafe {
         let lapic_ptr = LAPIC_ADDR.lock().address;
-        // serial_println!("addr: {:#?}", lapic_ptr);
         lapic_ptr
             .offset(APICOffset::Eoi as isize / 4)
             .write_volatile(0);

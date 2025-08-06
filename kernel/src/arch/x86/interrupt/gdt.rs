@@ -11,7 +11,7 @@ use crate::arch::x86::mem::VirtAddr;
 
 pub(super) const DOUBLE_FAULT_IST_INDEX: u16 = 0;
 
-struct Selectors {
+pub(in crate::arch) struct Selectors {
     code_selector: SegmentSelector,
     data_selector: SegmentSelector,
     tss_selector: SegmentSelector,
@@ -19,9 +19,9 @@ struct Selectors {
     user_data_selector: SegmentSelector,
 }
 
-static TSS: OnceCell<Mutex<TaskStateSegment>> = OnceCell::uninit();
+pub(in crate::arch) static TSS: OnceCell<Mutex<TaskStateSegment>> = OnceCell::uninit();
 
-static GDT: OnceCell<(GlobalDescriptorTable, Selectors)> = OnceCell::uninit();
+pub(in crate::arch) static GDT: OnceCell<(GlobalDescriptorTable, Selectors)> = OnceCell::uninit();
 
 pub fn init_tss() -> &'static TaskStateSegment {
     TSS.init_once(|| {
