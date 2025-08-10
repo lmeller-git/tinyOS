@@ -3,20 +3,13 @@ use core::{arch::global_asm, ptr::null_mut, sync::atomic::Ordering};
 use super::SysRetCode;
 use crate::{
     arch::{interrupt::gdt::get_kernel_selectors, mem::VirtAddr},
-    drivers::graphics::{
-        GLOBAL_FRAMEBUFFER,
-        framebuffers::{BoundingBox, FrameBuffer, get_config},
-    },
+    drivers::{graphics::{
+        framebuffers::{get_config, BoundingBox, FrameBuffer}, GLOBAL_FRAMEBUFFER
+    }, keyboard::wait_for_input},
     get_device,
     kernel::{
         devices::{
-            DeviceBuilder,
-            FdEntry,
-            FdEntryType,
-            GraphicsTag,
-            RawDeviceID,
-            RawFdEntry,
-            tty::io::read_all,
+            tty::io::read_all, DeviceBuilder, FdEntry, FdEntryType, GraphicsTag, RawDeviceID, RawFdEntry
         },
         mem::{
             heap::{MAX_USER_HEAP_SIZE, USER_HEAP_START},
@@ -120,11 +113,19 @@ pub fn sys_read(device_type: usize, buf: *mut u8, len: usize) -> isize {
     // -2: no device available or device type not writeable
     // -3: device list cannot be accessed??
     // currently defaults to StdIn and ignores device_type
+    // reads up to len bytes from stdin and will block until stdin contains at least one byte
     let Ok(entry_type) = FdEntryType::try_from(device_type) else {
         return -1;
     };
     let bytes = unsafe { &mut *core::ptr::slice_from_raw_parts_mut(buf, len) };
-    read_all(bytes) as isize
+    loop {
+         let r = read_all(bytes);
+         if r == 0  {
+             wait_for_input();
+         } else {
+             return r as isize;
+         }
+    }
 }
 
 pub fn sys_heap(size: usize) -> *mut u8 {

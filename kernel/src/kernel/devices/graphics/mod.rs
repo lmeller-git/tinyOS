@@ -238,7 +238,7 @@ where
     T: BlitTarget,
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        todo!()
+        writeln!(f, "BlitManager")
     }
 }
 

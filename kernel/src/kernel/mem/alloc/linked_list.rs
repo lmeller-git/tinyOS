@@ -5,20 +5,20 @@ use core::{
 
 use linked_list_allocator::Heap;
 
-use crate::sync::locks::Mutex;
+use crate::sync::{YieldWaiter, locks::GenericMutex};
 
 pub(super) const fn get_alloc() -> SafeHeap {
     SafeHeap::new()
 }
 
 pub struct SafeHeap {
-    inner: Mutex<Heap>,
+    inner: GenericMutex<Heap, YieldWaiter>,
 }
 
 impl SafeHeap {
     pub const fn new() -> Self {
         Self {
-            inner: Mutex::new(Heap::empty()),
+            inner: GenericMutex::new(Heap::empty()),
         }
     }
 

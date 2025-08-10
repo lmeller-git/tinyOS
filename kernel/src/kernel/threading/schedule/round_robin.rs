@@ -1,4 +1,5 @@
 use alloc::collections::vec_deque::VecDeque;
+use core::fmt::Debug;
 
 use crate::{
     arch::interrupt,
@@ -8,12 +9,12 @@ use crate::{
         tls,
     },
     serial_println,
-    sync::{self},
+    sync::{self, NoBlock},
 };
 
 #[derive(Debug)]
 pub struct LazyRoundRobin {
-    queue: sync::locks::Mutex<VecDeque<TaskID>>,
+    queue: sync::locks::GenericMutex<VecDeque<TaskID>, NoBlock>,
 }
 
 impl LazyRoundRobin {
@@ -28,7 +29,7 @@ impl LazyRoundRobin {
 impl Scheduler for LazyRoundRobin {
     fn new() -> Self {
         Self {
-            queue: sync::locks::Mutex::new(VecDeque::new()),
+            queue: sync::locks::GenericMutex::new(VecDeque::new()),
         }
     }
 

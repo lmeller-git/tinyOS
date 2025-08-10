@@ -1,13 +1,16 @@
-use pc_keyboard::{HandleControl, Keyboard, ScancodeSet1, layouts};
+use pc_keyboard::{HandleControl, Keyboard, KeyboardLayout, ScancodeSet1, layouts};
 
 use super::KeyboardError;
+use crate::sync::locks::Mutex;
+
+pub static KEYBOARD: Mutex<Keyboard<layouts::Us104Key, ScancodeSet1>> = Mutex::new(Keyboard::new(
+    ScancodeSet1::new(),
+    layouts::Us104Key,
+    HandleControl::Ignore,
+));
 
 pub fn parse_scancode(scancode: u8) -> Result<pc_keyboard::DecodedKey, KeyboardError> {
-    let mut keyboard = Keyboard::new(
-        ScancodeSet1::new(),
-        layouts::Us104Key,
-        HandleControl::Ignore,
-    );
+    let mut keyboard = KEYBOARD.lock();
     if let Some(res) = keyboard.add_byte(scancode)? {
         if let Some(res) = keyboard.process_keyevent(res) {
             return Ok(res);

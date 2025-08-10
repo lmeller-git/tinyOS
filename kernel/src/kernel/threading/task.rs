@@ -43,6 +43,7 @@ pub trait TaskRepr: Debug {
     fn state_data(&self) -> &Mutex<TaskStateData>;
     fn name(&self) -> Option<&str>;
     fn exit_info(&self) -> &TaskExitInfo;
+    fn kstack_top(&self) -> &VirtAddr;
 }
 
 #[repr(u8)]
@@ -70,6 +71,7 @@ pub struct TaskCore {
     pub state: AtomicU8,
     pub privilege: PrivilegeLevel,
     pub pid: TaskID,
+    pub kernel_stack_top: VirtAddr,
     _private: PhantomData<()>,
 }
 
@@ -102,6 +104,7 @@ impl TaskCore {
             exit_info: Box::pin(TaskExitInfo::default()),
             state: (TaskState::default() as u8).into(),
             privilege: PrivilegeLevel::default(),
+            kernel_stack_top: VirtAddr::zero(),
             _private: PhantomData,
         }
     }
@@ -145,11 +148,11 @@ impl TaskRepr for Task {
     }
 
     fn state(&self) -> TaskState {
-        self.core.state.load(Ordering::Relaxed).into()
+        self.core.state.load(Ordering::Acquire).into()
     }
 
     fn set_state(&self, state: TaskState) {
-        self.core.state.store(state as u8, Ordering::Relaxed);
+        self.core.state.store(state as u8, Ordering::Release);
     }
 
     fn state_data(&self) -> &Mutex<TaskStateData> {
@@ -162,6 +165,10 @@ impl TaskRepr for Task {
 
     fn exit_info(&self) -> &TaskExitInfo {
         self.core.exit_info.as_ref().get_ref()
+    }
+
+    fn kstack_top(&self) -> &VirtAddr {
+        &self.core.kernel_stack_top
     }
 }
 
@@ -399,6 +406,7 @@ impl TaskBuilder<Task, Init<'_>> {
             .core
             .krsp
             .store(stack_top.as_u64(), Ordering::Relaxed);
+        self.inner.core.kernel_stack_top = stack_top;
         self.inner.core.privilege = PrivilegeLevel::Kernel;
         let info = KTaskInfo::new(
             self.entry,
@@ -424,6 +432,7 @@ impl TaskBuilder<Task, Init<'_>> {
             .core
             .krsp
             .store(kstack.as_u64(), Ordering::Relaxed);
+        self.inner.core.kernel_stack_top = kstack;
         self.inner.core.privilege = PrivilegeLevel::User;
 
         if let Some(data) = self._marker.elf_data {

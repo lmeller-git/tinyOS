@@ -1,9 +1,12 @@
 use alloc::format;
 use core::fmt::Arguments;
 
+use pc_keyboard::DecodedKey;
+
 use super::TTYSink;
 use crate::{
     arch::{self, interrupt},
+    drivers::keyboard::parse_scancode,
     get_device,
     kernel::{
         devices::{FdEntryType, RawFdEntry},
@@ -55,29 +58,21 @@ pub fn __serial_stub(input: Arguments) {
     } else {
         arch::_serial_print(input);
     }
-    // if threading::is_running() && interrupt::are_enabled() {
-    //     let backend = SERIALBACKEND.get_or_init(SerialBackend::new);
-    //     backend.write(format!("{}", input).as_bytes());
-    //     backend.flush();
-    // } else if !interrupt::are_enabled() {
-    //     // the following two MUST NOT ALLOCATE/LOCK (currently they do lock)
-    //     arch::_serial_print(input);
-    // } else {
-    //     arch::_serial_print(input);
-    // }
 }
 
 pub fn read_all(buf: &mut [u8]) -> usize {
     let mut n_read = 0;
     get_device!(FdEntryType::StdIn, RawFdEntry::TTYSource(id, source) => {
-    for i in 0.. buf.len() {
-        if let Some(val) = source.read() {
-            buf[i] = val;
-            n_read += 1;
-        } else {
-            break;
-        }
-    }
-       });
+     while let Some(next) = source.read()
+         && let Ok(res) = parse_scancode(next)
+         && let DecodedKey::Unicode(c) = res
+         && c.len_utf8() <= buf.len() {
+             let len = c.len_utf8();
+             c.encode_utf8(buf);
+             let buf = &mut buf[len..];
+             n_read += len;
+
+     }
+    });
     n_read
 }

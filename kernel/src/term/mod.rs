@@ -8,7 +8,7 @@ use render::BasicTermRender;
 use crate::{
     drivers::{
         graphics::{GLOBAL_FRAMEBUFFER, framebuffers::GlobalFrameBuffer},
-        keyboard::parse_scancode,
+        keyboard::{parse_scancode, wait_for_input},
     },
     kernel::devices::tty::io::read_all,
     print,
@@ -61,20 +61,16 @@ pub fn synced_keyboard_listener() {
     let mut buf = [0; 20];
     loop {
         let n_read = read_all(&mut buf);
-        for read in buf[..n_read].iter() {
-            if let Ok(res) = parse_scancode(*read) {
-                match res {
-                    pc_keyboard::DecodedKey::RawKey(_k) => {}
-                    pc_keyboard::DecodedKey::Unicode(c) => match c {
-                        '\u{08}' => unsafe {
-                            FOOBAR.get_unchecked().lock().clear_one();
-                        },
-                        _ => print!("{}", c),
-                    },
-                }
+        for c in str::from_utf8(&buf[..n_read]).unwrap().chars() {
+            match c {
+                '\u{08}' => unsafe {
+                    FOOBAR.get_unchecked().lock().clear_one();
+                },
+                c => print!("{}", c),
             }
         }
-        crate::arch::hlt();
+        wait_for_input();
+        // crate::arch::hlt();
     }
 }
 

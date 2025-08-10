@@ -1,11 +1,14 @@
 use alloc::collections::{btree_map::BTreeMap, vec_deque::VecDeque};
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::{
+    fmt::Debug,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use conquer_once::spin::OnceCell;
 
 use crate::{
     kernel::threading::{
-        schedule::GlobalTaskPtr,
+        schedule::{GlobalTaskPtr, Scheduler, get_scheduler},
         task::{ExitInfo, TaskID, TaskRepr, TaskState, TaskStateData},
     },
     sync::locks::{Mutex, RwLock},
@@ -74,6 +77,7 @@ impl TaskManager {
             }
         }
 
+        drop(tasks);
         // cleanup zombies and remove them from self.tasks
         while let Some(zombie) = self.zombies.lock().pop_front() {
             let Some(task) = self.tasks.write().remove(&zombie) else {
@@ -119,7 +123,7 @@ impl TaskManager {
 
     pub fn block(&self, id: &TaskID) -> Option<()> {
         let task = self.get(id)?;
-        if task.state() != TaskState::Zombie || task.state() == TaskState::Sleeping {
+        if task.state() != TaskState::Zombie && task.state() != TaskState::Sleeping {
             task.set_state(TaskState::Blocking);
         }
         Some(())

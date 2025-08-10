@@ -77,6 +77,7 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
             sys_gfx_config(args.first() as *mut GFXConfig);
             SysRetCode::Success
         }
+        10 => SysRetCode::Success, // No action
         _ => SysRetCode::Unknown,
     };
 

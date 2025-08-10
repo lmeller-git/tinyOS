@@ -80,6 +80,8 @@ pub fn current_task() -> Result<GlobalTaskPtr, ThreadingError> {
 #[allow(unsafe_op_in_unsafe_fn, dropping_references, dropping_copy_types)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn context_switch_local(rsp: u64) {
+    // heart of context switching logic. Here we get the next task to run, initialize task_data and scheduler and switch.
+    // WE CANNOT BLOCK HERE
     #[cfg(feature = "gkl")]
     if GKL.is_locked() {
         return;
@@ -111,11 +113,12 @@ pub unsafe extern "C" fn context_switch_local(rsp: u64) {
 
     let ptr = TaskState::from_task(next_task.as_ref());
 
+    set_tss_kstack(*next_task.kstack_top());
+
     drop(next_task);
     drop(next);
     drop(current);
     drop(task_data);
-    set_tss_kstack(VirtAddr::new(ptr.rsp));
 
     switch_and_apply(ptr);
     unreachable!()

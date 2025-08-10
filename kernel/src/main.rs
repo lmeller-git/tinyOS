@@ -12,12 +12,15 @@ extern crate alloc;
 extern crate tiny_os;
 
 use alloc::vec::Vec;
+use core::hint::spin_loop;
 
 use embedded_graphics::{prelude::Dimensions, primitives::PrimitiveStyle};
 use os_macros::with_default_args;
 use tiny_os::{
-    arch,
-    arch::{interrupt, interrupt::enable_threading_interrupts},
+    arch::{
+        self,
+        interrupt::{self, enable_threading_interrupts},
+    },
     bootinfo,
     cross_println,
     drivers::{
@@ -27,8 +30,8 @@ use tiny_os::{
     eprintln,
     get_device,
     include_bins::get_binaries,
-    kernel,
     kernel::{
+        self,
         abi::syscalls::funcs::{sys_exit, sys_write},
         devices::{
             DeviceBuilder,
@@ -41,11 +44,10 @@ use tiny_os::{
             StdInTag,
             StdOutTag,
         },
-        threading,
         threading::{
-            schedule,
-            schedule::{Scheduler, add_named_ktask, current_task, get_scheduler},
-            task::TaskBuilder,
+            self,
+            schedule::{self, Scheduler, add_named_ktask, current_task, get_scheduler},
+            task::{TaskBuilder, TaskRepr},
             tls,
         },
     },
@@ -108,7 +110,7 @@ extern "C" fn idle() -> usize {
     _ = add_named_ktask(listen, "term".into());
     cross_println!("startup tasks started");
 
-    let binaries: Vec<&'static [u8]> = get_binaries();
+    let mut binaries: Vec<&'static [u8]> = get_binaries();
 
     serial_println!("adding {} user tasks", binaries.len());
     for bin in &binaries {
@@ -118,6 +120,7 @@ extern "C" fn idle() -> usize {
             .as_usr()
             .unwrap()
             .build();
+        serial_println!("task {:?} added", task.pid());
         schedule::add_built_task(task);
     }
     serial_println!("{} user tasks added", binaries.len());
@@ -133,6 +136,7 @@ extern "C" fn idle() -> usize {
         scheduler.reschedule();
         threading::yield_now();
     }
+    unreachable!()
 }
 
 #[with_default_args]
@@ -181,7 +185,11 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
         "unrecoverable error in task {:?}",
         tls::task_data().current_pid()
     );
-    eprintln!("{:#?}, {}", info, interrupt::are_enabled());
+    eprintln!(
+        "{:#?}, interrupts are currently enabled: {}",
+        info,
+        interrupt::are_enabled()
+    );
     #[cfg(feature = "gkl")]
     {
         if GKL.is_locked() {
