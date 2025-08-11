@@ -416,6 +416,7 @@ where
             }
             '\t' => self.write_tab(),
             '\r' => self.line_clear(),
+            '\u{08}' => self.clear_one(),
             _ => {
                 match self.buffer.force_push_smart(c, &mut self.cursor) {
                     Err(PositionError::NewLine) => {

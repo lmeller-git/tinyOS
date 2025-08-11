@@ -79,6 +79,7 @@ pub fn get_next() -> u8 {
     }
 }
 
+// TODO write a more general blocking mechanism
 pub fn wait_for_input() {
     interrupt::without_interrupts(|| {
         let id = tls::task_data().current_pid();

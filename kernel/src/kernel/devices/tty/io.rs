@@ -6,7 +6,7 @@ use pc_keyboard::DecodedKey;
 use super::TTYSink;
 use crate::{
     arch::{self, interrupt},
-    drivers::keyboard::parse_scancode,
+    drivers::{keyboard::parse_scancode, tty::map_key},
     get_device,
     kernel::{
         devices::{FdEntryType, RawFdEntry},
@@ -64,13 +64,13 @@ pub fn read_all(buf: &mut [u8]) -> usize {
     let mut n_read = 0;
     get_device!(FdEntryType::StdIn, RawFdEntry::TTYSource(id, source) => {
      while let Some(next) = source.read()
-         && let Ok(res) = parse_scancode(next)
-         && let DecodedKey::Unicode(c) = res
-         && c.len_utf8() <= buf.len() {
-             let len = c.len_utf8();
-             c.encode_utf8(buf);
-             let buf = &mut buf[len..];
-             n_read += len;
+         && let Ok(res) = parse_scancode(next) {
+             let mapped_bytes = map_key(res, buf);
+             if mapped_bytes < 0 {
+                 break;
+             }
+             let buf = &mut buf[mapped_bytes as usize..];
+             n_read += mapped_bytes as usize;
 
      }
     });

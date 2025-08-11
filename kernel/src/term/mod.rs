@@ -62,12 +62,7 @@ pub fn synced_keyboard_listener() {
     loop {
         let n_read = read_all(&mut buf);
         for c in str::from_utf8(&buf[..n_read]).unwrap().chars() {
-            match c {
-                '\u{08}' => unsafe {
-                    FOOBAR.get_unchecked().lock().clear_one();
-                },
-                c => print!("{}", c),
-            }
+            print!("{c}");
         }
         wait_for_input();
         // crate::arch::hlt();

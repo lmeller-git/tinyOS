@@ -12,12 +12,7 @@ pub mod locks {
     use alloc::format;
     use core::fmt::Debug;
 
-    use crate::sync::{
-        ReentrancyChecker,
-        WaitStrategy,
-        YieldWaiter,
-        primitive::semaphore::StaticSemaphore,
-    };
+    use crate::sync::{WaitStrategy, YieldWaiter, primitive::semaphore::StaticSemaphore};
 
     pub type GenericMutex<T, S: WaitStrategy> = lock_api::Mutex<StaticSemaphore<1, S>, T>;
     pub type GenericMutexGuard<'a, T, S: WaitStrategy> =
@@ -108,51 +103,6 @@ impl WaitStrategy for BlockingWaiter {
         if let Some(next) = self.queue.pop() {
             tls::task_data().wake(&next);
         }
-    }
-}
-
-// TODO rewrite this correctly
-pub struct ReentrancyChecker<S: WaitStrategy> {
-    currently_held_by: SegQueue<TaskID>,
-    strategy: S,
-}
-
-impl<S: WaitStrategy> WaitStrategy for ReentrancyChecker<S> {
-    const INIT: Self = Self {
-        currently_held_by: SegQueue::new(),
-        strategy: S::INIT,
-    };
-
-    fn wait(&self) {
-        let mut tot = 0;
-        while let Some(id) = self.currently_held_by.pop() {
-            if id == tls::task_data().current_pid() {
-                panic!("reeantrancy detected in Task {id:?}")
-            }
-            tot += 1;
-            self.currently_held_by.push(id);
-            if tot > self.currently_held_by.len() {
-                break;
-            }
-        }
-        self.strategy.wait();
-        self.currently_held_by.push(tls::task_data().current_pid());
-    }
-
-    fn signal(&self) {
-        let mut total = 0;
-        while let Some(id) = self.currently_held_by.pop() {
-            if id == tls::task_data().current_pid() {
-                break;
-            } else {
-                self.currently_held_by.push(id);
-                total += 1;
-            }
-            if total > self.currently_held_by.len() {
-                panic!("a thread tried to release a lock it did not hold");
-            }
-        }
-        self.strategy.signal()
     }
 }
 
