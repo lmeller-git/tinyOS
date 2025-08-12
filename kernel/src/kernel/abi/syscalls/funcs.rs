@@ -1,13 +1,10 @@
-use core::{arch::global_asm, ptr::null_mut, sync::atomic::Ordering};
+use core::{arch::global_asm, ptr::null_mut, sync::atomic::Ordering, time::Duration};
 
 use super::SysRetCode;
 use crate::{
-    arch::{interrupt::gdt::get_kernel_selectors, mem::VirtAddr},
-    drivers::{graphics::{
+    arch::{interrupt::gdt::get_kernel_selectors, mem::VirtAddr, x86::current_time}, drivers::{graphics::{
         framebuffers::{get_config, BoundingBox, FrameBuffer}, GLOBAL_FRAMEBUFFER
-    }, keyboard::wait_for_input},
-    get_device,
-    kernel::{
+    }, keyboard::wait_for_input}, exit_qemu, get_device, kernel::{
         devices::{
             tty::io::read_all, DeviceBuilder, FdEntry, FdEntryType, GraphicsTag, RawDeviceID, RawFdEntry
         },
@@ -21,8 +18,7 @@ use crate::{
             tls,
             yield_now,
         },
-    },
-    serial_println,
+    }, println, serial_println, QemuExitCode
 };
 
 const USER_DEVICE_MAP: VirtAddr = VirtAddr::new(0x0000_3000_0000);
@@ -68,7 +64,6 @@ pub fn sys_write(device_type: usize, buf: *const u8, len: usize) -> isize {
             .unwrap_or(-3)
         }
         FdEntryType::Graphics => {
-            serial_println!("graphics write");
             get_device!(entry_type, RawFdEntry::GraphicsBackend(id, device) => {
                 let bounds = unsafe {&*core::ptr::slice_from_raw_parts(buf as *const BoundingBox, len)};
                 for bound in bounds {
@@ -107,7 +102,7 @@ pub fn sys_write_single(device_type: usize, device_id: u64, buf: *const u8, len:
     .unwrap_or(-3)
 }
 
-pub fn sys_read(device_type: usize, buf: *mut u8, len: usize) -> isize {
+pub fn sys_read(device_type: usize, buf: *mut u8, len: usize, timeout: usize) -> isize {
     // device_type maps 1:1 to FdEntryType
     // -1: device type not writeable
     // -2: no device available or device type not writeable
@@ -118,11 +113,16 @@ pub fn sys_read(device_type: usize, buf: *mut u8, len: usize) -> isize {
         return -1;
     };
     let bytes = unsafe { &mut *core::ptr::slice_from_raw_parts_mut(buf, len) };
+    // TODO do blocking in a better way
+    let until = Duration::from_millis(timeout as u64) + current_time();
     loop {
          let r = read_all(bytes);
-         if r == 0  {
-             wait_for_input();
+         if r == 0 && until > current_time() {
+             wait_for_input(timeout);
+             // serial_println!("now blocking");
+             // tls::task_data().block_for(&tls::task_data().current_pid(), until);
          } else {
+             serial_println!("return");
              return r as isize;
          }
     }
@@ -182,6 +182,12 @@ pub fn sys_map_device(device_type: usize, addr: *mut ()) -> Result<*mut (), SysR
     }
 
     Ok(addr)
+}
+
+pub fn sys_shutdown() {
+    serial_println!("System Shutdown");
+    println!("System Shutdown");
+    exit_qemu(QemuExitCode::Success);
 }
 
 // TEMP: This is used to pass config until fs is ready

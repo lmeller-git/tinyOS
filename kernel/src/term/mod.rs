@@ -64,7 +64,7 @@ pub fn synced_keyboard_listener() {
         for c in str::from_utf8(&buf[..n_read]).unwrap().chars() {
             print!("{c}");
         }
-        wait_for_input();
+        wait_for_input(10000);
         // crate::arch::hlt();
     }
 }

@@ -1,12 +1,15 @@
-use alloc::collections::{btree_map::BTreeMap, vec_deque::VecDeque};
+use alloc::collections::{binary_heap::BinaryHeap, btree_map::BTreeMap, vec_deque::VecDeque};
 use core::{
+    cmp::Reverse,
     fmt::Debug,
     sync::atomic::{AtomicU64, Ordering},
+    time::Duration,
 };
 
 use conquer_once::spin::OnceCell;
 
 use crate::{
+    arch::interrupt,
     kernel::threading::{
         schedule::{GlobalTaskPtr, Scheduler, get_scheduler},
         task::{ExitInfo, TaskID, TaskRepr, TaskState, TaskStateData},
@@ -15,8 +18,41 @@ use crate::{
 };
 
 static GLOBAL_TASK_MANAGER: OnceCell<TaskManager> = OnceCell::uninit();
+pub static SLEEPER_QUEUE: Mutex<BinaryHeap<Reverse<SleepingTask>>> = Mutex::new(BinaryHeap::new());
 
 // TODO Result instead of Option
+
+#[derive(Debug, Clone)]
+pub struct SleepingTask {
+    pub task: TaskID,
+    pub dur: Duration,
+}
+
+impl SleepingTask {
+    pub fn new(id: TaskID, dur: Duration) -> Self {
+        Self { task: id, dur }
+    }
+}
+
+impl Ord for SleepingTask {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        other.dur.cmp(&self.dur)
+    }
+}
+
+impl PartialOrd for SleepingTask {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for SleepingTask {
+    fn eq(&self, other: &Self) -> bool {
+        self.dur == other.dur && self.task == other.task
+    }
+}
+
+impl Eq for SleepingTask {}
 
 #[derive(Debug)]
 pub struct TaskManager {
@@ -125,6 +161,26 @@ impl TaskManager {
         let task = self.get(id)?;
         if task.state() != TaskState::Zombie && task.state() != TaskState::Sleeping {
             task.set_state(TaskState::Blocking);
+        }
+        Some(())
+    }
+
+    pub fn block_for(&self, id: &TaskID, until: Duration) -> Option<()> {
+        let task = self.get(id)?;
+        let mut q = SLEEPER_QUEUE.lock();
+        interrupt::without_interrupts(|| {
+            if task.state() != TaskState::Zombie && task.state() != TaskState::Sleeping {
+                task.set_state(TaskState::Blocking);
+            }
+            q.push(Reverse(SleepingTask::new(*id, until)));
+        });
+        Some(())
+    }
+
+    pub fn try_wake(&self, id: &TaskID) -> Option<()> {
+        let task = self.try_get(id)?;
+        if task.state() == TaskState::Blocking || task.state() == TaskState::Sleeping {
+            task.set_state(TaskState::Ready);
         }
         Some(())
     }

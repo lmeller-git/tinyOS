@@ -2,7 +2,14 @@ use funcs::{sys_exit, sys_kill, sys_write, sys_write_single, sys_yield};
 
 use crate::{
     arch::context::SysCallCtx,
-    kernel::abi::syscalls::funcs::{GFXConfig, sys_gfx_config, sys_heap, sys_map_device, sys_read},
+    kernel::abi::syscalls::funcs::{
+        GFXConfig,
+        sys_gfx_config,
+        sys_heap,
+        sys_map_device,
+        sys_read,
+        sys_shutdown,
+    },
     serial_println,
 };
 
@@ -49,6 +56,7 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
                 args.first() as usize,
                 args.second() as *mut u8,
                 args.third() as usize,
+                args.fourth() as usize,
             );
             args.ret2(n_read as i64);
             if n_read < 0 {
@@ -78,6 +86,10 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
             SysRetCode::Success
         }
         10 => SysRetCode::Success, // No action
+        11 => {
+            sys_shutdown();
+            unreachable!()
+        }
         _ => SysRetCode::Unknown,
     };
 

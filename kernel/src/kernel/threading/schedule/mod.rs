@@ -18,6 +18,7 @@ use crate::{
         tls,
     },
     locks::GKL,
+    serial_println,
 };
 
 #[cfg(feature = "test_run")]
@@ -93,6 +94,7 @@ pub unsafe extern "C" fn context_switch_local(rsp: u64) {
         current
     } else if task_data.current_pid() == TaskID::default() {
         let Some(current) = task_data.get(&1.into()) else {
+            serial_println!("{:#?}", task_data);
             panic!("could not load initial task");
         };
         current

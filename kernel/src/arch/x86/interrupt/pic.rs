@@ -1,4 +1,7 @@
-use core::ptr::NonNull;
+use core::{
+    ptr::NonNull,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use acpi::AcpiTables;
 use lazy_static::lazy_static;
@@ -6,12 +9,14 @@ use spin::Mutex;
 use x86_64::instructions::port::Port;
 
 use super::idt::InterruptIndex;
-use crate::{arch::x86::mem::*, bootinfo, println};
+use crate::{arch::x86::mem::*, bootinfo, println, serial_println};
 
 lazy_static! {
     pub static ref LAPIC_ADDR: Mutex<LAPICAddress> = Mutex::new(LAPICAddress::new()); // Needs to be initialized
 }
 
+pub static CYCLES_PER_SECOND: AtomicU64 = AtomicU64::new(0);
+pub const CYCLES_PER_TICK: u32 = 1000000;
 pub struct LAPICAddress {
     address: *mut u32,
 }
@@ -234,17 +239,40 @@ unsafe fn init_timer(lapic_pointer: *mut u32) {
     svr.write_volatile(svr.read_volatile() | 0x100);
 
     // Configure timer
-    // Vector 0x20, Periodic Mode (bit 17), masked (bit 16 = 1)
+    // Vector 0x20, masked (bit 16 = 1)
     let lvt_timer = lapic_pointer.offset(APICOffset::LvtT as isize / 4);
-    lvt_timer.write_volatile(0x20 | (1 << 17) | (1 << 16));
+    lvt_timer.write_volatile(0x20 | (1 << 16));
 
     // Set divider to 16
     let tdcr = lapic_pointer.offset(APICOffset::Tdcr as isize / 4);
     tdcr.write_volatile(0x3);
 
     // Set initial count - smaller value for more frequent interrupts
-    let ticr = lapic_pointer.offset(APICOffset::Ticr as isize / 4);
-    ticr.write_volatile(1000000);
+}
+
+pub unsafe fn set_timer_count(ptr: *mut u32, count: u32) {
+    unsafe {
+        let ticr = ptr.offset(APICOffset::Ticr as isize / 4);
+        ticr.write_volatile(count);
+    }
+}
+
+pub unsafe fn enable_periodic_timer(ptr: *mut u32) {
+    unsafe {
+        let lvt_timer = ptr.offset(APICOffset::LvtT as isize / 4);
+        let mut val = lvt_timer.read_volatile();
+        val |= 1 << 17;
+        lvt_timer.write_volatile(val);
+    }
+}
+
+pub unsafe fn enable_one_shot_mode(ptr: *mut u32) {
+    unsafe {
+        let lvt_timer = ptr.offset(APICOffset::LvtT as isize / 4);
+        let mut val = lvt_timer.read_volatile();
+        val &= !(1 << 17);
+        lvt_timer.write_volatile(val);
+    }
 }
 
 pub fn enable_timer() {
@@ -265,6 +293,55 @@ pub fn disable_timer() {
         val |= 1 << 16;
         lvt_timer.write_volatile(val);
     }
+}
+
+pub unsafe fn calibrate_apic_timer(ptr: *mut u32) {
+    unsafe { enable_one_shot_mode(ptr) };
+
+    let test_count = 10_000_000;
+    enable_timer();
+
+    // read tsc
+    let tsc_start = rdtsc();
+    unsafe { set_timer_count(ptr, test_count) };
+    // wait for timer to finish
+    unsafe {
+        let tccr = ptr.offset(APICOffset::Tccr as isize / 4);
+        while tccr.read_volatile() != 0 {}
+    };
+    // read tsc
+    let tsc_end = rdtsc();
+    disable_timer();
+    let delta_tsc = tsc_end - tsc_start;
+    let cpuid = raw_cpuid::CpuId::new();
+    let tsz_freq = if let Some(tsc) = cpuid.get_tsc_info()
+        && let Some(freq) = tsc.tsc_frequency()
+    {
+        freq
+    } else if let Some(base) = cpuid.get_processor_frequency_info() {
+        base.processor_max_frequency() as u64 * 1_000_000
+    } else {
+        serial_println!("huhu");
+        // TODO get actual freq, for noe just some random value (3 GHz)
+        3_000_000_000
+    };
+    let apic_ticks_per_s = (test_count as u64 * tsz_freq) / delta_tsc;
+    CYCLES_PER_SECOND.store(apic_ticks_per_s, Ordering::Release);
+}
+
+fn rdtsc() -> u64 {
+    let hi: u32;
+    let lo: u32;
+    unsafe {
+        core::arch::asm!(
+            "cpuid", // serialize
+            "rdtsc",
+            out("eax") lo,
+            out("edx") hi,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    ((hi as u64) << 32) | lo as u64
 }
 
 #[allow(unsafe_op_in_unsafe_fn)]
@@ -288,6 +365,9 @@ unsafe fn init_local_apic(
 
     LAPIC_ADDR.lock().address = lapic_pointer;
     init_timer(lapic_pointer);
+    calibrate_apic_timer(lapic_pointer);
+    enable_periodic_timer(lapic_pointer);
+    set_timer_count(lapic_pointer, CYCLES_PER_TICK);
     init_keyboard(lapic_pointer);
     drain_keyboard();
 }

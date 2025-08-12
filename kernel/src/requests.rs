@@ -2,6 +2,8 @@ use limine::{
     BaseRevision,
     paging,
     request::{
+        BootTimeRequest,
+        DateAtBootRequest,
         FramebufferRequest,
         HhdmRequest,
         MemoryMapRequest,
@@ -9,6 +11,7 @@ use limine::{
         RequestsEndMarker,
         RequestsStartMarker,
         RsdpRequest,
+        SmbiosRequest,
         StackSizeRequest,
     },
 };
@@ -53,6 +56,18 @@ pub static HHDM_REQUEST: HhdmRequest = HhdmRequest::new();
 #[used]
 #[unsafe(link_section = ".requests")]
 pub static RSDP_REQUEST: RsdpRequest = RsdpRequest::new();
+
+#[used]
+#[unsafe(link_section = ".requests")]
+pub static BOOT_TIME_REQUEST: BootTimeRequest = BootTimeRequest::new();
+
+// #[used]
+// #[unsafe(link_section = ".requests")]
+// pub static BOOT_DATE_REQUEST: DateAtBootRequest = DateAtBootRequest::new();
+
+#[used]
+#[unsafe(link_section = ".requests")]
+pub static SMBIOS_REQUEST: SmbiosRequest = SmbiosRequest::new();
 
 /// Define the stand and end markers for Limine requests.
 #[used]

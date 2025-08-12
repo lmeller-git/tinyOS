@@ -9,8 +9,18 @@ pub use x86_64::{
 };
 
 use crate::{
-    arch::{context::SysCallCtx, x86::interrupt::pic::end_interrupt},
-    kernel::{abi::syscalls::syscall_handler, threading::schedule::context_switch_local},
+    arch::{
+        context::SysCallCtx,
+        x86::{current_time, interrupt::pic::end_interrupt},
+    },
+    kernel::{
+        abi::syscalls::syscall_handler,
+        threading::{
+            self,
+            schedule::context_switch_local,
+            tls::{self, SLEEPER_QUEUE},
+        },
+    },
     serial_println,
 };
 
@@ -30,9 +40,13 @@ pub(super) extern "x86-interrupt" fn double_fault_handler(
 
 #[unsafe(no_mangle)]
 pub fn timer_interrupt_handler_local_(rsp: u64) {
+    if !threading::is_running() {
+        return;
+    }
     // serial_println!("timer");
     assert!(TOTAL_TIMER_TICKS.load(Ordering::Relaxed) < u64::MAX);
     TOTAL_TIMER_TICKS.fetch_add(1, Ordering::Release);
+
     unsafe { context_switch_local(rsp) }
 }
 

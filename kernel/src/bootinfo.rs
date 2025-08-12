@@ -1,3 +1,5 @@
+use core::time::Duration;
+
 use lazy_static::lazy_static;
 use limine::{
     framebuffer::Framebuffer,
@@ -21,6 +23,10 @@ pub fn stack_size() -> u64 {
 pub struct UsableMRegion {
     pub start: u64,
     pub length: u64,
+}
+
+pub fn boot_time() -> Duration {
+    BOOT_TIME_REQUEST.get_response().unwrap().timestamp()
 }
 
 pub fn rdsp_addr() -> usize {

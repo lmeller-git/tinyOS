@@ -80,7 +80,7 @@ pub fn get_next() -> u8 {
 }
 
 // TODO write a more general blocking mechanism
-pub fn wait_for_input() {
+pub fn wait_for_input(timeout: usize) {
     interrupt::without_interrupts(|| {
         let id = tls::task_data().current_pid();
         tls::task_data().block(&id).unwrap();
