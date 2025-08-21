@@ -49,7 +49,7 @@ use tiny_os::{
             self,
             schedule::{self, Scheduler, add_named_ktask, current_task, get_scheduler},
             task::{TaskBuilder, TaskRepr},
-            tls::{self, SLEEPER_QUEUE},
+            tls,
         },
     },
     locks::GKL,
@@ -130,22 +130,6 @@ extern "C" fn idle() -> usize {
 
     loop {
         for _ in 0..5 {
-            let mut sleeping = SLEEPER_QUEUE.lock();
-            let task_data = tls::task_data();
-            let now = current_time();
-            loop {
-                if let Some(sleeping_task) = sleeping.peek()
-                    && sleeping_task.0.dur <= now
-                {
-                    if task_data.wake(&sleeping_task.0.task).is_some() {
-                        sleeping.pop();
-                    } else {
-                        break;
-                    }
-                } else {
-                    break;
-                }
-            }
             threading::yield_now();
         }
         let scheduler = get_scheduler();
@@ -196,6 +180,10 @@ extern "C" fn graphics() -> usize {
 
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
+    if !interrupt::are_enabled() {
+        serial_println!("panicked wiht disabled interrupts. We cannot reover from this");
+    }
+
     serial_println!("panic: {:#?}", info);
 
     #[cfg(feature = "test_run")]

@@ -5,7 +5,7 @@ use thiserror::Error;
 mod keys;
 mod queue;
 pub use keys::parse_scancode;
-pub use queue::{KEYBOARD_BUFFER, get_current_next, get_next, put_scancode, wait_for_input};
+pub use queue::{KEYBOARD_BUFFER, get_current_next, get_next, put_scancode};
 
 #[derive(Error, Debug)]
 pub enum KeyboardError {

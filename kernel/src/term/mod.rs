@@ -8,9 +8,9 @@ use render::BasicTermRender;
 use crate::{
     drivers::{
         graphics::{GLOBAL_FRAMEBUFFER, framebuffers::GlobalFrameBuffer},
-        keyboard::{parse_scancode, wait_for_input},
+        keyboard::parse_scancode,
     },
-    kernel::devices::tty::io::read_all,
+    kernel::{devices::tty::io::read_all, threading},
     print,
     services::graphics,
     sync::locks::Mutex,
@@ -64,8 +64,7 @@ pub fn synced_keyboard_listener() {
         for c in str::from_utf8(&buf[..n_read]).unwrap().chars() {
             print!("{c}");
         }
-        wait_for_input(10000);
-        // crate::arch::hlt();
+        threading::yield_now();
     }
 }
 

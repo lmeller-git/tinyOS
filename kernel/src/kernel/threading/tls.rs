@@ -18,41 +18,6 @@ use crate::{
 };
 
 static GLOBAL_TASK_MANAGER: OnceCell<TaskManager> = OnceCell::uninit();
-pub static SLEEPER_QUEUE: Mutex<BinaryHeap<Reverse<SleepingTask>>> = Mutex::new(BinaryHeap::new());
-
-// TODO Result instead of Option
-
-#[derive(Debug, Clone)]
-pub struct SleepingTask {
-    pub task: TaskID,
-    pub dur: Duration,
-}
-
-impl SleepingTask {
-    pub fn new(id: TaskID, dur: Duration) -> Self {
-        Self { task: id, dur }
-    }
-}
-
-impl Ord for SleepingTask {
-    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        other.dur.cmp(&self.dur)
-    }
-}
-
-impl PartialOrd for SleepingTask {
-    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl PartialEq for SleepingTask {
-    fn eq(&self, other: &Self) -> bool {
-        self.dur == other.dur && self.task == other.task
-    }
-}
-
-impl Eq for SleepingTask {}
 
 #[derive(Debug)]
 pub struct TaskManager {
@@ -165,15 +130,11 @@ impl TaskManager {
         Some(())
     }
 
-    pub fn block_for(&self, id: &TaskID, until: Duration) -> Option<()> {
-        let task = self.get(id)?;
-        let mut q = SLEEPER_QUEUE.lock();
-        interrupt::without_interrupts(|| {
-            if task.state() != TaskState::Zombie && task.state() != TaskState::Sleeping {
-                task.set_state(TaskState::Blocking);
-            }
-            q.push(Reverse(SleepingTask::new(*id, until)));
-        });
+    pub fn try_block(&self, id: &TaskID) -> Option<()> {
+        let task = self.try_get(id)?;
+        if task.state() != TaskState::Zombie && task.state() != TaskState::Sleeping {
+            task.set_state(TaskState::Blocking);
+        }
         Some(())
     }
 

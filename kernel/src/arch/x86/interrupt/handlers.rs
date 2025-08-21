@@ -18,7 +18,8 @@ use crate::{
         threading::{
             self,
             schedule::context_switch_local,
-            tls::{self, SLEEPER_QUEUE},
+            tls,
+            wait::{MESSAGE_QUEUE, QueueType, WaitEvent},
         },
     },
     serial_println,
@@ -46,6 +47,17 @@ pub fn timer_interrupt_handler_local_(rsp: u64) {
     // serial_println!("timer");
     assert!(TOTAL_TIMER_TICKS.load(Ordering::Relaxed) < u64::MAX);
     TOTAL_TIMER_TICKS.fetch_add(1, Ordering::Release);
+
+    if let Some(q) = MESSAGE_QUEUE.get() {
+        if q.push(WaitEvent {
+            event_type: QueueType::Timer,
+            data: 0,
+        })
+        .is_err()
+        {
+            serial_println!("could not push timer event");
+        }
+    }
 
     unsafe { context_switch_local(rsp) }
 }
@@ -173,6 +185,16 @@ pub(super) extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: In
     let mut port = Port::<u8>::new(0x60);
     let scancode: u8 = unsafe { port.read() };
     _ = crate::drivers::keyboard::put_scancode(scancode);
+    if let Some(q) = MESSAGE_QUEUE.get() {
+        if q.push(WaitEvent {
+            event_type: QueueType::KeyBoard,
+            data: 0,
+        })
+        .is_err()
+        {
+            serial_println!("could not push timer event");
+        }
+    }
     end_interrupt();
 }
 

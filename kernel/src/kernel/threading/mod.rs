@@ -20,6 +20,7 @@ pub mod schedule;
 pub mod task;
 pub mod tls;
 pub mod trampoline;
+pub mod wait;
 
 pub type ProcessReturn = usize;
 pub type ProcessEntry = extern "C" fn(Arg, Arg, Arg, Arg, Arg, Arg) -> ProcessReturn;

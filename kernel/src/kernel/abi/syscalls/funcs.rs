@@ -4,7 +4,7 @@ use super::SysRetCode;
 use crate::{
     arch::{interrupt::gdt::get_kernel_selectors, mem::VirtAddr, x86::current_time}, drivers::{graphics::{
         framebuffers::{get_config, BoundingBox, FrameBuffer}, GLOBAL_FRAMEBUFFER
-    }, keyboard::wait_for_input}, exit_qemu, get_device, kernel::{
+    }, wait_manager::{add_wait, wait_self}}, exit_qemu, get_device, kernel::{
         devices::{
             tty::io::read_all, DeviceBuilder, FdEntry, FdEntryType, GraphicsTag, RawDeviceID, RawFdEntry
         },
@@ -13,10 +13,7 @@ use crate::{
             paging::map_region,
         },
         threading::{
-            schedule::{context_switch_local, with_current_task},
-            task::TaskRepr,
-            tls,
-            yield_now,
+            schedule::{context_switch_local, with_current_task}, task::TaskRepr, tls, wait::{condition::WaitCondition, QueuTypeCondition, QueueType}, yield_now
         },
     }, println, serial_println, QemuExitCode
 };
@@ -115,14 +112,14 @@ pub fn sys_read(device_type: usize, buf: *mut u8, len: usize, timeout: usize) ->
     let bytes = unsafe { &mut *core::ptr::slice_from_raw_parts_mut(buf, len) };
     // TODO do blocking in a better way
     let until = Duration::from_millis(timeout as u64) + current_time();
+    let conditions = [QueuTypeCondition::with_cond(QueueType::Timer, WaitCondition::Time(until)), QueuTypeCondition::with_cond(QueueType::KeyBoard, WaitCondition::Keyboard)];
     loop {
          let r = read_all(bytes);
          if r == 0 && until > current_time() {
-             wait_for_input(timeout);
-             // serial_println!("now blocking");
-             // tls::task_data().block_for(&tls::task_data().current_pid(), until);
+             serial_println!("added self to waitqueues until {until:?}, currently: {:?}", current_time());
+             wait_self(&conditions).unwrap();
          } else {
-             serial_println!("return");
+             serial_println!("returning {r}");
              return r as isize;
          }
     }
@@ -154,7 +151,6 @@ pub fn sys_heap(size: usize) -> *mut u8 {
     }
 
     current.core.heap_size.fetch_add(size, Ordering::Relaxed);
-
     base_addr.as_mut_ptr()
 }
 

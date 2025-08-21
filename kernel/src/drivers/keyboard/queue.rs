@@ -14,28 +14,19 @@ use crate::{
 
 pub struct KeyboardBuffer {
     inner: ArrayQueue<u8>,
-    waiter: ArrayQueue<TaskID>,
 }
 
 impl KeyboardBuffer {
     fn new() -> Self {
         Self {
             inner: ArrayQueue::new(20),
-            waiter: ArrayQueue::new(5),
         }
-    }
-
-    pub fn register(&self, task: TaskID) {
-        self.waiter.push(task).unwrap();
     }
 
     pub fn put(&self, element: u8) -> Result<(), KeyboardError> {
         self.inner
             .push(element)
             .map_err(|_| KeyboardError::FullQueue)?;
-        while let Some(w) = self.waiter.pop() {
-            tls::task_data().wake(&w).unwrap();
-        }
         Ok(())
     }
 
@@ -61,6 +52,10 @@ impl KeyboardBuffer {
     pub fn clear(&self) {
         while self.inner.pop().is_some() {}
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
 }
 
 pub fn put_scancode(code: u8) -> Result<(), KeyboardError> {
@@ -77,16 +72,6 @@ pub fn get_next() -> u8 {
             return KEYBOARD_BUFFER.pop().unwrap();
         }
     }
-}
-
-// TODO write a more general blocking mechanism
-pub fn wait_for_input(timeout: usize) {
-    interrupt::without_interrupts(|| {
-        let id = tls::task_data().current_pid();
-        tls::task_data().block(&id).unwrap();
-        KEYBOARD_BUFFER.register(id);
-    });
-    threading::yield_now();
 }
 
 lazy_static! {
