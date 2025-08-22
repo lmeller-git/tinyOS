@@ -13,7 +13,7 @@ use crate::{
             paging::map_region,
         },
         threading::{
-            schedule::{context_switch_local, with_current_task}, task::TaskRepr, tls, wait::{condition::WaitCondition, QueuTypeCondition, QueueType}, yield_now
+            schedule::{context_switch_local, with_current_task}, task::TaskRepr, tls, wait::{condition::WaitCondition, post_event, QueuTypeCondition, QueueType, WaitEvent}, yield_now
         },
     }, println, serial_println, QemuExitCode
 };
@@ -21,8 +21,10 @@ use crate::{
 const USER_DEVICE_MAP: VirtAddr = VirtAddr::new(0x0000_3000_0000);
 
 pub fn sys_exit(status: i64) {
+    post_event(WaitEvent::new(QueueType::Thread(tls::task_data().current_pid())));
     tls::task_data().kill(&tls::task_data().current_pid(), 0);
     yield_now();
+    unreachable!();
 }
 
 pub fn sys_kill(id: u64, status: i64) -> SysRetCode {

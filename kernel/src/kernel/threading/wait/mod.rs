@@ -1,4 +1,5 @@
-use core::fmt::Debug;
+use alloc::boxed::Box;
+use core::{fmt::Debug, ops::Deref};
 
 use bitflags::bitflags;
 use conquer_once::spin::OnceCell;
@@ -29,8 +30,40 @@ pub fn init() {
     MESSAGE_QUEUE.init_once(|| ArrayQueue::new(20));
 }
 
+pub fn post_event(event: WaitEvent<u64>) -> Option<()> {
+    MESSAGE_QUEUE.get().and_then(|queue| queue.push(event).ok())
+}
+
+pub(crate) struct QueueHandle<'a>(QueueHandleInner<'a>);
+
+impl<'a> QueueHandle<'a> {
+    pub fn from_owned(queue: Box<dyn WaitQueue>) -> Self {
+        Self(QueueHandleInner::Owned(queue))
+    }
+
+    pub fn from_borrowed(queue: &'a dyn WaitQueue) -> Self {
+        Self(QueueHandleInner::Borrowed(queue))
+    }
+}
+
+enum QueueHandleInner<'a> {
+    Borrowed(&'a dyn WaitQueue),
+    Owned(Box<dyn WaitQueue>),
+}
+
+impl<'a> Deref for QueueHandle<'a> {
+    type Target = dyn WaitQueue + 'a;
+
+    fn deref(&self) -> &Self::Target {
+        match &self.0 {
+            QueueHandleInner::Borrowed(r) => *r,
+            QueueHandleInner::Owned(b) => &**b,
+        }
+    }
+}
+
 pub struct WaitObserver<'a> {
-    queues: RwLock<HashMap<QueueType, &'a dyn WaitQueue>>,
+    queues: RwLock<HashMap<QueueType, QueueHandle<'a>>>,
 }
 
 impl<'a> WaitObserver<'a> {
@@ -38,16 +71,12 @@ impl<'a> WaitObserver<'a> {
         Self::default()
     }
 
-    pub fn add_queue(
-        &mut self,
-        queue: &'a dyn WaitQueue,
-        queue_type: QueueType,
-    ) -> Option<&'a dyn WaitQueue> {
+    pub fn add_queue(&mut self, queue: QueueHandle<'a>, queue_type: QueueType) -> Option<()> {
         self.queues
             .write()
             .try_insert(queue_type, queue)
             .ok()
-            .map(|v| &**v)
+            .map(|v| ())
     }
 
     pub fn remove_queue(&mut self, queue_type: &QueueType) {
@@ -57,7 +86,7 @@ impl<'a> WaitObserver<'a> {
     pub fn process_signals(&self, msg: &ArrayQueue<WaitEvent<u64>>) {
         let map = self.queues.read();
         while let Some(s) = msg.pop() {
-            map.get(&s.event_type).map(|&q| q.signal());
+            map.get(&s.event_type).map(|q| q.signal());
         }
     }
 
@@ -102,6 +131,7 @@ unsafe impl Sync for WaitObserver<'_> {}
 pub enum QueueType {
     Timer,
     KeyBoard,
+    Thread(TaskID),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -124,7 +154,23 @@ impl QueuTypeCondition {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct WaitEvent<D: Copy + Debug + PartialEq + Eq> {
+pub struct WaitEvent<D: Copy + Debug + PartialEq + Eq + Default> {
     pub event_type: QueueType,
     pub data: D,
+}
+
+impl<D> WaitEvent<D>
+where
+    D: Copy + Debug + PartialEq + Eq + Default,
+{
+    pub fn new(event_type: QueueType) -> Self {
+        Self {
+            event_type,
+            data: D::default(),
+        }
+    }
+
+    pub fn with_data(event_type: QueueType, data: D) -> Self {
+        Self { event_type, data }
+    }
 }

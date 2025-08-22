@@ -141,3 +141,35 @@ impl Default for KeyBoardQueue {
         Self::new()
     }
 }
+
+pub struct GenericWaitQueue {
+    q: Mutex<VecDeque<WaitNode>>,
+}
+
+impl GenericWaitQueue {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl WaitQueue for GenericWaitQueue {
+    fn enqueue(&self, id: &TaskID, condition: WaitCondition) -> Option<()> {
+        let node = WaitNode::new(*id, condition);
+        self.q.lock().push_back(node);
+        Some(())
+    }
+
+    fn signal(&self) {
+        for node in self.q.lock().drain(..) {
+            tls::task_data().wake(&node.id).unwrap();
+        }
+    }
+}
+
+impl Default for GenericWaitQueue {
+    fn default() -> Self {
+        Self {
+            q: Mutex::new(VecDeque::new()),
+        }
+    }
+}

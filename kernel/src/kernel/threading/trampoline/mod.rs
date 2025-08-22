@@ -4,7 +4,10 @@ use core::fmt::Debug;
 use os_macros::with_default_args;
 
 use super::{ProcessReturn, schedule::context_switch_local, task::Arg};
-use crate::{arch::hcf, kernel::threading::tls};
+use crate::{
+    arch::hcf,
+    kernel::{abi::syscalls::funcs::sys_exit, threading::tls},
+};
 
 #[unsafe(no_mangle)]
 #[with_default_args]
@@ -32,9 +35,7 @@ pub extern "C" fn test_kernel_return_trampoline(ret: ProcessReturn, returnto: ex
 }
 
 pub fn default_exit(ret: usize) {
-    tls::task_data().kill(&tls::task_data().current_pid(), 0);
-    unsafe { context_switch_local(0) };
-    hcf();
+    sys_exit(ret as i64);
 }
 
 #[repr(C)]

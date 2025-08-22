@@ -1,4 +1,4 @@
-use alloc::{format, string::String, sync::Arc};
+use alloc::{boxed::Box, format, string::String, sync::Arc};
 use core::{
     hint,
     sync::atomic::{AtomicBool, Ordering},
@@ -11,10 +11,23 @@ use trampoline::{TaskExitInfo, closure_trampoline};
 
 use crate::{
     args,
-    kernel::{abi::syscalls::funcs::sys_yield, threading::task::TaskRepr},
+    drivers::wait_manager,
+    kernel::{
+        abi::syscalls::funcs::{sys_exit, sys_yield},
+        threading::{
+            task::TaskRepr,
+            wait::{
+                QueuTypeCondition,
+                QueueHandle,
+                QueueType,
+                condition::WaitCondition,
+                queues::GenericWaitQueue,
+            },
+        },
+    },
+    serial_println,
     sync::locks::RwLock,
 };
-use crate::serial_println;
 
 pub mod context;
 pub mod schedule;
@@ -66,8 +79,27 @@ pub struct JoinHandle<R> {
 
 impl<R> JoinHandle<R> {
     pub fn wait(&self) -> Result<R, ThreadingError> {
+        if let Some(t) = &self.task
+            && !(self.inner.finished() || !self.is_task_alive().is_some_and(|v| v))
+        {
+            wait_manager::add_queue(
+                QueueHandle::from_owned(Box::new(GenericWaitQueue::new())),
+                QueueType::Thread(t.pid()),
+            );
+        }
+
+        let wait_conds = &[QueuTypeCondition::with_cond(
+            QueueType::Thread(self.task.as_ref().map(|t| t.pid()).unwrap_or_default()),
+            WaitCondition::Thread(self.task.as_ref().map(|t| t.pid()).unwrap_or_default()),
+        )];
+
         while !(self.inner.finished() || !self.is_task_alive().is_some_and(|v| v)) {
+            wait_manager::add_wait(&tls::task_data().current_pid(), wait_conds);
             yield_now();
+        }
+
+        if let Some(t) = &self.task {
+            wait_manager::remove_queue(&QueueType::Thread(t.pid()));
         }
 
         let r = self.inner.get_return().map_err(|e| {
@@ -158,9 +190,8 @@ pub fn spawn_fn(
         .with_exit_info(TaskExitInfo::new_with_default_trampoline(
             move |v: usize| {
                 raw.val.write().replace(v);
-                tls::task_data().kill(&tls::task_data().current_pid(), 0);
                 raw.finished.store(true, Ordering::Release);
-                yield_now();
+                sys_exit(0)
             },
         ))
         .build()
