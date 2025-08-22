@@ -24,7 +24,7 @@ pub fn apply(
     for header in headers.iter() {
         serial_println!("getting addr");
         let addr = VirtAddr::new(header.p_vaddr);
-        let mapper = PageMapper::init(&addr, header.p_filesz);
+        let mapper = PageMapper::init(&addr, header.p_memsz);
         let mut global_table = PAGETABLE.lock();
 
         // SAFETY: This is safe, if we can ensure that interrupts will be restored upon ret
@@ -85,9 +85,9 @@ impl PageMapper {
     fn map(&self, new: &mut TaskPageTable, flags: PageTableFlags, old: &mut OffsetPageTable<'_>) {
         let mut alloc = get_frame_alloc().lock();
         for page in Page::range_inclusive(self.start, self.end) {
-            // if new.table.translate_page(page).is_ok() {
-            //     continue;
-            // }
+            if new.table.translate_page(page).is_ok() {
+                continue;
+            }
             let frame = alloc.allocate_frame().unwrap();
             unsafe {
                 _ = new

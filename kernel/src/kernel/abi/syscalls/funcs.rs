@@ -127,6 +127,7 @@ pub fn sys_read(device_type: usize, buf: *mut u8, len: usize, timeout: usize) ->
 
 pub fn sys_heap(size: usize) -> *mut u8 {
     use crate::arch::mem::{PageSize, PageTableFlags, Size4KiB, VirtAddr};
+    serial_println!("mapping heap");
 
     let current = tls::task_data().get_current().unwrap();
 
@@ -151,6 +152,7 @@ pub fn sys_heap(size: usize) -> *mut u8 {
     }
 
     current.core.heap_size.fetch_add(size, Ordering::Relaxed);
+    serial_println!("mapped heap");
     base_addr.as_mut_ptr()
 }
 
@@ -158,6 +160,8 @@ pub fn sys_map_device(device_type: usize, addr: *mut ()) -> Result<*mut (), SysR
     let Ok(entry_type) = FdEntryType::try_from(device_type) else {
         return Err(SysRetCode::Fail);
     };
+
+    serial_println!("mapping device");
 
     // TODO dynamically determine this addr + discriminate between user + kernel
     // needs some thread local memmap
@@ -176,6 +180,7 @@ pub fn sys_map_device(device_type: usize, addr: *mut ()) -> Result<*mut (), SysR
         }
         _ => todo!(),
     }
+    serial_println!("mapped device");
 
     Ok(addr)
 }
