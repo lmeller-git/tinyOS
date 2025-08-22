@@ -72,9 +72,9 @@ pub struct SpinWaiter;
 impl StatelessWaitStrategy for SpinWaiter {
     #[inline]
     fn wait() {
-        // if !interrupt::are_enabled() {
-        //     serial_println!("tried to block in a no-interrupt context. This is likely  a deadlock");
-        // }
+        if !interrupt::are_enabled() {
+            serial_println!("tried to block on a spin-waiter in a no-interrupt context. This is likely a deadlock");
+        }
         arch::hlt();
     }
 }
@@ -84,9 +84,9 @@ pub struct YieldWaiter;
 impl StatelessWaitStrategy for YieldWaiter {
     #[inline]
     fn wait() {
-        // if !interrupt::are_enabled() {
-        //     serial_println!("tried to block in a no-interrupt context. This is likely  a deadlock");
-        // }
+        if !interrupt::are_enabled() {
+            serial_println!("tried to block on a yield-waiter in a no-interrupt context. This is likely a deadlock");
+        }
         threading::yield_now();
     }
 }
@@ -101,9 +101,9 @@ impl WaitStrategy for BlockingWaiter {
     };
 
     fn wait(&self) {
-        // if !interrupt::are_enabled() {
-        //     serial_println!("tried to block in a no-interrupt context. This is likely  a deadlock");
-        // }
+        if !interrupt::are_enabled() {
+            serial_println!("tried to block on a sleep-waiter in a no-interrupt context. This is likely a deadlock");
+        }
 
         self.queue.push(tls::task_data().current_pid());
         tls::task_data().block(&tls::task_data().current_pid());

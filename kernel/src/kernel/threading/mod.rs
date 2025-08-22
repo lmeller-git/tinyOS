@@ -14,6 +14,7 @@ use crate::{
     kernel::{abi::syscalls::funcs::sys_yield, threading::task::TaskRepr},
     sync::locks::RwLock,
 };
+use crate::serial_println;
 
 pub mod context;
 pub mod schedule;
@@ -164,7 +165,6 @@ pub fn spawn_fn(
         ))
         .build()
         .into();
-
     handle.attach(task.clone());
     add_task_ptr__(task);
     Ok(handle)

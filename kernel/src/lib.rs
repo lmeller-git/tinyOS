@@ -15,9 +15,11 @@ pub extern crate alloc;
 
 #[cfg(feature = "test_run")]
 use core::panic::PanicInfo;
+use core::time::Duration;
 
 #[cfg(feature = "test_run")]
 use kernel::threading::{schedule::add_named_ktask, yield_now};
+use crate::arch::x86::current_time;
 use kernel::{
     devices::{DeviceBuilder, FdEntry, GraphicsTag, SinkTag, StdErrTag, StdInTag, TaskDevices},
     threading::task::{Arg, TaskRepr},
@@ -43,7 +45,7 @@ pub mod term;
 mod utils;
 
 #[cfg(feature = "test_run")]
-const MAX_TEST_TIME: u64 = 10000;
+const MAX_TEST_TIME: Duration = Duration::from_secs(10);
 
 #[cfg(feature = "test_run")]
 struct TestLogger {}
@@ -107,21 +109,20 @@ extern "C" fn kernel_test_runner() -> ProcessReturn {
 
         let handle = with_devices!(
             |devices| {
-                if !test.config.should_panic {
-                    let sink: FdEntry<StdErrTag> = DeviceBuilder::tty().serial();
-                    devices.attach(sink);
-                }
+                let sink: FdEntry<StdErrTag> = DeviceBuilder::tty().serial();
+                devices.attach(sink);
+                let device_ptr = devices as *mut TaskDevices as *mut ();
                 for init in test.config.device_inits {
-                    init(devices as *mut TaskDevices as *mut ());
+                    init(device_ptr);
                 }
             },
             || { spawn_fn(test.func, args!()).expect("test spawn failed") }
         )
         .unwrap();
 
-        let start_time = current_tick();
+        let start_time = current_time();
         match handle.wait_while(|handle| {
-            let now = current_tick();
+            let now = current_time();
             if now - start_time >= MAX_TEST_TIME {
                 arch::interrupt::without_interrupts(|| {
                     use crate::kernel::threading::tls;
@@ -203,14 +204,14 @@ pub fn exit_qemu(exit_code: QemuExitCode) {
 #[derive(Error, Debug)]
 pub enum KernelError {}
 
-#[kernel_test(should_panic)]
+#[kernel_test(should_panic, silent)]
 fn should_panic_err() {
     // works
     return todo!();
     assert!(true)
 }
 
-#[kernel_test(should_panic)]
+#[kernel_test(should_panic, silent)]
 fn should_panic() {
     assert!(false)
 }

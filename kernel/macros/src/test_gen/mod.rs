@@ -202,6 +202,17 @@ impl TestConfigParser {
             match attr {
                 syn::Meta::Path(p) => match p {
                     p if p.is_ident("should_panic") => self_.inner.should_panic = true,
+                    p if p.is_ident("silent") => {
+                        self_.inner.verbose = false;
+                        let fn_name = format_ident!("mute_devices_for_{}", name);
+                        funcs.push(quote! {
+                            fn #fn_name(devices: *mut ()) {
+                                let mut devices = unsafe { &mut *(devices as *mut crate::kernel::devices::TaskDevices)};
+                                *devices = crate::kernel::devices::TaskDevices::empty();
+                            }
+                        });
+                        self_.device_inits.push(fn_name);
+                    },
                     p if p.is_ident("verbose") => {
                         self_.inner.verbose = true;
                         self_.configure_device(&get_verbose_config(), &mut funcs, name);
@@ -310,6 +321,7 @@ impl TestConfigParser {
         self.device_inits.push(fn_name);
     }
 }
+
 
 fn get_verbose_config() -> Expr {
     Expr::Call(syn::ExprCall {

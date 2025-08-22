@@ -110,7 +110,7 @@ extern "C" fn idle() -> usize {
     _ = add_named_ktask(graphics, "graphic drawer".into());
     // _ = add_named_ktask(listen, "term".into());
     cross_println!("startup tasks started");
-
+  
     let mut binaries: Vec<&'static [u8]> = get_binaries();
 
     serial_println!("adding {} user tasks", binaries.len());
@@ -183,7 +183,8 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     if !interrupt::are_enabled() {
         serial_println!("panicked wiht disabled interrupts. We cannot reover from this");
     }
-
+    
+    #[cfg(not(feature = "test_run"))]
     serial_println!("panic: {:#?}", info);
 
     #[cfg(feature = "test_run")]
