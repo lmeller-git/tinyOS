@@ -114,8 +114,7 @@ extern "C" fn idle() -> usize {
     // _ = add_named_ktask(listen, "term".into());
     cross_println!("startup tasks started");
 
-    let mut binaries: Vec<&'static [u8]> = Vec::new(); //get_binaries();
-    binaries.push(include_bytes!("../../../tinyTetris/a.out"));
+    let mut binaries: Vec<&'static [u8]> = get_binaries();
     serial_println!("adding {} user tasks", binaries.len());
     for bin in &binaries {
         let task = TaskBuilder::from_bytes(bin)
