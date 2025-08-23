@@ -112,7 +112,6 @@ pub fn sys_read(device_type: usize, buf: *mut u8, len: usize, timeout: usize) ->
         return -1;
     };
     let bytes = unsafe { &mut *core::ptr::slice_from_raw_parts_mut(buf, len) };
-    // TODO do blocking in a better way
     let until = Duration::from_millis(timeout as u64) + current_time();
     let conditions = [QueuTypeCondition::with_cond(QueueType::Timer, WaitCondition::Time(until)), QueuTypeCondition::with_cond(QueueType::KeyBoard, WaitCondition::Keyboard)];
     loop {

@@ -26,7 +26,6 @@ jobs:
       run: |
         cd ./kernel    
         rustup component add rust-src llvm-tools-preview
-        rustup component add rust-src --toolchain nightly-2025-06-26-x86_64-unknown-linux-gnu #using previous working version for now
 
     - name: Install target
       run: rustup target add x86_64-unknown-none

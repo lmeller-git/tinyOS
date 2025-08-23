@@ -76,15 +76,15 @@ impl SysCallCtx {
     }
 
     pub fn fourth(&self) -> u64 {
-        self.rcx
+        self.r10
     }
 
     pub fn fifth(&self) -> u64 {
-        self.r8
+        self.r9
     }
 
     pub fn sixth(&self) -> u64 {
-        self.r9
+        self.r8
     }
 
     pub fn ret2(&mut self, val: i64) {

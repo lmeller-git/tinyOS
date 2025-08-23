@@ -12,7 +12,7 @@ extern crate alloc;
 extern crate tiny_os;
 
 use alloc::vec::Vec;
-use core::hint::spin_loop;
+use core::{hint::spin_loop, time::Duration};
 
 use embedded_graphics::{prelude::Dimensions, primitives::PrimitiveStyle};
 use os_macros::with_default_args;
@@ -28,6 +28,7 @@ use tiny_os::{
     drivers::{
         graphics::{colors::ColorCode, framebuffers::BoundingBox},
         start_drivers,
+        wait_manager,
     },
     eprintln,
     get_device,
@@ -51,6 +52,7 @@ use tiny_os::{
             schedule::{self, Scheduler, add_named_ktask, current_task, get_scheduler},
             task::{TaskBuilder, TaskRepr},
             tls,
+            wait::{QueuTypeCondition, QueueType, condition::WaitCondition},
         },
     },
     locks::GKL,
@@ -112,8 +114,8 @@ extern "C" fn idle() -> usize {
     // _ = add_named_ktask(listen, "term".into());
     cross_println!("startup tasks started");
 
-    let mut binaries: Vec<&'static [u8]> = get_binaries();
-
+    let mut binaries: Vec<&'static [u8]> = Vec::new(); //get_binaries();
+    binaries.push(include_bytes!("../../../tinyTetris/a.out"));
     serial_println!("adding {} user tasks", binaries.len());
     for bin in &binaries {
         let task = TaskBuilder::from_bytes(bin)
@@ -128,8 +130,16 @@ extern "C" fn idle() -> usize {
     serial_println!("{} user tasks added", binaries.len());
 
     get_scheduler().reschedule();
-    hcf();
-    unreachable!()
+
+    loop {
+        cross_println!("idle, time: {:?}", current_time());
+        let conditions = &[QueuTypeCondition::with_cond(
+            QueueType::Timer,
+            WaitCondition::Time(Duration::from_secs(5) + current_time()),
+        )];
+        wait_manager::add_wait(&tls::task_data().current_pid(), conditions);
+        threading::yield_now();
+    }
 }
 
 #[with_default_args]
