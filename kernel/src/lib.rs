@@ -19,7 +19,6 @@ use core::time::Duration;
 
 #[cfg(feature = "test_run")]
 use kernel::threading::{schedule::add_named_ktask, yield_now};
-use crate::arch::x86::current_time;
 use kernel::{
     devices::{DeviceBuilder, FdEntry, GraphicsTag, SinkTag, StdErrTag, StdInTag, TaskDevices},
     threading::task::{Arg, TaskRepr},
@@ -29,6 +28,7 @@ use thiserror::Error;
 use tiny_os_common::testing::TestCase;
 pub use utils::*;
 
+use crate::arch::x86::current_time;
 #[cfg(feature = "test_run")]
 use crate::kernel::threading::schedule::testing::{self, TestRunner};
 
@@ -94,7 +94,6 @@ use kernel::threading::ProcessReturn;
 #[cfg(feature = "test_run")]
 #[with_default_args]
 extern "C" fn kernel_test_runner() -> ProcessReturn {
-    use arch::interrupt::handlers::current_tick;
     use common::get_kernel_tests;
     use kernel::threading::spawn_fn;
 

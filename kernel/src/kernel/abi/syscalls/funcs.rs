@@ -2,26 +2,49 @@ use core::{arch::global_asm, ptr::null_mut, sync::atomic::Ordering, time::Durati
 
 use super::SysRetCode;
 use crate::{
-    arch::{interrupt::gdt::get_kernel_selectors, mem::VirtAddr, x86::current_time}, drivers::{graphics::{
-        framebuffers::{get_config, BoundingBox, FrameBuffer}, GLOBAL_FRAMEBUFFER
-    }, wait_manager::{add_wait, wait_self}}, exit_qemu, get_device, kernel::{
+    QemuExitCode,
+    arch::{interrupt::gdt::get_kernel_selectors, mem::VirtAddr, x86::current_time},
+    drivers::{
+        graphics::{
+            GLOBAL_FRAMEBUFFER,
+            framebuffers::{BoundingBox, FrameBuffer, get_config},
+        },
+        wait_manager::wait_self,
+    },
+    exit_qemu,
+    get_device,
+    kernel::{
         devices::{
-            tty::io::read_all, DeviceBuilder, FdEntry, FdEntryType, GraphicsTag, RawDeviceID, RawFdEntry
+            DeviceBuilder,
+            FdEntry,
+            FdEntryType,
+            GraphicsTag,
+            RawDeviceID,
+            RawFdEntry,
+            tty::io::read_all,
         },
         mem::{
             heap::{MAX_USER_HEAP_SIZE, USER_HEAP_START},
             paging::map_region,
         },
         threading::{
-            schedule::{context_switch_local, with_current_task}, task::TaskRepr, tls, wait::{condition::WaitCondition, post_event, QueuTypeCondition, QueueType, WaitEvent}, yield_now
+            schedule::{context_switch_local, with_current_task},
+            task::TaskRepr,
+            tls,
+            wait::{QueuTypeCondition, QueueType, WaitEvent, condition::WaitCondition, post_event},
+            yield_now,
         },
-    }, println, serial_println, QemuExitCode
+    },
+    println,
+    serial_println,
 };
 
 const USER_DEVICE_MAP: VirtAddr = VirtAddr::new(0x0000_3000_0000);
 
 pub fn sys_exit(status: i64) {
-    post_event(WaitEvent::new(QueueType::Thread(tls::task_data().current_pid())));
+    post_event(WaitEvent::new(QueueType::Thread(
+        tls::task_data().current_pid(),
+    )));
     tls::task_data().kill(&tls::task_data().current_pid(), 0);
     yield_now();
     unreachable!();
@@ -113,16 +136,22 @@ pub fn sys_read(device_type: usize, buf: *mut u8, len: usize, timeout: usize) ->
     };
     let bytes = unsafe { &mut *core::ptr::slice_from_raw_parts_mut(buf, len) };
     let until = Duration::from_millis(timeout as u64) + current_time();
-    let conditions = [QueuTypeCondition::with_cond(QueueType::Timer, WaitCondition::Time(until)), QueuTypeCondition::with_cond(QueueType::KeyBoard, WaitCondition::Keyboard)];
+    let conditions = [
+        QueuTypeCondition::with_cond(QueueType::Timer, WaitCondition::Time(until)),
+        QueuTypeCondition::with_cond(QueueType::KeyBoard, WaitCondition::Keyboard),
+    ];
     loop {
-         let r = read_all(bytes);
-         if r == 0 && until > current_time() {
-             serial_println!("added self to waitqueues until {until:?}, currently: {:?}", current_time());
-             wait_self(&conditions).unwrap();
-         } else {
-             serial_println!("returning {r}");
-             return r as isize;
-         }
+        let r = read_all(bytes);
+        if r == 0 && until > current_time() {
+            serial_println!(
+                "added self to waitqueues until {until:?}, currently: {:?}",
+                current_time()
+            );
+            wait_self(&conditions).unwrap();
+        } else {
+            serial_println!("returning {r}");
+            return r as isize;
+        }
     }
 }
 

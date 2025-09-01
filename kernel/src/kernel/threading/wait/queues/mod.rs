@@ -1,5 +1,5 @@
 use alloc::collections::{binary_heap::BinaryHeap, vec_deque::VecDeque};
-use core::{cmp::Reverse, fmt::Debug, time::Duration};
+use core::{cmp::Reverse, fmt::Debug};
 
 use conquer_once::spin::OnceCell;
 

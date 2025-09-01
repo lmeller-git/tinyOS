@@ -2,16 +2,13 @@ use crossbeam::queue::SegQueue;
 use thiserror::Error;
 
 use crate::{
-    arch::{self, interrupt},
+    arch::{self},
     kernel::threading::{self, task::TaskID, tls},
-    serial_println,
 };
 
 mod primitive;
 
 pub mod locks {
-    use alloc::format;
-    use core::fmt::Debug;
 
     use crate::sync::{WaitStrategy, YieldWaiter, primitive::semaphore::StaticSemaphore};
 

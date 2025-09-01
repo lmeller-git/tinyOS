@@ -12,14 +12,13 @@ extern crate alloc;
 extern crate tiny_os;
 
 use alloc::vec::Vec;
-use core::{hint::spin_loop, time::Duration};
+use core::time::Duration;
 
 use embedded_graphics::{prelude::Dimensions, primitives::PrimitiveStyle};
 use os_macros::with_default_args;
 use tiny_os::{
     arch::{
         self,
-        hcf,
         interrupt::{self, enable_threading_interrupts},
         x86::current_time,
     },
@@ -114,7 +113,8 @@ extern "C" fn idle() -> usize {
     // _ = add_named_ktask(listen, "term".into());
     cross_println!("startup tasks started");
 
-    let mut binaries: Vec<&'static [u8]> = get_binaries();
+    let binaries: Vec<&'static [u8]> = get_binaries();
+
     serial_println!("adding {} user tasks", binaries.len());
     for bin in &binaries {
         let task = TaskBuilder::from_bytes(bin)

@@ -2,15 +2,6 @@ use crossbeam::queue::ArrayQueue;
 use lazy_static::lazy_static;
 
 use super::KeyboardError;
-use crate::{
-    arch::interrupt,
-    kernel::threading::{
-        self,
-        task::{TaskID, TaskRepr},
-        tls,
-    },
-    serial_println,
-};
 
 pub struct KeyboardBuffer {
     inner: ArrayQueue<u8>,

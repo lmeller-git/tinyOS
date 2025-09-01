@@ -1,17 +1,14 @@
-use alloc::collections::{binary_heap::BinaryHeap, btree_map::BTreeMap, vec_deque::VecDeque};
+use alloc::collections::{btree_map::BTreeMap, vec_deque::VecDeque};
 use core::{
-    cmp::Reverse,
     fmt::Debug,
     sync::atomic::{AtomicU64, Ordering},
-    time::Duration,
 };
 
 use conquer_once::spin::OnceCell;
 
 use crate::{
-    arch::interrupt,
     kernel::threading::{
-        schedule::{GlobalTaskPtr, Scheduler, get_scheduler},
+        schedule::{GlobalTaskPtr, Scheduler},
         task::{ExitInfo, TaskID, TaskRepr, TaskState, TaskStateData},
     },
     sync::locks::{Mutex, RwLock},

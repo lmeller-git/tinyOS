@@ -1,7 +1,6 @@
 use alloc::boxed::Box;
 use core::{fmt::Debug, ops::Deref};
 
-use bitflags::bitflags;
 use conquer_once::spin::OnceCell;
 use crossbeam::queue::ArrayQueue;
 use hashbrown::HashMap;
@@ -12,13 +11,10 @@ use crate::{
         self,
         task::TaskID,
         tls,
-        wait::{
-            condition::WaitCondition,
-            queues::{KeyBoardQueue, TimeWaitQueue, WaitQueue},
-        },
+        wait::{condition::WaitCondition, queues::WaitQueue},
     },
     serial_println,
-    sync::locks::{Mutex, RwLock},
+    sync::locks::RwLock,
 };
 
 pub mod condition;

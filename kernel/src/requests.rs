@@ -3,7 +3,6 @@ use limine::{
     paging,
     request::{
         BootTimeRequest,
-        DateAtBootRequest,
         FramebufferRequest,
         HhdmRequest,
         MemoryMapRequest,

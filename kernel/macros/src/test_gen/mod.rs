@@ -212,7 +212,7 @@ impl TestConfigParser {
                             }
                         });
                         self_.device_inits.push(fn_name);
-                    },
+                    }
                     p if p.is_ident("verbose") => {
                         self_.inner.verbose = true;
                         self_.configure_device(&get_verbose_config(), &mut funcs, name);
@@ -321,7 +321,6 @@ impl TestConfigParser {
         self.device_inits.push(fn_name);
     }
 }
-
 
 fn get_verbose_config() -> Expr {
     Expr::Call(syn::ExprCall {

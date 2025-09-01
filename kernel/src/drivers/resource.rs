@@ -1,14 +1,7 @@
-use core::time::Duration;
-
-use crate::{
-    arch::x86::current_time,
-    drivers::wait_manager,
-    kernel::threading::{
-        self,
-        schedule::{Scheduler, get_scheduler},
-        tls,
-        wait::{QueuTypeCondition, QueueType, condition::WaitCondition},
-    },
+use crate::kernel::threading::{
+    self,
+    schedule::{Scheduler, get_scheduler},
+    tls,
 };
 
 pub fn start_resource_manager() {

@@ -4,10 +4,7 @@ use core::{sync::atomic::Ordering, time::Duration};
 
 use x86_64::registers::control::{Cr4, Cr4Flags};
 
-use crate::{
-    arch::interrupt::{CYCLES_PER_SECOND, CYCLES_PER_TICK, handlers::current_tick},
-    bootinfo::boot_time,
-};
+use crate::arch::interrupt::{CYCLES_PER_SECOND, CYCLES_PER_TICK, handlers::current_tick};
 
 pub mod context;
 pub mod interrupt;

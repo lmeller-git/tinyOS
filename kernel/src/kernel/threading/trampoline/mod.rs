@@ -3,11 +3,8 @@ use core::fmt::Debug;
 
 use os_macros::with_default_args;
 
-use super::{ProcessReturn, schedule::context_switch_local, task::Arg};
-use crate::{
-    arch::hcf,
-    kernel::{abi::syscalls::funcs::sys_exit, threading::tls},
-};
+use super::{ProcessReturn, task::Arg};
+use crate::kernel::abi::syscalls::funcs::sys_exit;
 
 #[unsafe(no_mangle)]
 #[with_default_args]

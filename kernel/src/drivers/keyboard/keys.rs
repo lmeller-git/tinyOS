@@ -1,4 +1,4 @@
-use pc_keyboard::{HandleControl, Keyboard, KeyboardLayout, ScancodeSet1, layouts};
+use pc_keyboard::{HandleControl, Keyboard, ScancodeSet1, layouts};
 
 use super::KeyboardError;
 use crate::sync::locks::Mutex;

@@ -6,10 +6,7 @@ use conquer_once::spin::OnceCell;
 use render::BasicTermRender;
 
 use crate::{
-    drivers::{
-        graphics::{GLOBAL_FRAMEBUFFER, framebuffers::GlobalFrameBuffer},
-        keyboard::parse_scancode,
-    },
+    drivers::graphics::{GLOBAL_FRAMEBUFFER, framebuffers::GlobalFrameBuffer},
     kernel::{devices::tty::io::read_all, threading},
     print,
     services::graphics,

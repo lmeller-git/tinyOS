@@ -1,8 +1,6 @@
 use alloc::format;
 use core::fmt::Arguments;
 
-use pc_keyboard::DecodedKey;
-
 use super::TTYSink;
 use crate::{
     arch::{self, interrupt},

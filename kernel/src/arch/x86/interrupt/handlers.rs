@@ -9,17 +9,13 @@ pub use x86_64::{
 };
 
 use crate::{
-    arch::{
-        context::SysCallCtx,
-        x86::{current_time, interrupt::pic::end_interrupt},
-    },
+    arch::{context::SysCallCtx, x86::interrupt::pic::end_interrupt},
     kernel::{
         abi::syscalls::syscall_handler,
         threading::{
             self,
             schedule::context_switch_local,
-            tls,
-            wait::{MESSAGE_QUEUE, QueueType, WaitEvent, post_event},
+            wait::{QueueType, WaitEvent, post_event},
         },
     },
     serial_println,

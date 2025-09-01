@@ -25,7 +25,6 @@ use crate::{
             },
         },
     },
-    serial_println,
     sync::locks::RwLock,
 };
 
