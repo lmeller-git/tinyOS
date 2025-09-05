@@ -91,7 +91,6 @@ impl<'a> WaitObserver<'a> {
         // TODO proper atomic multi enqueue
         for q in queue_data {
             if q.cond.is_given() {
-                serial_println!("early return");
                 return;
             }
             map.get(&q.q_type)
@@ -108,7 +107,6 @@ impl<'a> WaitObserver<'a> {
                 return;
             }
         }
-        serial_println!("early return 2");
     }
 }
 

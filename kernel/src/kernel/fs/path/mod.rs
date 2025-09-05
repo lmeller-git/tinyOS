@@ -6,6 +6,9 @@ use core::{borrow::Borrow, fmt::Display, ops::Deref};
 
 // TODO: migrate this to libtinyos and use as dependancy
 
+const PATH_SEP: char = '/';
+const EXT_SEP: char = '.';
+
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct PathBuf {
     inner: String,
@@ -25,7 +28,7 @@ impl PathBuf {
         };
         let segments = self
             .inner
-            .split('/')
+            .split(PATH_SEP)
             .filter(|&segment| !segment.is_empty() && segment != ".");
         for segment in segments {
             if segment == ".." {
@@ -34,36 +37,53 @@ impl PathBuf {
                 root.push(&segment);
             }
         }
+        *self = root;
     }
 
     pub fn up(&mut self) {
-        let Some((new, _)) = self.inner.rsplit_once('/') else {
+        let Some((new, _)) = self.inner.rsplit_once(PATH_SEP) else {
             return;
         };
         self.inner.truncate(new.len());
     }
 
-    pub fn push<P: AsRef<Path>>(&mut self, path: &P) {
-        // TODO validate if / is needed
-        self.inner.push('/');
-        self.inner.push_str(path.as_ref().as_str());
+    /// appends path to self
+    /// if path is absolute, self will be replaced with path
+    /// No canonicalization will be performed by this method, call PathBuf::canonicalize for that
+    pub fn push<P: AsRef<Path> + ?Sized>(&mut self, path: &P) {
+        if !path.as_ref().is_relative() {
+            self.clear();
+            self.inner.push_str(path.as_ref().as_str());
+        } else {
+            self.inner.push(PATH_SEP);
+            self.inner.push_str(path.as_ref().as_str());
+        }
     }
 
     pub fn add_extension(&mut self, ext: &str) {
-        // TODO validate if . is needed
-        self.inner.push('.');
+        if !ext.starts_with(EXT_SEP) {
+            self.inner.push(EXT_SEP);
+        }
         self.inner.push_str(ext);
     }
 
     pub fn set_extension(&mut self, ext: &str) {
-        // TODO validate if . is needed
-        let Some((stem, _)) = self.inner.rsplit_once('.') else {
+        let Some((stem, _)) = self.inner.rsplit_once(EXT_SEP) else {
             self.inner.push_str(ext);
             return;
         };
         self.inner.truncate(stem.len());
-        self.inner.push('.');
+        if !ext.starts_with(EXT_SEP) {
+            self.inner.push(EXT_SEP);
+        }
         self.inner.push_str(ext);
+    }
+
+    pub fn clear_extension(&mut self) {
+        let Some((stem, _)) = self.inner.rsplit_once(EXT_SEP) else {
+            return;
+        };
+        self.inner.truncate(stem.len());
     }
 
     pub fn clear(&mut self) {
@@ -150,35 +170,44 @@ impl Path {
     }
 
     pub fn traverse(&self) -> impl Iterator<Item = &str> {
-        self.inner.split('/')
+        self.inner
+            .split(PATH_SEP)
+            .filter(|component| !component.is_empty())
     }
 
     pub fn is_relative(&self) -> bool {
-        self.inner.chars().next().is_some_and(|c| c == '/')
+        self.inner.chars().next().is_none_or(|c| c != '/')
     }
 
     pub fn parent(&self) -> &Path {
-        let Some((s, _)) = self.inner.rsplit_once('/') else {
+        let Some((s, _)) = self.inner.rsplit_once(PATH_SEP) else {
             return Path::new("/");
         };
         Path::new(s)
     }
 
     pub fn extension(&self) -> &str {
-        let Some((_, e)) = self.inner.rsplit_once('.') else {
+        let Some((_, e)) = self.inner.rsplit_once(EXT_SEP) else {
             return "";
         };
         e
     }
 
-    fn file_prefix(&self) -> &Path {
-        let Some((_, f)) = self.inner.rsplit_once('/') else {
-            return Path::new("");
+    pub fn file_prefix(&self) -> &str {
+        let Some((_, f)) = self.inner.rsplit_once(PATH_SEP) else {
+            return "";
         };
-        let Some((f, _)) = f.split_once('.') else {
-            return Path::new(f);
+        let Some((f, _)) = f.split_once(EXT_SEP) else {
+            return f;
         };
-        Path::new(f)
+        f
+    }
+
+    pub fn file(&self) -> &str {
+        let Some((_, f)) = self.inner.rsplit_once(PATH_SEP) else {
+            return "";
+        };
+        f
     }
 }
 
@@ -210,5 +239,41 @@ impl AsRef<Path> for str {
 impl Display for Path {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         writeln!(f, "{}", &self.inner)
+    }
+}
+
+#[cfg(feature = "test_run")]
+mod tests {
+    use os_macros::kernel_test;
+
+    use super::*;
+
+    #[kernel_test]
+    fn path() {
+        let mut path = PathBuf::new();
+        assert!(path.is_relative());
+        path.push("/foo");
+        path.push("bar/baz");
+        assert!(!path.is_relative());
+        let mut components = path.traverse();
+        assert_eq!(components.next(), Some("foo"));
+        assert_eq!(components.next(), Some("bar"));
+        assert_eq!(components.next(), Some("baz"));
+        assert!(components.next().is_none());
+        drop(components);
+        path.add_extension("txt");
+        path.add_extension("gz");
+        assert_eq!(path.extension(), "gz");
+        path.clear_extension();
+        assert_eq!(path.extension(), "txt");
+        path.set_extension(".rs");
+        assert_eq!(path.extension(), "rs");
+        assert_eq!(path.file_prefix(), "baz");
+        path.up();
+        assert_eq!(path.file_prefix(), "bar");
+        path.push("./baz/../../foo.bar");
+        path.canonicalize();
+        assert_eq!(path.file(), "foo.bar");
+        assert_eq!(path.parent().file(), "foo");
     }
 }
