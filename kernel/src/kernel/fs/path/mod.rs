@@ -9,7 +9,7 @@ use core::{borrow::Borrow, fmt::Display, ops::Deref};
 const PATH_SEP: char = '/';
 const EXT_SEP: char = '.';
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PathBuf {
     inner: String,
 }
@@ -22,7 +22,7 @@ impl PathBuf {
     pub fn canonicalize(&mut self) {
         // TODO get cwd if path is relative
         let mut root = if self.is_relative() {
-            todo!()
+            todo!("need to query cwd from fs")
         } else {
             Self::new()
         };
@@ -149,7 +149,7 @@ impl Display for PathBuf {
     }
 }
 
-#[derive(Debug, Hash, PartialEq, Eq)]
+#[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Path {
     inner: str,
 }
