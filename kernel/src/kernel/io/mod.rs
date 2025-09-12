@@ -24,7 +24,7 @@ pub trait Read {
     }
 }
 
-pub trait Write: fmt::Write {
+pub trait Write {
     fn write(&self, buf: &[u8]) -> IOResult<usize>;
     fn write_all(&self, mut buf: &[u8]) -> IOResult<()> {
         while !buf.is_empty() {
@@ -39,3 +39,11 @@ pub trait Write: fmt::Write {
         Ok(())
     }
 }
+
+// TODO: integrate fmt::Write maybe via Newtype
+
+// impl<T: Write> fmt::Write for T {
+//     fn write_str(&mut self, s: &str) -> fmt::Result {
+//         todo!()
+//     }
+// }

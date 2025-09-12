@@ -1,9 +1,20 @@
 use alloc::{collections::btree_map::BTreeMap, sync::Arc};
 
+use thiserror::Error;
+
 use crate::{
-    kernel::fs::{FS, FSResult, PathBuf},
+    kernel::fs::{FS, FSError, FSErrorKind, FSResult, Path, PathBuf},
     sync::{BlockingWaiter, locks::GenericRwLock},
 };
+
+#[derive(Error, Debug)]
+pub enum VFSError {
+    #[error("the mount already exists. {}", msg)]
+    MountExists {
+        mount: Arc<dyn FS>,
+        msg: &'static str,
+    },
+}
 
 #[derive(Debug)]
 pub struct VFS {
@@ -15,30 +26,75 @@ impl VFS {
         Self::default()
     }
 
-    fn deepest_matching_mount(&self) -> FSResult<Arc<dyn FS>> {
-        todo!()
+    fn deepest_matching_mount<'a>(&self, path: &'a Path) -> FSResult<(Arc<dyn FS>, &'a Path)> {
+        let mut target_fs = None;
+        let mut postfix_path = path;
+        let reader = self.mount_table.read();
+
+        for ancestor in path.ancestors() {
+            if let Some(mount) = reader.get(ancestor) {
+                target_fs.replace(mount.clone());
+                postfix_path = path
+                    .strip_prefix(&ancestor)
+                    .unwrap_or_else(|| unreachable!());
+                break;
+            }
+        }
+
+        target_fs
+            .map(|mount| (mount, postfix_path))
+            .ok_or(FSError::with_message(
+                FSErrorKind::NotFound,
+                "provided path matches no mount",
+            ))
     }
 
-    pub fn mount(&self, fs: Arc<dyn FS>) -> FSResult<()> {
-        todo!()
+    pub fn mount(&self, mount_point: PathBuf, fs: Arc<dyn FS>) -> FSResult<()> {
+        self.mount_table
+            .write()
+            .insert(mount_point, fs)
+            .map_or(Ok(()), |node| {
+                Err(FSError::custom(
+                    FSErrorKind::AlreadyExists,
+                    VFSError::MountExists {
+                        mount: node,
+                        msg: "The old mount was swapped out and returned",
+                    }
+                    .into(),
+                ))
+            })
+    }
+
+    pub fn unmount(&self, mount_point: &Path) -> FSResult<Arc<dyn FS>> {
+        self.mount_table
+            .write()
+            .remove(mount_point)
+            .ok_or(FSError::with_message(
+                FSErrorKind::NotFound,
+                "the mount deos not exist",
+            ))
     }
 }
 
 impl FS for VFS {
     fn open(&self, path: &super::Path) -> FSResult<super::FSNode> {
-        todo!()
+        self.deepest_matching_mount(path)
+            .and_then(|(mount, path)| mount.open(path))
     }
 
     fn close(&self, path: &super::Path) -> FSResult<()> {
-        todo!()
+        self.deepest_matching_mount(path)
+            .and_then(|(mount, path)| mount.close(path))
     }
 
     fn add_node(&self, path: &super::Path, node: super::FSNode) -> FSResult<()> {
-        todo!()
+        self.deepest_matching_mount(path)
+            .and_then(|(mount, path)| mount.close(path))
     }
 
     fn remove_node(&self, path: &super::Path) -> FSResult<super::FSNode> {
-        todo!()
+        self.deepest_matching_mount(path)
+            .and_then(|(mount, path)| mount.remove_node(path))
     }
 }
 
@@ -47,5 +103,19 @@ impl Default for VFS {
         Self {
             mount_table: GenericRwLock::default(),
         }
+    }
+}
+
+#[cfg(feature = "test_run")]
+mod tests {
+    use os_macros::kernel_test;
+
+    use super::*;
+
+    #[kernel_test]
+    fn vfs_basic() {
+        let vfs = VFS::new();
+        assert!(vfs.open(&Path::new("/foo/bar")).is_err());
+        assert!(vfs.unmount(&Path::new("/foo/bar")).is_err());
     }
 }
