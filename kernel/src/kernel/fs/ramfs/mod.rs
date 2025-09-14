@@ -41,7 +41,7 @@ impl TryFrom<RamNode> for FSNode {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct RamDir {
     children: RwLock<BTreeMap<PathBuf, RamNode>>,
 }
@@ -105,13 +105,13 @@ impl File for RamFileHandle {
 impl IOCapable for RamFileHandle {}
 
 impl Read for RamFileHandle {
-    fn read(&mut self, buf: &mut [u8]) -> crate::kernel::io::IOResult<usize> {
+    fn read(&self, buf: &mut [u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
         todo!()
     }
 }
 
 impl Write for RamFileHandle {
-    fn write(&self, buf: &[u8]) -> crate::kernel::io::IOResult<usize> {
+    fn write(&self, buf: &[u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
         todo!()
     }
 }
@@ -161,7 +161,7 @@ impl RamFS {
 
 impl FS for RamFS {
     fn open(&self, path: &super::Path) -> super::FSResult<super::FSNode> {
-        Ok(self.traverse(path)?.try_into()?)
+        self.traverse(path)?.try_into()
     }
 
     fn close(&self, path: &super::Path) -> super::FSResult<()> {
@@ -216,7 +216,22 @@ impl FS for RamFS {
     }
 
     fn remove_node(&self, path: &super::Path) -> super::FSResult<super::FSNode> {
-        todo!()
+        let parent_node = if let Some(parent) = path.parent() {
+            self.traverse(parent)?
+        } else {
+            RamNode::Dir(self.root.clone())
+        };
+
+        let RamNode::Dir(dir) = parent_node else {
+            return Err(FSError::simple(FSErrorKind::NotADir));
+        };
+
+        let node = dir
+            .children
+            .write()
+            .remove(Path::new(path.file()))
+            .ok_or(FSError::simple(FSErrorKind::NotFound))?;
+        node.try_into()
     }
 }
 
@@ -273,5 +288,8 @@ mod tests {
             fs.add_node(Path::new("/foo/baz"), FSNode::Fs(Arc::new(RamFS::new())))
                 .is_err()
         );
+
+        assert!(fs.remove_node(Path::new("/foo")).is_ok());
+        assert!(fs.open(Path::new("/foo/bar")).is_err());
     }
 }

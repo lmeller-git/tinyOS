@@ -89,7 +89,7 @@ impl FS for VFS {
 
     fn add_node(&self, path: &super::Path, node: super::FSNode) -> FSResult<()> {
         self.deepest_matching_mount(path)
-            .and_then(|(mount, path)| mount.close(path))
+            .and_then(|(mount, path)| mount.add_node(path, node))
     }
 
     fn remove_node(&self, path: &super::Path) -> FSResult<super::FSNode> {
@@ -111,11 +111,29 @@ mod tests {
     use os_macros::kernel_test;
 
     use super::*;
+    use crate::kernel::fs::{
+        FSNode,
+        ramfs::{RamDir, RamFS},
+    };
 
     #[kernel_test]
     fn vfs_basic() {
         let vfs = VFS::new();
         assert!(vfs.open(&Path::new("/foo/bar")).is_err());
         assert!(vfs.unmount(&Path::new("/foo/bar")).is_err());
+
+        let ramfs = Arc::new(RamFS::new());
+        assert!(vfs.mount(Path::new("/foo").into(), ramfs).is_ok());
+        assert!(
+            vfs.add_node(Path::new("/foo/bar"), FSNode::Dir(Arc::new(RamDir::new())))
+                .is_ok()
+        );
+        assert!(
+            vfs.add_node(Path::new("/foo_/bar"), FSNode::Dir(Arc::new(RamDir::new())))
+                .is_err()
+        );
+        assert!(vfs.open(Path::new("/foo/bar")).is_ok());
+        assert!(vfs.unmount(Path::new("/foo")).is_ok());
+        assert!(vfs.open(Path::new("/foo/bar")).is_err());
     }
 }
