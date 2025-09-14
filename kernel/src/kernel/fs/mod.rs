@@ -5,46 +5,50 @@ mod vfs;
 use alloc::{boxed::Box, sync::Arc};
 use core::{error, fmt::Debug};
 
+use bitflags::bitflags;
 pub use path::*;
 use thiserror::Error;
 
-use crate::kernel::fd::IOCapable;
-
-#[derive(Debug)]
-pub enum FSNode {
-    File(Arc<dyn File>),
-    Dir(Arc<dyn Dir>),
-    Link(Arc<dyn Link>),
-    Fs(Arc<dyn FS>),
-}
-
-pub trait FS: Debug + Send + Sync {
-    fn open(&self, path: &Path) -> FSResult<FSNode>;
-    fn close(&self, path: &Path) -> FSResult<()>;
-    fn add_node(&self, path: &Path, node: FSNode) -> FSResult<()>;
-    fn remove_node(&self, path: &Path) -> FSResult<FSNode>;
-}
-
-pub trait File: IOCapable + Debug + Send + Sync {
-    fn meta(&self) -> FMeta;
-}
-
-pub trait Dir: Debug + Send + Sync {}
-
-pub trait Link: IOCapable + Debug + Send + Sync {}
+use crate::kernel::fd::{File, IOCapable};
 
 pub type FSResult<T> = Result<T, FSError>;
 
-// the underlying node for a File
-// can be wrapped by a generic File (handle)
-pub trait FNode: Debug {}
+pub trait FS: Debug + Send + Sync {
+    fn open(&self, path: &Path, options: OpenOptions) -> FSResult<File>;
+    fn unlink(&self, path: &Path, options: UnlinkOptions) -> FSResult<File>;
+    fn flush(&self, path: &Path) -> FSResult<()>;
+}
 
-// the underlying node for a Dir
-// can be wrapped by a generic Dir (handle)
-pub trait DNode: Debug {}
+bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct OpenOptions: u32 {
+        const READ = 1 << 0;
+        const WRITE = 1 << 1;
+        const APPEND = 1 << 2;
+        const TRUNCATE = 1 << 3;
+        const CREATE = 1 << 4;
+        const CREATE_DIR = 1 << 5;
+        const CREATE_ALL = 1 << 6;
+        const NO_FOLLOW_LINK = 1 << 7;
+    }
+}
+
+impl Default for OpenOptions {
+    fn default() -> Self {
+        Self::READ
+    }
+}
+
+bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct UnlinkOptions: u32 {
+        const FORCE = 1 << 0;
+        const RECURSIVE = 1 << 1;
+    }
+}
 
 #[derive(Debug, Clone)]
-pub struct FMeta {
+pub struct FStat {
     pub t_create: u64,
     pub t_mod: u64,
 }
@@ -52,39 +56,39 @@ pub struct FMeta {
 #[derive(Error, Debug)]
 #[error(transparent)]
 pub struct FSError {
-    repr: FSRepr,
+    repr: FSErrRepr,
 }
 
 impl FSError {
     pub fn simple(kind: FSErrorKind) -> Self {
         Self {
-            repr: FSRepr::Simple(kind),
+            repr: FSErrRepr::Simple(kind),
         }
     }
 
     pub fn with_message(kind: FSErrorKind, msg: &'static str) -> Self {
         Self {
-            repr: FSRepr::SimpleMessage { msg, kind },
+            repr: FSErrRepr::SimpleMessage { msg, kind },
         }
     }
 
     pub fn custom(kind: FSErrorKind, err: Box<dyn error::Error + Send + Sync>) -> Self {
         Self {
-            repr: FSRepr::Custom { kind, err },
+            repr: FSErrRepr::Custom { kind, err },
         }
     }
 
     pub fn kind(&self) -> &FSErrorKind {
         match &self.repr {
-            FSRepr::Simple(kind) => kind,
-            FSRepr::SimpleMessage { msg: _, kind } => kind,
-            FSRepr::Custom { kind, err: _ } => kind,
+            FSErrRepr::Simple(kind) => kind,
+            FSErrRepr::SimpleMessage { msg: _, kind } => kind,
+            FSErrRepr::Custom { kind, err: _ } => kind,
         }
     }
 }
 
 #[derive(Error, Debug)]
-pub enum FSRepr {
+pub enum FSErrRepr {
     #[error(transparent)]
     Simple(FSErrorKind),
     #[error("Error with kind: {}, msg: {}", kind, msg)]
@@ -135,4 +139,6 @@ pub enum FSErrorKind {
     InProgress,
     #[error("Unspecified")]
     Other,
+    #[error("This Operation is not supported")]
+    NotSupported,
 }

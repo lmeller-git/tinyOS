@@ -1,9 +1,13 @@
-use alloc::sync::Arc;
-use core::fmt::{self, Debug};
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
+use core::{
+    fmt::{self, Debug},
+    ops::{Deref, DerefMut},
+};
 
 use crate::kernel::io::{Read, Write};
 
 pub type FileDescriptor = u32;
+pub type FDMap = Vec<File>;
 
 pub const STDIN_FILENO: FileDescriptor = 0;
 pub const STDOUT_FILENO: FileDescriptor = 1;
@@ -11,7 +15,7 @@ pub const STDERR_FILENO: FileDescriptor = 2;
 
 pub trait IOCapable: Read + Write {}
 
-pub trait FileRepr: Debug + IOCapable {
+pub trait FileRepr: Debug + IOCapable + Send + Sync {
     fn fstat(&self) -> FStat;
 }
 
@@ -22,16 +26,87 @@ pub struct FStat {
     size: usize,
 }
 
+pub enum MaybeOwned<T: ?Sized> {
+    Owned(Box<T>),
+    Shared(Arc<T>),
+}
+
+impl<T: ?Sized> MaybeOwned<T> {
+    pub fn new<V>(value: V) -> Self
+    where
+        MaybeOwned<T>: From<V>,
+    {
+        value.into()
+    }
+
+    pub fn into_shared(mut self) -> Self {
+        match self {
+            Self::Owned(t) => Self::Shared(t.into()),
+            Self::Shared(_) => self,
+        }
+    }
+}
+
+impl<T: ?Sized> From<Arc<T>> for MaybeOwned<T> {
+    fn from(value: Arc<T>) -> Self {
+        Self::Shared(value)
+    }
+}
+
+impl<T: ?Sized> From<Box<T>> for MaybeOwned<T> {
+    fn from(value: Box<T>) -> Self {
+        Self::Owned(value)
+    }
+}
+
+impl<T> From<T> for MaybeOwned<T> {
+    fn from(value: T) -> Self {
+        Self::Owned(value.into())
+    }
+}
+
+impl<T: ?Sized> Deref for MaybeOwned<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Owned(t) => t.as_ref(),
+            Self::Shared(t) => t.as_ref(),
+        }
+    }
+}
+
+impl<T: ?Sized> AsRef<T> for MaybeOwned<T> {
+    fn as_ref(&self) -> &T {
+        self.deref()
+    }
+}
+
+impl<T> Debug for MaybeOwned<T>
+where
+    T: Debug + ?Sized,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.as_ref().fmt(f)
+    }
+}
+
+unsafe impl<T> Sync for MaybeOwned<T> where T: Sync + ?Sized {}
+unsafe impl<T> Send for MaybeOwned<T> where T: Send + ?Sized {}
+
 #[derive(Debug)]
 pub struct File {
-    repr: Arc<dyn FileRepr>,
+    repr: MaybeOwned<dyn FileRepr>,
     cursor: FCursor,
 }
 
 impl File {
-    pub fn new(repr: Arc<dyn FileRepr>) -> Self {
+    pub fn new<V>(repr: V) -> Self
+    where
+        MaybeOwned<dyn FileRepr>: From<V>,
+    {
         Self {
-            repr,
+            repr: repr.into(),
             cursor: FCursor::default(),
         }
     }

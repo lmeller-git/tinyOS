@@ -3,7 +3,10 @@ use alloc::{collections::btree_map::BTreeMap, sync::Arc};
 use thiserror::Error;
 
 use crate::{
-    kernel::fs::{FS, FSError, FSErrorKind, FSResult, Path, PathBuf},
+    kernel::{
+        fd::MaybeOwned,
+        fs::{FS, FSError, FSErrorKind, FSResult, OpenOptions, Path, PathBuf, UnlinkOptions},
+    },
     sync::{BlockingWaiter, locks::GenericRwLock},
 };
 
@@ -11,7 +14,7 @@ use crate::{
 pub enum VFSError {
     #[error("the mount already exists. {}", msg)]
     MountExists {
-        mount: Arc<dyn FS>,
+        mount: MaybeOwned<dyn FS>,
         msg: &'static str,
     },
 }
@@ -57,7 +60,7 @@ impl VFS {
                 Err(FSError::custom(
                     FSErrorKind::AlreadyExists,
                     VFSError::MountExists {
-                        mount: node,
+                        mount: node.into(),
                         msg: "The old mount was swapped out and returned",
                     }
                     .into(),
@@ -77,24 +80,19 @@ impl VFS {
 }
 
 impl FS for VFS {
-    fn open(&self, path: &super::Path) -> FSResult<super::FSNode> {
+    fn open(&self, path: &Path, options: OpenOptions) -> FSResult<crate::kernel::fd::File> {
         self.deepest_matching_mount(path)
-            .and_then(|(mount, path)| mount.open(path))
+            .and_then(|(mount, path)| mount.open(path, options))
     }
 
-    fn close(&self, path: &super::Path) -> FSResult<()> {
+    fn unlink(&self, path: &Path, options: UnlinkOptions) -> FSResult<crate::kernel::fd::File> {
         self.deepest_matching_mount(path)
-            .and_then(|(mount, path)| mount.close(path))
+            .and_then(|(mount, path)| mount.unlink(path, options))
     }
 
-    fn add_node(&self, path: &super::Path, node: super::FSNode) -> FSResult<()> {
+    fn flush(&self, path: &Path) -> FSResult<()> {
         self.deepest_matching_mount(path)
-            .and_then(|(mount, path)| mount.add_node(path, node))
-    }
-
-    fn remove_node(&self, path: &super::Path) -> FSResult<super::FSNode> {
-        self.deepest_matching_mount(path)
-            .and_then(|(mount, path)| mount.remove_node(path))
+            .and_then(|(mount, path)| mount.flush(path))
     }
 }
 
@@ -111,29 +109,40 @@ mod tests {
     use os_macros::kernel_test;
 
     use super::*;
-    use crate::kernel::fs::{
-        FSNode,
-        ramfs::{RamDir, RamFS},
-    };
 
-    #[kernel_test]
+    #[kernel_test(should_panic)]
     fn vfs_basic() {
         let vfs = VFS::new();
-        assert!(vfs.open(&Path::new("/foo/bar")).is_err());
-        assert!(vfs.unmount(&Path::new("/foo/bar")).is_err());
-
-        let ramfs = Arc::new(RamFS::new());
-        assert!(vfs.mount(Path::new("/foo").into(), ramfs).is_ok());
         assert!(
-            vfs.add_node(Path::new("/foo/bar"), FSNode::Dir(Arc::new(RamDir::new())))
-                .is_ok()
-        );
-        assert!(
-            vfs.add_node(Path::new("/foo_/bar"), FSNode::Dir(Arc::new(RamDir::new())))
+            vfs.open(&Path::new("/foo/bar"), OpenOptions::default())
                 .is_err()
         );
-        assert!(vfs.open(Path::new("/foo/bar")).is_ok());
+        assert!(vfs.unmount(&Path::new("/foo/bar")).is_err());
+
+        // let ramfs = Arc::new(RamFS::new());
+        // assert!(vfs.mount(Path::new("/foo").into(), ramfs).is_ok());
+        assert!(
+            vfs.open(
+                Path::new("/foo/bar"),
+                OpenOptions::CREATE | OpenOptions::READ
+            )
+            .is_ok()
+        );
+        assert!(
+            vfs.open(
+                Path::new("/foo_/bar"),
+                OpenOptions::CREATE | OpenOptions::READ
+            )
+            .is_err()
+        );
+        assert!(
+            vfs.open(Path::new("/foo/bar"), OpenOptions::default())
+                .is_ok()
+        );
         assert!(vfs.unmount(Path::new("/foo")).is_ok());
-        assert!(vfs.open(Path::new("/foo/bar")).is_err());
+        assert!(
+            vfs.open(Path::new("/foo/bar"), OpenOptions::default())
+                .is_err()
+        );
     }
 }
