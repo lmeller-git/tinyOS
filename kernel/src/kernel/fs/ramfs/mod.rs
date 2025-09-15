@@ -1,7 +1,248 @@
+use alloc::{
+    collections::btree_map::BTreeMap,
+    string::{String, ToString},
+    sync::Arc,
+    vec::Vec,
+};
+
+use hashbrown::DefaultHashBuilder;
+use indexmap::IndexMap;
 use thiserror::Error;
+
+use crate::{
+    kernel::{
+        fd::{FStat, File, FileRepr, IOCapable},
+        fs::{FS, FSError, FSErrorKind, FSResult, OpenOptions, Path, PathBuf},
+        io::{Read, Write},
+    },
+    sync::locks::RwLock,
+};
 
 #[derive(Error, Debug)]
 pub enum RamFSError {}
+
+pub type LockedRamFile = RwLock<RamFile>;
+pub type RamFilePtr = Arc<LockedRamFile>;
+
+#[derive(Debug)]
+struct RamFile {
+    stat: FStat,
+    node: RamNode,
+}
+
+impl RamFile {
+    fn new(node: RamNode) -> Self {
+        Self {
+            stat: FStat::new(),
+            node,
+        }
+    }
+
+    fn is_dir(&self) -> bool {
+        match self.node {
+            RamNode::Dir(_) => true,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug)]
+enum RamNode {
+    SoftLink(PathBuf),
+    File(FileData),
+    Dir(DirData),
+}
+
+impl RamNode {
+    fn file() -> Self {
+        Self::File(FileData::default())
+    }
+
+    fn dir() -> Self {
+        Self::Dir(DirData::default())
+    }
+
+    fn link(path: PathBuf) -> Self {
+        Self::SoftLink(path)
+    }
+}
+
+fn ram_dir() -> RamFilePtr {
+    RamFilePtr::new(LockedRamFile::new(RamFile::new(RamNode::dir())))
+}
+
+fn ram_file() -> RamFilePtr {
+    RamFilePtr::new(LockedRamFile::new(RamFile::new(RamNode::file())))
+}
+
+fn ram_link(path: PathBuf) -> RamFilePtr {
+    RamFilePtr::new(LockedRamFile::new(RamFile::new(RamNode::link(path))))
+}
+
+fn as_file(ptr: RamFilePtr) -> File {
+    File::new(ptr as Arc<dyn FileRepr>)
+}
+
+fn with_mut_dir<F, R>(parent: RamFilePtr, func: F) -> FSResult<R>
+where
+    F: FnOnce(&mut DirData) -> R,
+{
+    let RamNode::Dir(ref mut d) = parent.write_arc().node else {
+        return Err(FSError::simple(FSErrorKind::InvalidPath));
+    };
+    Ok(func(d))
+}
+
+fn with_dir<F, R>(parent: RamFilePtr, func: F) -> FSResult<R>
+where
+    F: FnOnce(&DirData) -> R,
+{
+    let RamNode::Dir(ref d) = parent.read_arc().node else {
+        return Err(FSError::simple(FSErrorKind::InvalidPath));
+    };
+    Ok(func(d))
+}
+
+#[derive(Debug, Default)]
+struct DirData {
+    inner: IndexMap<String, RamFilePtr, DefaultHashBuilder>,
+}
+
+impl DirData {
+    fn ensure_entry<F>(&mut self, name: String, f: F) -> RamFilePtr
+    where
+        F: FnOnce() -> RamFilePtr,
+    {
+        self.inner.entry(name).or_insert_with(f).clone()
+    }
+}
+
+#[derive(Debug, Default)]
+struct FileData {
+    inner: Vec<u8>,
+}
+
+impl FileRepr for LockedRamFile {
+    fn fstat(&self) -> FStat {
+        self.read().stat.clone()
+    }
+}
+
+impl IOCapable for LockedRamFile {}
+
+impl Read for LockedRamFile {
+    fn read(&self, buf: &mut [u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+        todo!()
+    }
+}
+
+impl Write for LockedRamFile {
+    fn write(&self, buf: &[u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+        todo!()
+    }
+}
+
+#[derive(Debug)]
+pub struct RamFS {
+    root: RamFilePtr,
+}
+
+impl RamFS {
+    pub fn new() -> Self {
+        Self {
+            root: RamFilePtr::new(RwLock::new(RamFile::new(RamNode::dir()))),
+        }
+    }
+
+    fn traverse(&self, path: &Path, create: bool) -> FSResult<RamFilePtr> {
+        let mut current_dir = self.root.clone();
+        // skip root dir
+        let Some(parent) = path.parent() else {
+            return Ok(current_dir);
+        };
+        for component in parent.traverse().skip(1) {
+            let child = if create {
+                with_mut_dir(current_dir, |dir| {
+                    dir.ensure_entry(component.to_string(), ram_dir)
+                })
+            } else {
+                with_dir(current_dir, |dir| {
+                    dir.inner
+                        .get(component)
+                        .cloned()
+                        .ok_or(FSError::simple(FSErrorKind::NotFound))
+                })?
+            }?;
+
+            if !child.read().is_dir() {
+                return Err(FSError::simple(FSErrorKind::InvalidPath));
+            }
+            current_dir = child;
+        }
+
+        if create {
+            with_mut_dir(current_dir, |dir| {
+                dir.ensure_entry(path.file().into(), ram_dir)
+            })
+        } else {
+            with_dir(current_dir, |dir| {
+                dir.inner
+                    .get(path.file())
+                    .cloned()
+                    .ok_or(FSError::simple(FSErrorKind::NotFound))
+            })
+            .flatten()
+        }
+    }
+}
+
+impl FS for RamFS {
+    fn open(
+        &self,
+        path: &super::Path,
+        options: super::OpenOptions,
+    ) -> super::FSResult<crate::kernel::fd::File> {
+        let Some(parent) = path.parent() else {
+            return Ok(as_file(self.root.clone()));
+        };
+
+        let create_all = options.contains(OpenOptions::CREATE_ALL);
+
+        let parent = self.traverse(parent, create_all)?;
+
+        let RamNode::Dir(ref mut entries) = parent.write_arc().node else {
+            return Err(FSError::simple(FSErrorKind::InvalidFilename));
+        };
+        if create_all && path.as_str().ends_with('/') {
+            Ok(as_file(parent))
+        } else if options.contains(OpenOptions::CREATE_DIR) {
+            Ok(as_file(entries.ensure_entry(path.file().into(), ram_dir)))
+        } else if create_all || options.contains(OpenOptions::CREATE) {
+            Ok(as_file(entries.ensure_entry(path.file().into(), ram_file)))
+        } else if path.as_str().ends_with('/') {
+            Ok(as_file(parent))
+        } else {
+            entries
+                .inner
+                .get(path.file())
+                .cloned()
+                .map(|node| File::new(node as Arc<dyn FileRepr>))
+                .ok_or(FSError::simple(FSErrorKind::NotFound))
+        }
+    }
+
+    fn unlink(
+        &self,
+        path: &super::Path,
+        options: super::UnlinkOptions,
+    ) -> super::FSResult<crate::kernel::fd::File> {
+        todo!()
+    }
+
+    fn flush(&self, path: &super::Path) -> super::FSResult<()> {
+        todo!()
+    }
+}
 
 #[cfg(feature = "test_run")]
 mod tests {

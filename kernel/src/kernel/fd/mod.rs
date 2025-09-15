@@ -4,7 +4,13 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
-use crate::kernel::io::{Read, Write};
+use crate::{
+    arch::x86::current_time,
+    kernel::{
+        fs::PathBuf,
+        io::{Read, Write},
+    },
+};
 
 pub type FileDescriptor = u32;
 pub type FDMap = Vec<File>;
@@ -21,9 +27,20 @@ pub trait FileRepr: Debug + IOCapable + Send + Sync {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct FStat {
-    t_create: u64,
-    t_mod: u64,
-    size: usize,
+    pub t_create: u64,
+    pub t_mod: u64,
+    pub size: usize,
+}
+
+impl FStat {
+    pub fn new() -> Self {
+        let now = current_time().as_secs();
+        Self {
+            t_create: now,
+            t_mod: now,
+            size: 0,
+        }
+    }
 }
 
 pub enum MaybeOwned<T: ?Sized> {
@@ -162,5 +179,30 @@ pub struct FCursor {
 impl FCursor {
     pub fn advance(&mut self, n: usize) {
         self.inner += n
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Link {
+    to: PathBuf,
+}
+
+impl FileRepr for Link {
+    fn fstat(&self) -> FStat {
+        todo!()
+    }
+}
+
+impl IOCapable for Link {}
+
+impl Read for Link {
+    fn read(&self, buf: &mut [u8], offset: usize) -> super::io::IOResult<usize> {
+        todo!()
+    }
+}
+
+impl Write for Link {
+    fn write(&self, buf: &[u8], offset: usize) -> super::io::IOResult<usize> {
+        todo!()
     }
 }

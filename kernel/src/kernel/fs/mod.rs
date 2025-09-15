@@ -47,12 +47,6 @@ bitflags! {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct FStat {
-    pub t_create: u64,
-    pub t_mod: u64,
-}
-
 #[derive(Error, Debug)]
 #[error(transparent)]
 pub struct FSError {
