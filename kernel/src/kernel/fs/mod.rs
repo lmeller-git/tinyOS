@@ -44,6 +44,7 @@ bitflags! {
     pub struct UnlinkOptions: u32 {
         const FORCE = 1 << 0;
         const RECURSIVE = 1 << 1;
+        const NO_PRESERVE_ROOT = 1 << 2;
     }
 }
 

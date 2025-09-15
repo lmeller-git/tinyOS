@@ -12,7 +12,7 @@ use thiserror::Error;
 use crate::{
     kernel::{
         fd::{FStat, File, FileRepr, IOCapable},
-        fs::{FS, FSError, FSErrorKind, FSResult, OpenOptions, Path, PathBuf},
+        fs::{FS, FSError, FSErrorKind, FSResult, OpenOptions, Path, PathBuf, UnlinkOptions},
         io::{Read, Write},
     },
     sync::locks::RwLock,
@@ -222,12 +222,17 @@ impl FS for RamFS {
         } else if path.as_str().ends_with('/') {
             Ok(as_file(parent))
         } else {
-            entries
+            let entry = entries
                 .inner
                 .get(path.file())
-                .cloned()
-                .map(|node| File::new(node as Arc<dyn FileRepr>))
-                .ok_or(FSError::simple(FSErrorKind::NotFound))
+                .ok_or(FSError::simple(FSErrorKind::NotFound))?;
+            if !options.contains(OpenOptions::NO_FOLLOW_LINK)
+                && let RamNode::SoftLink(ref p) = entry.read_arc().node
+            {
+                Err(FSError::simple(FSErrorKind::NotSupported))
+            } else {
+                Ok(as_file(entry.clone()))
+            }
         }
     }
 
@@ -236,11 +241,63 @@ impl FS for RamFS {
         path: &super::Path,
         options: super::UnlinkOptions,
     ) -> super::FSResult<crate::kernel::fd::File> {
-        todo!()
+        let parent = if path.as_str().ends_with('/')
+            && let Some(dir) = path.parent()
+            && let Some(parent) = path.parent()
+        {
+            if options.contains(UnlinkOptions::RECURSIVE) {
+                self.traverse(parent, false)
+            } else {
+                Err(FSError::simple(FSErrorKind::PermissionDenied))
+            }
+        } else if let Some(parent) = path.parent() {
+            self.traverse(parent, false)
+        } else if options.contains(
+            UnlinkOptions::NO_PRESERVE_ROOT | UnlinkOptions::FORCE | UnlinkOptions::RECURSIVE,
+        ) {
+            Ok(self.root.clone())
+        } else {
+            Err(FSError::simple(FSErrorKind::PermissionDenied))
+        }?;
+
+        let child = with_dir(parent.clone(), |nodes| {
+            nodes
+                .inner
+                .get(path.file())
+                .cloned()
+                .ok_or(FSError::simple(FSErrorKind::NotFound))
+        })
+        .flatten()?;
+
+        let removed = match &child.read_arc().node {
+            RamNode::Dir(_) => {
+                if options.contains(UnlinkOptions::RECURSIVE) {
+                    with_mut_dir(parent, |entries| {
+                        entries
+                            .inner
+                            .swap_remove(path.file())
+                            .ok_or(FSError::simple(FSErrorKind::NotFound))
+                    })
+                    .flatten()
+                } else {
+                    Err(FSError::simple(FSErrorKind::PermissionDenied))
+                }
+            }
+            RamNode::SoftLink(_) | RamNode::File(_) => with_mut_dir(parent, |entries| {
+                entries
+                    .inner
+                    .swap_remove(path.file())
+                    .ok_or(FSError::simple(FSErrorKind::NotFound))
+            })
+            .flatten(),
+        }?;
+
+        Ok(as_file(removed))
     }
 
     fn flush(&self, path: &super::Path) -> super::FSResult<()> {
-        todo!()
+        // nothing to do
+        Ok(())
     }
 }
 
@@ -251,5 +308,51 @@ mod tests {
     use super::*;
 
     #[kernel_test]
-    fn ramfs_basic() {}
+    fn ramfs_basic() {
+        let ramfs = RamFS::new();
+        assert!(
+            ramfs
+                .open(Path::new("/foo/bar"), OpenOptions::default())
+                .is_err()
+        );
+        assert!(
+            ramfs
+                .open(
+                    Path::new("/foo"),
+                    OpenOptions::CREATE_DIR | OpenOptions::READ
+                )
+                .is_ok()
+        );
+        assert!(
+            ramfs
+                .open(
+                    Path::new("/foobar/bar/baz.txt"),
+                    OpenOptions::CREATE_ALL | OpenOptions::READ
+                )
+                .is_ok()
+        );
+        assert!(
+            ramfs
+                .open(Path::new("/foobar/bar"), OpenOptions::READ)
+                .is_ok()
+        );
+        assert!(
+            ramfs
+                .unlink(
+                    Path::new("/foobar"),
+                    UnlinkOptions::RECURSIVE | UnlinkOptions::FORCE
+                )
+                .is_ok()
+        );
+        assert!(
+            ramfs
+                .open(Path::new("/foobar/bar/baz.txt"), OpenOptions::READ)
+                .is_err()
+        );
+        assert!(
+            ramfs
+                .unlink(Path::new("/"), UnlinkOptions::RECURSIVE)
+                .is_err()
+        );
+    }
 }
