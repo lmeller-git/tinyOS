@@ -4,6 +4,7 @@ use alloc::{
     sync::Arc,
     vec::Vec,
 };
+use core::ptr;
 
 use hashbrown::DefaultHashBuilder;
 use indexmap::IndexMap;
@@ -132,13 +133,53 @@ impl IOCapable for LockedRamFile {}
 
 impl Read for LockedRamFile {
     fn read(&self, buf: &mut [u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
-        todo!()
+        match self.read().node {
+            RamNode::SoftLink(ref l) => Err(FSError::simple(FSErrorKind::NotSupported)),
+            RamNode::Dir(ref d) => Err(FSError::simple(FSErrorKind::NotSupported)),
+            RamNode::File(ref f) => {
+                // bail early if we are at end
+                if offset == f.inner.len() {
+                    return Ok(0);
+                }
+                let len = f
+                    .inner
+                    .len()
+                    .checked_sub(offset)
+                    .ok_or(FSError::simple(FSErrorKind::UnexpectedEOF))?;
+                unsafe {
+                    ptr::copy_nonoverlapping(f.inner[offset..].as_ptr(), buf.as_mut_ptr(), len);
+                }
+
+                Ok(len)
+            }
+        }
     }
 }
 
 impl Write for LockedRamFile {
     fn write(&self, buf: &[u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
-        todo!()
+        match self.write().node {
+            RamNode::SoftLink(ref l) => Err(FSError::simple(FSErrorKind::NotSupported)),
+            RamNode::Dir(ref d) => Err(FSError::simple(FSErrorKind::NotSupported)),
+            RamNode::File(ref mut f) => {
+                // this currently allows to write BELOW end, leaving a 0 initialized region
+                // might want to prohibit this
+                if offset + buf.len() > f.inner.len() {
+                    f.inner.resize(offset + buf.len(), 0);
+                }
+                // in principle no need to check here
+                let len = f
+                    .inner
+                    .len()
+                    .checked_sub(offset)
+                    .ok_or(FSError::simple(FSErrorKind::UnexpectedEOF))?;
+                unsafe {
+                    ptr::copy_nonoverlapping(buf.as_ptr(), f.inner[offset..].as_mut_ptr(), len);
+                }
+
+                Ok(len)
+            }
+        }
     }
 }
 
@@ -203,7 +244,7 @@ impl FS for RamFS {
         options: super::OpenOptions,
     ) -> super::FSResult<crate::kernel::fd::File> {
         let Some(parent) = path.parent() else {
-            return Ok(as_file(self.root.clone()));
+            return Ok(as_file(self.root.clone()).with_perms(options));
         };
 
         let create_all = options.contains(OpenOptions::CREATE_ALL);
@@ -214,13 +255,13 @@ impl FS for RamFS {
             return Err(FSError::simple(FSErrorKind::InvalidFilename));
         };
         if create_all && path.as_str().ends_with('/') {
-            Ok(as_file(parent))
+            Ok(as_file(parent).with_perms(options))
         } else if options.contains(OpenOptions::CREATE_DIR) {
-            Ok(as_file(entries.ensure_entry(path.file().into(), ram_dir)))
+            Ok(as_file(entries.ensure_entry(path.file().into(), ram_dir)).with_perms(options))
         } else if create_all || options.contains(OpenOptions::CREATE) {
-            Ok(as_file(entries.ensure_entry(path.file().into(), ram_file)))
+            Ok(as_file(entries.ensure_entry(path.file().into(), ram_file)).with_perms(options))
         } else if path.as_str().ends_with('/') {
-            Ok(as_file(parent))
+            Ok(as_file(parent).with_perms(options))
         } else {
             let entry = entries
                 .inner
@@ -231,7 +272,7 @@ impl FS for RamFS {
             {
                 Err(FSError::simple(FSErrorKind::NotSupported))
             } else {
-                Ok(as_file(entry.clone()))
+                Ok(as_file(entry.clone()).with_perms(options))
             }
         }
     }
@@ -303,6 +344,9 @@ impl FS for RamFS {
 
 #[cfg(feature = "test_run")]
 mod tests {
+    use alloc::vec;
+    use core::{fmt::Write, ops::AddAssign};
+
     use os_macros::kernel_test;
 
     use super::*;
@@ -354,5 +398,41 @@ mod tests {
                 .unlink(Path::new("/"), UnlinkOptions::RECURSIVE)
                 .is_err()
         );
+    }
+
+    #[kernel_test]
+    fn ramfs_retrieval() {
+        let ramfs = RamFS::new();
+        let mut bar = ramfs
+            .open(
+                Path::new("/foo/bar.txt"),
+                OpenOptions::CREATE_ALL | OpenOptions::WRITE,
+            )
+            .unwrap();
+        assert_eq!(
+            bar.write_continuous("hello world".as_bytes()).unwrap(),
+            "hello world".as_bytes().len()
+        );
+        bar.set_cursor(0);
+
+        let mut buf = vec![0; 30];
+        let n_read = bar.read_continuous(&mut buf).unwrap();
+        assert_eq!(n_read, "hello_world".as_bytes().len());
+
+        assert_eq!(str::from_utf8(&buf[..n_read]).unwrap(), "hello world");
+
+        assert_eq!(bar.read_continuous(&mut buf[n_read..]).unwrap(), 0);
+        let mut foobar = ramfs
+            .open(
+                Path::new("/foo/foobar"),
+                OpenOptions::CREATE | OpenOptions::READ,
+            )
+            .unwrap();
+        assert!(
+            foobar
+                .write_continuous("hello world/n/they".as_bytes())
+                .is_err()
+        );
+        assert_eq!(foobar.read_continuous(&mut buf).unwrap(), 0)
     }
 }

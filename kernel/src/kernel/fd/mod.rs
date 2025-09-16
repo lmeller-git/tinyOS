@@ -4,10 +4,12 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
+use bitflags::bitflags;
+
 use crate::{
     arch::x86::current_time,
     kernel::{
-        fs::PathBuf,
+        fs::{FSError, FSErrorKind, OpenOptions, PathBuf},
         io::{Read, Write},
     },
 };
@@ -39,6 +41,26 @@ impl FStat {
             t_create: now,
             t_mod: now,
             size: 0,
+        }
+    }
+}
+
+bitflags! {
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct FPerms: u8 {
+        const READ = 1 << 0;
+        const WRITE = 1 << 1;
+    }
+}
+
+impl From<OpenOptions> for FPerms {
+    fn from(value: OpenOptions) -> Self {
+        if value.contains(OpenOptions::WRITE) {
+            Self::WRITE
+        } else if value.contains(OpenOptions::READ) {
+            Self::READ
+        } else {
+            Self::empty()
         }
     }
 }
@@ -115,6 +137,7 @@ unsafe impl<T> Send for MaybeOwned<T> where T: Send + ?Sized {}
 pub struct File {
     repr: MaybeOwned<dyn FileRepr>,
     cursor: FCursor,
+    perms: FPerms,
 }
 
 impl File {
@@ -125,7 +148,16 @@ impl File {
         Self {
             repr: repr.into(),
             cursor: FCursor::default(),
+            perms: FPerms::empty(),
         }
+    }
+
+    pub fn with_perms<T>(mut self, perms: T) -> Self
+    where
+        FPerms: From<T>,
+    {
+        self.perms |= perms.into();
+        self
     }
 
     pub fn read_continuous(&mut self, buf: &mut [u8]) -> super::io::IOResult<usize> {
@@ -143,6 +175,14 @@ impl File {
     pub fn set_cursor(&mut self, offset: usize) {
         self.cursor.inner = offset;
     }
+
+    pub fn may_write(&self) -> bool {
+        self.perms.contains(FPerms::WRITE)
+    }
+
+    pub fn may_read(&self) -> bool {
+        self.perms.contains(FPerms::READ) || self.may_write()
+    }
 }
 
 impl FileRepr for File {
@@ -155,12 +195,18 @@ impl IOCapable for File {}
 
 impl Read for File {
     fn read(&self, buf: &mut [u8], offset: usize) -> super::io::IOResult<usize> {
+        if !self.may_read() {
+            return Err(FSError::simple(FSErrorKind::PermissionDenied));
+        }
         self.repr.read(buf, offset)
     }
 }
 
 impl Write for File {
     fn write(&self, buf: &[u8], offset: usize) -> super::io::IOResult<usize> {
+        if !self.may_write() {
+            return Err(FSError::simple(FSErrorKind::PermissionDenied));
+        }
         self.repr.write(buf, offset)
     }
 }

@@ -109,8 +109,9 @@ mod tests {
     use os_macros::kernel_test;
 
     use super::*;
+    use crate::kernel::fs::ramfs::RamFS;
 
-    #[kernel_test(should_panic)]
+    #[kernel_test]
     fn vfs_basic() {
         let vfs = VFS::new();
         assert!(
@@ -119,8 +120,8 @@ mod tests {
         );
         assert!(vfs.unmount(&Path::new("/foo/bar")).is_err());
 
-        // let ramfs = Arc::new(RamFS::new());
-        // assert!(vfs.mount(Path::new("/foo").into(), ramfs).is_ok());
+        let ramfs = Arc::new(RamFS::new());
+        assert!(vfs.mount(Path::new("/foo").into(), ramfs).is_ok());
         assert!(
             vfs.open(
                 Path::new("/foo/bar"),
