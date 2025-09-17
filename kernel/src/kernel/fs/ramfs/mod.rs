@@ -197,10 +197,12 @@ impl RamFS {
 
     fn traverse(&self, path: &Path, create: bool) -> FSResult<RamFilePtr> {
         let mut current_dir = self.root.clone();
-        // skip root dir
+        // skip last (target) component
         let Some(parent) = path.parent() else {
             return Ok(current_dir);
         };
+
+        // skip root dir
         for component in parent.traverse().skip(1) {
             let child = if create {
                 with_mut_dir(current_dir, |dir| {
@@ -252,9 +254,10 @@ impl FS for RamFS {
         let parent = self.traverse(parent, create_all)?;
 
         let RamNode::Dir(ref mut entries) = parent.write_arc().node else {
-            return Err(FSError::simple(FSErrorKind::InvalidFilename));
+            return Err(FSError::simple(FSErrorKind::InvalidPath));
         };
-        if create_all && path.as_str().ends_with('/') {
+        if (create_all || options.contains(OpenOptions::CREATE_DIR)) && path.as_str().ends_with('/')
+        {
             Ok(as_file(parent).with_perms(options))
         } else if options.contains(OpenOptions::CREATE_DIR) {
             Ok(as_file(entries.ensure_entry(path.file().into(), ram_dir)).with_perms(options))
