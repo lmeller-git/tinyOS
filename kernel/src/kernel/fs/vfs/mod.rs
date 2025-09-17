@@ -1,5 +1,6 @@
 use alloc::{collections::btree_map::BTreeMap, sync::Arc};
 
+use conquer_once::spin::{Once, OnceCell};
 use thiserror::Error;
 
 use crate::{
@@ -9,6 +10,12 @@ use crate::{
     },
     sync::{BlockingWaiter, locks::GenericRwLock},
 };
+
+pub static VFS: OnceCell<VFS> = OnceCell::uninit();
+
+pub fn init() {
+    VFS.init_once(|| VFS::new());
+}
 
 #[derive(Error, Debug)]
 pub enum VFSError {

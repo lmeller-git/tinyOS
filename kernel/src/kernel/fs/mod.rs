@@ -11,6 +11,12 @@ use thiserror::Error;
 
 use crate::kernel::fd::{File, IOCapable};
 
+pub fn init() {
+    procfs::init();
+    ramfs::init();
+    vfs::init();
+}
+
 pub type FSResult<T> = Result<T, FSError>;
 
 pub trait FS: Debug + Send + Sync {

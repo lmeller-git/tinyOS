@@ -14,4 +14,5 @@ pub fn init_mem() {
 pub fn init_kernel() {
     threading::init();
     devices::init();
+    fs::init();
 }

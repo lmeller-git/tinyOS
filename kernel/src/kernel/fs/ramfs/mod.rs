@@ -6,6 +6,7 @@ use alloc::{
 };
 use core::ptr;
 
+use conquer_once::spin::OnceCell;
 use hashbrown::DefaultHashBuilder;
 use indexmap::IndexMap;
 use thiserror::Error;
@@ -18,6 +19,12 @@ use crate::{
     },
     sync::locks::RwLock,
 };
+
+pub static RAMFS: OnceCell<RamFS> = OnceCell::uninit();
+
+pub fn init() {
+    RAMFS.init_once(|| RamFS::new());
+}
 
 #[derive(Error, Debug)]
 pub enum RamFSError {}
@@ -256,8 +263,7 @@ impl FS for RamFS {
         let RamNode::Dir(ref mut entries) = parent.write_arc().node else {
             return Err(FSError::simple(FSErrorKind::InvalidPath));
         };
-        if (create_all || options.contains(OpenOptions::CREATE_DIR)) && path.as_str().ends_with('/')
-        {
+        if path.as_str().ends_with('/') {
             Ok(as_file(parent).with_perms(options))
         } else if options.contains(OpenOptions::CREATE_DIR) {
             Ok(as_file(entries.ensure_entry(path.file().into(), ram_dir)).with_perms(options))

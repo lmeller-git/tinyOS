@@ -2,7 +2,7 @@ use alloc::{
     string::{String, ToString},
     sync::Arc,
 };
-use core::ops::Deref;
+use core::{mem, ops::Deref, ptr};
 
 use bitflags::Flags;
 use hashbrown::DefaultHashBuilder;
@@ -17,6 +17,9 @@ use crate::{
     },
     sync::locks::RwLock,
 };
+
+mod register;
+pub use register::*;
 
 const NULL_DEVICE: &'static Null = &Null;
 
@@ -49,7 +52,7 @@ impl ProcFile {
 
 impl FileRepr for ProcFile {
     fn fstat(&self) -> FStat {
-        todo!()
+        self.stat.read().clone()
     }
 }
 
@@ -57,13 +60,19 @@ impl IOCapable for ProcFile {}
 
 impl Read for ProcFile {
     fn read(&self, buf: &mut [u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
-        todo!()
+        match &self.node {
+            ProcNode::Dir(_) => Err(FSError::simple(FSErrorKind::NotSupported)),
+            ProcNode::File(f) => f.read(buf, offset),
+        }
     }
 }
 
 impl Write for ProcFile {
     fn write(&self, buf: &[u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
-        todo!()
+        match &self.node {
+            ProcNode::Dir(_) => Err(FSError::simple(FSErrorKind::NotSupported)),
+            ProcNode::File(f) => f.write(buf, offset),
+        }
     }
 }
 
@@ -86,7 +95,7 @@ impl ProcNode {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum MaybeRefCounted<'a> {
     Arc(Arc<dyn FileRepr>),
     Ref(&'a dyn FileRepr),
@@ -116,6 +125,16 @@ impl<'a> From<&'a dyn FileRepr> for MaybeRefCounted<'a> {
 impl From<Arc<dyn FileRepr>> for MaybeRefCounted<'_> {
     fn from(value: Arc<dyn FileRepr>) -> Self {
         Self::Arc(value)
+    }
+}
+
+impl<'a, T> From<Arc<T>> for MaybeRefCounted<'a>
+where
+    T: FileRepr + 'a,
+    'a: 'static,
+{
+    fn from(value: Arc<T>) -> Self {
+        (value as Arc<dyn FileRepr + 'a>).into()
     }
 }
 
@@ -151,6 +170,28 @@ impl DirData {
             .get(name)
             .ok_or(FSError::simple(FSErrorKind::NotFound))
             .cloned()
+    }
+
+    fn get_or_update(&self, path: &Path, name: &str) -> FSResult<ProcFilePtr> {
+        if let Some(node) = self.inner.read().get(name) {
+            // short path: node is already contained in self, nothing to do
+            Ok(node.clone())
+        } else {
+            // node not contained in self, we must check back with the device registry
+            let entry = DEVICE_REGISTRY
+                .get()
+                .ok_or(FSError::with_message(
+                    FSErrorKind::Other,
+                    "could not access device registry",
+                ))?
+                .get(path)?;
+            let node = proc_file(entry.into_inner());
+            self.inner
+                .write()
+                .insert(name.to_string(), node.clone())
+                .map_or(Ok(()), |_| Err(FSError::simple(FSErrorKind::AlreadyExists)))?;
+            Ok(node)
+        }
     }
 }
 
@@ -254,6 +295,15 @@ impl FS for ProcFS {
         path: &super::Path,
         options: super::OpenOptions,
     ) -> super::FSResult<crate::kernel::fd::File> {
+        // TODO make this evaluate the device registry lazily
+        // behaviour:
+        // irresepctive of options:
+        // if the file does not exist, check if it exists in device registry, and add it to self
+        // if options::create:
+        // for dir creation, simply create an empty dir
+        // for files: check device registry, but if it does not exist:
+        // Err? or create a NullFile?
+        // --> likely err with DeviceNotFound
         let Some(parent) = path.parent() else {
             return Ok(as_file(self.root.clone()).with_perms(options));
         };
@@ -265,8 +315,8 @@ impl FS for ProcFS {
             return Err(FSError::simple(FSErrorKind::InvalidPath));
         };
 
-        if (create_all || options.contains(OpenOptions::CREATE_DIR)) && path.as_str().ends_with('/')
-        {
+        if path.as_str().ends_with('/') {
+            // might not want to check for create here, as that is already done by traverse
             Ok(as_file(parent).with_perms(options))
         } else if options.contains(OpenOptions::CREATE_DIR) {
             Ok(as_file(parent_dir.ensure_entry(path.file().into(), proc_dir)).with_perms(options))
@@ -278,7 +328,7 @@ impl FS for ProcFS {
         } else if path.as_str().ends_with('/') {
             Ok(as_file(parent).with_perms(options))
         } else {
-            let entry = parent_dir.get_entry(path.file())?;
+            let entry = parent_dir.get_or_update(path, path.file())?;
             Ok(as_file(entry).with_perms(options))
         }
     }
@@ -341,8 +391,35 @@ impl FS for ProcFS {
     }
 }
 
+impl FileRepr for ProcFS {
+    fn fstat(&self) -> FStat {
+        FStat::new()
+    }
+}
+
+impl IOCapable for ProcFS {}
+
+impl Read for ProcFS {
+    fn read(&self, buf: &mut [u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+        let bytes = "ProcFS".as_bytes();
+        let len = bytes.len().min(buf.len());
+        unsafe {
+            ptr::copy_nonoverlapping(bytes.as_ptr(), buf.as_mut_ptr(), len);
+        }
+        Ok(len)
+    }
+}
+
+impl Write for ProcFS {
+    fn write(&self, buf: &[u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+        Err(FSError::simple(FSErrorKind::NotSupported))
+    }
+}
+
 #[cfg(feature = "test_run")]
 mod tests {
+    use alloc::vec;
+
     use os_macros::kernel_test;
 
     use super::*;
@@ -394,5 +471,58 @@ mod tests {
                 .unlink(Path::new("/"), UnlinkOptions::RECURSIVE)
                 .is_err()
         );
+    }
+
+    #[kernel_test]
+    fn test_rw() {
+        let procfs = ProcFS::new();
+
+        let registry = DEVICE_REGISTRY.get_or_init(|| DeviceRegistry::new());
+
+        #[derive(Debug)]
+        struct TestDevice;
+
+        impl FileRepr for TestDevice {
+            fn fstat(&self) -> FStat {
+                FStat::new()
+            }
+        }
+
+        impl IOCapable for TestDevice {}
+
+        impl Read for TestDevice {
+            fn read(&self, buf: &mut [u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+                let bytes = "Test Device".as_bytes();
+                let len = bytes.len().min(buf.len());
+                unsafe {
+                    ptr::copy_nonoverlapping(bytes.as_ptr(), buf.as_mut_ptr(), len);
+                }
+                Ok(len)
+            }
+        }
+
+        impl Write for TestDevice {
+            fn write(&self, buf: &[u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+                Err(FSError::simple(FSErrorKind::NotSupported))
+            }
+        }
+
+        let test_device = Arc::new(TestDevice);
+
+        assert!(
+            registry
+                .register(test_device.clone(), Path::new("/Test.dev").into())
+                .is_ok()
+        );
+
+        let mut file = procfs
+            .open(Path::new("/Test.dev"), OpenOptions::READ)
+            .unwrap();
+        let mut buf = vec![0; 50];
+
+        let n = file.read_continuous(&mut buf).unwrap();
+        assert_eq!(n, "Test Device".as_bytes().len());
+
+        assert_eq!(str::from_utf8(&buf[..n]).unwrap(), "Test Device");
     }
 }
