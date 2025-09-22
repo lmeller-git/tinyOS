@@ -1,10 +1,12 @@
 use alloc::{
     string::{String, ToString},
     sync::Arc,
+    vec,
 };
-use core::{mem, ops::Deref, ptr};
+use core::{fmt::Display, mem, ops::Deref, ptr};
 
 use bitflags::Flags;
+use conquer_once::spin::OnceCell;
 use hashbrown::DefaultHashBuilder;
 use indexmap::IndexMap;
 use thiserror::Error;
@@ -15,6 +17,7 @@ use crate::{
         fs::{FS, FSError, FSErrorKind, FSResult, OpenOptions, Path, UnlinkOptions},
         io::{Read, Write},
     },
+    serial_println,
     sync::locks::RwLock,
 };
 
@@ -61,7 +64,7 @@ impl IOCapable for ProcFile {}
 impl Read for ProcFile {
     fn read(&self, buf: &mut [u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
         match &self.node {
-            ProcNode::Dir(_) => Err(FSError::simple(FSErrorKind::NotSupported)),
+            ProcNode::Dir(d) => Ok(read_dir(d, buf)), // the Dir d is lazy and will not be updated by this operation. Call flush() prior to ls TODO: automatic update of d (need access to path)
             ProcNode::File(f) => f.read(buf, offset),
         }
     }
@@ -76,10 +79,14 @@ impl Write for ProcFile {
     }
 }
 
+fn read_dir(dir: &DirData, buf: &mut [u8]) -> usize {
+    dir.bufferd_display(buf, 0).0
+}
+
 #[derive(Debug)]
 enum ProcNode {
     Dir(DirData),
-    File(MaybeRefCounted<'static>), // a File, typically a device, living for 'static or owned by arc
+    File(MaybeRefCounted<'static>), // a File, typically a device, living for 'static or owned by an arc
 }
 
 impl ProcNode {
@@ -178,13 +185,7 @@ impl DirData {
             Ok(node.clone())
         } else {
             // node not contained in self, we must check back with the device registry
-            let entry = DEVICE_REGISTRY
-                .get()
-                .ok_or(FSError::with_message(
-                    FSErrorKind::Other,
-                    "could not access device registry",
-                ))?
-                .get(path)?;
+            let entry = registry().get(path)?;
             let node = proc_file(entry.into_inner());
             self.inner
                 .write()
@@ -192,6 +193,60 @@ impl DirData {
                 .map_or(Ok(()), |_| Err(FSError::simple(FSErrorKind::AlreadyExists)))?;
             Ok(node)
         }
+    }
+
+    // writes names for all entries in self into buffer, while buffer has space, separated by '\t'. Writes either a whole name + '\t', or nothing
+    // returns (_, true) if no entries remain
+    fn bufferd_display(&self, buf: &mut [u8], offset: usize) -> (usize, bool) {
+        let mut written = 0;
+        let mut newly_written = 0;
+        for name in self.inner.read().keys() {
+            let bytes = name.as_bytes();
+            let total_len = bytes.len() + 1;
+            if written < offset {
+                // skip this entry
+                written += total_len;
+                continue;
+            }
+            if total_len + newly_written >= buf.len() {
+                // no space in buf
+                return (newly_written, false);
+            }
+
+            // write entry + '\t' into buf
+            assert!(buf.len() > newly_written + total_len - 1);
+            assert!(bytes.len() == total_len - 1);
+            buf[newly_written..newly_written + total_len - 1].copy_from_slice(bytes);
+            buf[newly_written + total_len - 1] = b'\t';
+            newly_written += total_len;
+        }
+        (newly_written, true)
+    }
+}
+
+impl Display for DirData {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut buf = vec![0; 10];
+        let mut offset = 0;
+        loop {
+            let (read, is_done) = self.bufferd_display(&mut buf, offset);
+            assert!(read <= buf.len());
+            match (read, is_done) {
+                (0, true) => break,
+                (0, false) => buf.resize(buf.len() * 2, 0),
+                (n, true) => {
+                    let name = str::from_utf8(&buf[..n]).expect("malformed entry in dir");
+                    f.write_str(name)?;
+                    break;
+                }
+                (n, false) => {
+                    let name = str::from_utf8(&buf[..n]).expect("malformed entry in dir");
+                    f.write_str(name)?;
+                    offset += n;
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -295,15 +350,6 @@ impl FS for ProcFS {
         path: &super::Path,
         options: super::OpenOptions,
     ) -> super::FSResult<crate::kernel::fd::File> {
-        // TODO make this evaluate the device registry lazily
-        // behaviour:
-        // irresepctive of options:
-        // if the file does not exist, check if it exists in device registry, and add it to self
-        // if options::create:
-        // for dir creation, simply create an empty dir
-        // for files: check device registry, but if it does not exist:
-        // Err? or create a NullFile?
-        // --> likely err with DeviceNotFound
         let Some(parent) = path.parent() else {
             return Ok(as_file(self.root.clone()).with_perms(options));
         };
@@ -316,17 +362,9 @@ impl FS for ProcFS {
         };
 
         if path.as_str().ends_with('/') {
-            // might not want to check for create here, as that is already done by traverse
             Ok(as_file(parent).with_perms(options))
         } else if options.contains(OpenOptions::CREATE_DIR) {
             Ok(as_file(parent_dir.ensure_entry(path.file().into(), proc_dir)).with_perms(options))
-        } else if create_all || options.contains(OpenOptions::CREATE) {
-            Ok(
-                as_file(parent_dir.ensure_entry(path.file().into(), empty_proc_file))
-                    .with_perms(options),
-            )
-        } else if path.as_str().ends_with('/') {
-            Ok(as_file(parent).with_perms(options))
         } else {
             let entry = parent_dir.get_or_update(path, path.file())?;
             Ok(as_file(entry).with_perms(options))
@@ -385,8 +423,32 @@ impl FS for ProcFS {
         Ok(as_file(removed))
     }
 
+    // updates all children of path, if path is a dir
     fn flush(&self, path: &super::Path) -> super::FSResult<()> {
-        // nothing to do
+        // TODO optimize this, maybe by using a Trie instead of HashMap
+        let node = self.traverse(path, true)?;
+        let ProcNode::Dir(ref d) = node.node else {
+            return Err(FSError::simple(FSErrorKind::NotADir));
+        };
+        let registry = registry();
+        let should_sanitize = path.as_str().ends_with('/');
+
+        for (device_path, node) in registry.devices.read().iter() {
+            if let Some(postfix) = device_path.strip_prefix(&path) {
+                let postfix = if should_sanitize {
+                    let Some(p) = postfix.strip_prefix(&"/") else {
+                        continue;
+                    };
+                    p
+                } else {
+                    postfix
+                };
+                d.inner.write().insert(
+                    postfix.as_str().into(),
+                    proc_file(node.clone().into_inner()),
+                );
+            }
+        }
         Ok(())
     }
 }
@@ -403,9 +465,7 @@ impl Read for ProcFS {
     fn read(&self, buf: &mut [u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
         let bytes = "ProcFS".as_bytes();
         let len = bytes.len().min(buf.len());
-        unsafe {
-            ptr::copy_nonoverlapping(bytes.as_ptr(), buf.as_mut_ptr(), len);
-        }
+        buf[..len].copy_from_slice(&bytes[..len]);
         Ok(len)
     }
 }
@@ -416,13 +476,14 @@ impl Write for ProcFS {
     }
 }
 
-#[cfg(feature = "test_run")]
+// #[cfg(feature = "test_run")]
 mod tests {
-    use alloc::vec;
+    use alloc::{format, vec};
 
     use os_macros::kernel_test;
 
     use super::*;
+    use crate::serial_println;
 
     #[kernel_test]
     fn procfs_basic() {
@@ -444,6 +505,14 @@ mod tests {
             procfs
                 .open(
                     Path::new("/foobar/bar/baz.txt"),
+                    OpenOptions::CREATE_ALL | OpenOptions::READ
+                )
+                .is_err()
+        );
+        assert!(
+            procfs
+                .open(
+                    Path::new("/foobar/bar/baz/"),
                     OpenOptions::CREATE_ALL | OpenOptions::READ
                 )
                 .is_ok()
@@ -494,9 +563,7 @@ mod tests {
             fn read(&self, buf: &mut [u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
                 let bytes = "Test Device".as_bytes();
                 let len = bytes.len().min(buf.len());
-                unsafe {
-                    ptr::copy_nonoverlapping(bytes.as_ptr(), buf.as_mut_ptr(), len);
-                }
+                buf[..len].copy_from_slice(&bytes[..len]);
                 Ok(len)
             }
         }
@@ -510,13 +577,21 @@ mod tests {
         let test_device = Arc::new(TestDevice);
 
         assert!(
+            procfs
+                .open(Path::new("/Test.dev"), OpenOptions::READ)
+                .is_err()
+        );
+        assert!(
             registry
                 .register(test_device.clone(), Path::new("/Test.dev").into())
                 .is_ok()
         );
 
         let mut file = procfs
-            .open(Path::new("/Test.dev"), OpenOptions::READ)
+            .open(
+                Path::new("/Test.dev"),
+                OpenOptions::READ | OpenOptions::WRITE,
+            )
             .unwrap();
         let mut buf = vec![0; 50];
 
@@ -524,5 +599,66 @@ mod tests {
         assert_eq!(n, "Test Device".as_bytes().len());
 
         assert_eq!(str::from_utf8(&buf[..n]).unwrap(), "Test Device");
+        assert!(file.write_continuous("Hello".as_bytes()).is_err());
+
+        assert!(
+            procfs
+                .unlink(Path::new("/Test.dev"), UnlinkOptions::empty())
+                .is_ok()
+        );
+        assert!(
+            procfs
+                .open(Path::new("/Test.dev"), OpenOptions::READ)
+                .is_ok()
+        );
+
+        assert!(registry.deregister(Path::new("/Test.dev")).is_ok());
+        assert!(
+            procfs
+                .unlink(Path::new("/Test.dev"), UnlinkOptions::empty())
+                .is_ok()
+        );
+        assert!(
+            procfs
+                .open(Path::new("/Test.dev"), OpenOptions::READ)
+                .is_err()
+        );
+    }
+
+    #[kernel_test]
+    fn read_dir() {
+        let dir = proc_dir();
+        with_dir(dir.clone(), |inner| assert_eq!(format!("{}", inner), "")).unwrap();
+        with_dir(dir.clone(), |inner| {
+            inner.ensure_entry("foo".into(), || proc_dir());
+            inner.ensure_entry("foobar".into(), || empty_proc_file());
+            inner.ensure_entry("this is a veeery long directory name!!".into(), || {
+                proc_dir()
+            });
+            inner.ensure_entry("short".into(), || proc_dir());
+        })
+        .unwrap();
+        let display = with_dir(dir, |inner| format!("{}", inner)).unwrap();
+
+        let expected = "foo\tfoobar\tthis is a veeery long directory name!!\tshort\t";
+
+        // for some unknown reason str::PartialEq comparison causes UB in this case.
+        // Thus we compare the bytes manually
+
+        let display_bytes = display.as_bytes();
+        let expected_bytes = expected.as_bytes();
+
+        assert_eq!(display_bytes.len(), expected_bytes.len());
+
+        for (i, (&a, &b)) in display_bytes.iter().zip(expected_bytes.iter()).enumerate() {
+            if a != b {
+                panic!("Diff at {}: {} != {}", i, a, b);
+            }
+        }
+
+        // assert_eq!(
+        //     display.as_str(),
+        //     "foo\tfoobar\tthis is a veeery long directory name!!\tshort\t"
+        // )
     }
 }

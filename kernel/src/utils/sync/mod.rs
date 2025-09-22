@@ -38,11 +38,11 @@ pub enum SyncErr {
     GKLHeld,
 }
 
-pub trait StatelessWaitStrategy {
+pub trait StatelessWaitStrategy: Send {
     fn wait();
 }
 
-pub trait WaitStrategy {
+pub trait WaitStrategy: Send {
     const INIT: Self;
     fn wait(&self);
     fn signal(&self) {}

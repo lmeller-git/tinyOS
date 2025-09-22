@@ -4,7 +4,7 @@ use alloc::{
     sync::Arc,
     vec::Vec,
 };
-use core::ptr;
+use core::{ops::Sub, ptr};
 
 use conquer_once::spin::OnceCell;
 use hashbrown::DefaultHashBuilder;
@@ -152,11 +152,9 @@ impl Read for LockedRamFile {
                     .inner
                     .len()
                     .checked_sub(offset)
-                    .ok_or(FSError::simple(FSErrorKind::UnexpectedEOF))?;
-                unsafe {
-                    ptr::copy_nonoverlapping(f.inner[offset..].as_ptr(), buf.as_mut_ptr(), len);
-                }
-
+                    .ok_or(FSError::simple(FSErrorKind::UnexpectedEOF))?
+                    .min(buf.len());
+                buf[..len].copy_from_slice(&f.inner[offset..offset + len]);
                 Ok(len)
             }
         }
@@ -174,16 +172,9 @@ impl Write for LockedRamFile {
                 if offset + buf.len() > f.inner.len() {
                     f.inner.resize(offset + buf.len(), 0);
                 }
-                // in principle no need to check here
-                let len = f
-                    .inner
-                    .len()
-                    .checked_sub(offset)
-                    .ok_or(FSError::simple(FSErrorKind::UnexpectedEOF))?;
-                unsafe {
-                    ptr::copy_nonoverlapping(buf.as_ptr(), f.inner[offset..].as_mut_ptr(), len);
-                }
-
+                // no need to validate offset, as we just resized
+                let len = f.inner.len().sub(offset).min(buf.len());
+                f.inner[offset..offset + len].copy_from_slice(&buf[..len]);
                 Ok(len)
             }
         }
@@ -269,8 +260,6 @@ impl FS for RamFS {
             Ok(as_file(entries.ensure_entry(path.file().into(), ram_dir)).with_perms(options))
         } else if create_all || options.contains(OpenOptions::CREATE) {
             Ok(as_file(entries.ensure_entry(path.file().into(), ram_file)).with_perms(options))
-        } else if path.as_str().ends_with('/') {
-            Ok(as_file(parent).with_perms(options))
         } else {
             let entry = entries
                 .inner

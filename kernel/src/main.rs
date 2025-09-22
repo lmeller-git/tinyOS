@@ -182,7 +182,10 @@ extern "C" fn graphics() -> usize {
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     if !interrupt::are_enabled() {
-        serial_println!("panicked wiht disabled interrupts. We cannot reover from this");
+        serial_println!("panicked wiht disabled interrupts. Trying to recover...");
+        unsafe {
+            interrupt::enable();
+        }
     }
 
     #[cfg(not(feature = "test_run"))]

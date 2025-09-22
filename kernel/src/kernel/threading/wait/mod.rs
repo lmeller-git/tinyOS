@@ -1,9 +1,11 @@
 use alloc::boxed::Box;
-use core::{fmt::Debug, ops::Deref};
+use core::{fmt::Debug, ops::Deref, ptr::NonNull};
 
+use atomic_pool::pool;
 use conquer_once::spin::OnceCell;
 use crossbeam::queue::ArrayQueue;
 use hashbrown::HashMap;
+use nblfq::{HeapBackedQueue, HeaplessQueue};
 
 use crate::{
     arch::interrupt,
@@ -20,14 +22,29 @@ use crate::{
 pub mod condition;
 pub mod queues;
 
-pub static MESSAGE_QUEUE: OnceCell<ArrayQueue<WaitEvent<u64>>> = OnceCell::uninit();
+pub const MAX_WAIT_EVENTS: usize = 20;
+
+pool!(MessagePool: [WaitEvent<u64>; MAX_WAIT_EVENTS]);
+
+// pub static MESSAGE_QUEUE: OnceCell<ArrayQueue<WaitEvent<u64>>> = OnceCell::uninit();
+pub static MESSAGE_QUEUE: OnceCell<HeaplessQueue<MAX_WAIT_EVENTS, WaitEvent<u64>>> =
+    OnceCell::uninit();
 
 pub fn init() {
-    MESSAGE_QUEUE.init_once(|| ArrayQueue::new(20));
+    MESSAGE_QUEUE.init_once(|| HeaplessQueue::new());
 }
 
 pub fn post_event(event: WaitEvent<u64>) -> Option<()> {
+    let event: NonNull<WaitEvent<u64>> =
+        atomic_pool::Box::into_raw(atomic_pool::Box::<MessagePool>::new(event)?);
+    let event: &'static WaitEvent<u64> = unsafe { event.as_ref() };
     MESSAGE_QUEUE.get().and_then(|queue| queue.push(event).ok())
+}
+
+pub fn get_event() -> Option<atomic_pool::Box<MessagePool>> {
+    let event = MESSAGE_QUEUE.get()?.pop()?;
+    let event = unsafe { atomic_pool::Box::<MessagePool>::from_raw(NonNull::from_ref(event)) };
+    Some(event)
 }
 
 pub(crate) struct QueueHandle<'a>(QueueHandleInner<'a>);
@@ -79,9 +96,9 @@ impl<'a> WaitObserver<'a> {
         self.queues.write().remove_entry(queue_type);
     }
 
-    pub fn process_signals(&self, msg: &ArrayQueue<WaitEvent<u64>>) {
+    pub fn process_signals(&self) {
         let map = self.queues.read();
-        while let Some(s) = msg.pop() {
+        while let Some(s) = get_event() {
             map.get(&s.event_type).map(|q| q.signal());
         }
     }
@@ -118,6 +135,8 @@ impl Default for WaitObserver<'_> {
     }
 }
 
+// WaitObserver is Send + Sync,
+// as all operations are atomic relative to observed task state
 unsafe impl Send for WaitObserver<'_> {}
 unsafe impl Sync for WaitObserver<'_> {}
 
@@ -148,14 +167,14 @@ impl QueuTypeCondition {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct WaitEvent<D: Copy + Debug + PartialEq + Eq + Default> {
+pub struct WaitEvent<D: Copy + Debug + PartialEq + Eq + Default + Send> {
     pub event_type: QueueType,
     pub data: D,
 }
 
 impl<D> WaitEvent<D>
 where
-    D: Copy + Debug + PartialEq + Eq + Default,
+    D: Copy + Debug + PartialEq + Eq + Default + Send,
 {
     pub fn new(event_type: QueueType) -> Self {
         Self {

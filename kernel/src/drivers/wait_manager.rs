@@ -59,11 +59,7 @@ pub fn start_wait_managment() {
 
     threading::spawn(move || {
         loop {
-            WAIT_MANAGER
-                .get()
-                .unwrap()
-                .read()
-                .process_signals(MESSAGE_QUEUE.get().unwrap());
+            WAIT_MANAGER.get().unwrap().read().process_signals();
         }
     })
     .unwrap();

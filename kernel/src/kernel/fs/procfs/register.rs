@@ -23,6 +23,10 @@ pub fn init() {
     DEVICE_REGISTRY.init_once(|| DeviceRegistry::new());
 }
 
+pub fn registry() -> &'static DeviceRegistry {
+    DEVICE_REGISTRY.get_or_init(|| DeviceRegistry::new())
+}
+
 #[derive(Error, Debug)]
 pub enum DeviceRegistryError {
     #[error("the device is already registered. {}", msg)]
@@ -53,7 +57,7 @@ impl DeviceEntry {
 }
 
 pub struct DeviceRegistry {
-    devices: RwLock<HashMap<PathBuf, DeviceEntry>>,
+    pub(super) devices: RwLock<HashMap<PathBuf, DeviceEntry>>,
 }
 
 impl DeviceRegistry {

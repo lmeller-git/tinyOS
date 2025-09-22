@@ -17,6 +17,10 @@ pub fn init() {
     VFS.init_once(|| VFS::new());
 }
 
+pub fn get() -> &'static VFS {
+    VFS.get_or_init(|| VFS::new())
+}
+
 #[derive(Error, Debug)]
 pub enum VFSError {
     #[error("the mount already exists. {}", msg)]
@@ -113,10 +117,20 @@ impl Default for VFS {
 
 #[cfg(feature = "test_run")]
 mod tests {
+    use alloc::vec;
+    use core::ptr;
+
     use os_macros::kernel_test;
 
     use super::*;
-    use crate::kernel::fs::ramfs::RamFS;
+    use crate::kernel::{
+        fd::{FStat, FileRepr, IOCapable},
+        fs::{
+            procfs::{DEVICE_REGISTRY, DeviceRegistry, ProcFS},
+            ramfs::RamFS,
+        },
+        io::{Read, Write},
+    };
 
     #[kernel_test]
     fn vfs_basic() {
@@ -152,5 +166,91 @@ mod tests {
             vfs.open(Path::new("/foo/bar"), OpenOptions::default())
                 .is_err()
         );
+    }
+
+    fn vfs_integration() {
+        let vfs = VFS::new();
+        let procfs = Arc::new(ProcFS::new());
+        let ramfs = Arc::new(RamFS::new());
+        let registry = DEVICE_REGISTRY.get_or_init(|| DeviceRegistry::new());
+
+        #[derive(Debug)]
+        struct TestDevice;
+
+        impl FileRepr for TestDevice {
+            fn fstat(&self) -> FStat {
+                FStat::new()
+            }
+        }
+
+        impl IOCapable for TestDevice {}
+
+        impl Read for TestDevice {
+            fn read(&self, buf: &mut [u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+                let bytes = "Test Device".as_bytes();
+                let len = bytes.len().min(buf.len());
+                buf[..len].copy_from_slice(&bytes[..len]);
+                Ok(len)
+            }
+        }
+
+        impl Write for TestDevice {
+            fn write(&self, buf: &[u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+                Err(FSError::simple(FSErrorKind::NotSupported))
+            }
+        }
+
+        let test_device = Arc::new(TestDevice);
+
+        assert!(vfs.mount(Path::new("/proc").into(), procfs).is_ok());
+        assert!(vfs.mount(Path::new("/ram").into(), ramfs).is_ok());
+
+        let mut ramfile = vfs
+            .open(
+                Path::new("/ram/foo/bar.txt"),
+                OpenOptions::CREATE_ALL | OpenOptions::WRITE,
+            )
+            .unwrap();
+        // for now path to device must be rooted in proc, ie start with the proc's root, NOT with the path to proc
+        assert!(
+            registry
+                .register(test_device, Path::new("/foo/Test.dev").into())
+                .is_ok()
+        );
+
+        let mut proc_file = vfs
+            .open(
+                Path::new("/proc/foo/Test.dev"),
+                OpenOptions::CREATE_ALL | OpenOptions::READ,
+            )
+            .unwrap();
+
+        let writer = "Hello world!!".as_bytes();
+        let mut reader = vec![0; 50];
+
+        assert_eq!(ramfile.write_continuous(writer).unwrap(), writer.len());
+        ramfile.set_cursor(0);
+        let n = ramfile.read_continuous(&mut reader).unwrap();
+        assert_eq!(n, writer.len());
+        assert_eq!(str::from_utf8(&reader[..n]).unwrap(), "Hello world!!");
+        ramfile.set_cursor(0);
+        assert_eq!(
+            ramfile.write_continuous("Huhu".as_bytes()).unwrap(),
+            "Huhu".as_bytes().len()
+        );
+        let n = ramfile.read(&mut reader, 0).unwrap();
+        assert_eq!(
+            n,
+            "Huhu world!!"
+                .as_bytes()
+                .len()
+                .max("Hello world!!".as_bytes().len())
+        );
+
+        assert_eq!(str::from_utf8(&reader[..n]).unwrap(), "Huhuo world!!");
+
+        let n = proc_file.read_continuous(&mut reader).unwrap();
+        assert_eq!(n, "Test Device".as_bytes().len());
+        assert_eq!(str::from_utf8(&reader[..n]).unwrap(), "Test Device");
     }
 }

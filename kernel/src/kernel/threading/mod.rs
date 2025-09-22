@@ -202,7 +202,7 @@ pub fn spawn_fn(
 
 pub fn spawn<F, R>(func: F) -> Result<JoinHandle<R>, ThreadingError>
 where
-    F: FnOnce() -> R + 'static + Send + Sync,
+    F: FnOnce() -> R + 'static + Send,
     R: Send + Sync + 'static,
 {
     let mut handle: JoinHandle<R> = JoinHandle::default();
