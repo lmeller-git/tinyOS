@@ -9,3 +9,7 @@
 9: Add actual application (like terminal, ...) (prio 6)
 10: add filesystem ram / disk (prio 4)
 11: rewrite boot-up terminal (prio 5)
+
+
+crossbeam::ArrayQueue is NOT deadlock safe
+replace it in relevant places

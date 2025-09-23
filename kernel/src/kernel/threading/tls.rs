@@ -123,16 +123,20 @@ impl TaskManager {
         let task = self.get(id)?;
         if task.state() != TaskState::Zombie && task.state() != TaskState::Sleeping {
             task.set_state(TaskState::Blocking);
+            Some(())
+        } else {
+            None
         }
-        Some(())
     }
 
     pub fn try_block(&self, id: &TaskID) -> Option<()> {
         let task = self.try_get(id)?;
         if task.state() != TaskState::Zombie && task.state() != TaskState::Sleeping {
             task.set_state(TaskState::Blocking);
+            Some(())
+        } else {
+            None
         }
-        Some(())
     }
 
     pub fn try_wake(&self, id: &TaskID) -> Option<()> {

@@ -50,7 +50,7 @@ pub fn timer_interrupt_handler_local_(rsp: u64) {
     })
     .is_none()
     {
-        serial_println!("could not push timer event");
+        // serial_println!("could not push timer event");
     }
 
     unsafe { context_switch_local(rsp) }

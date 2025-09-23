@@ -192,9 +192,9 @@ impl Arg {
 
     pub fn from_fn<F>(func: F) -> Self
     where
-        F: FnOnce() + 'static + Send + Sync,
+        F: FnOnce() + 'static + Send,
     {
-        let boxed: Box<dyn FnOnce() + Send + Sync + 'static> = Box::new(func);
+        let boxed: Box<dyn FnOnce() + Send + 'static> = Box::new(func);
         let ptr = Box::new(boxed);
         Self::from_ptr(Box::into_raw(ptr))
     }
@@ -204,8 +204,8 @@ impl Arg {
         *boxed
     }
 
-    pub unsafe fn as_closure(&self) -> Box<dyn FnOnce() + 'static + Send + Sync> {
-        unsafe { *Box::from_raw(self.0 as *mut Box<dyn FnOnce() + 'static + Send + Sync>) }
+    pub unsafe fn as_closure(&self) -> Box<dyn FnOnce() + 'static + Send> {
+        unsafe { *Box::from_raw(self.0 as *mut Box<dyn FnOnce() + 'static + Send>) }
     }
 }
 
