@@ -8,6 +8,7 @@ use crate::{
         fd::MaybeOwned,
         fs::{FS, FSError, FSErrorKind, FSResult, OpenOptions, Path, PathBuf, UnlinkOptions},
     },
+    println,
     sync::{BlockingWaiter, locks::GenericRwLock},
 };
 
@@ -115,7 +116,7 @@ impl Default for VFS {
     }
 }
 
-#[cfg(feature = "test_run")]
+// #[cfg(feature = "test_run")]
 mod tests {
     use alloc::vec;
     use core::ptr;
@@ -126,8 +127,12 @@ mod tests {
     use crate::kernel::{
         fd::{FStat, FileRepr, IOCapable},
         fs::{
+            mount,
+            open,
             procfs::{DEVICE_REGISTRY, DeviceRegistry, ProcFS},
             ramfs::RamFS,
+            symlink,
+            unmount,
         },
         io::{Read, Write},
     };
@@ -168,6 +173,7 @@ mod tests {
         );
     }
 
+    #[kernel_test]
     fn vfs_integration() {
         let vfs = VFS::new();
         let procfs = Arc::new(ProcFS::new());
@@ -252,5 +258,78 @@ mod tests {
         let n = proc_file.read_continuous(&mut reader).unwrap();
         assert_eq!(n, "Test Device".as_bytes().len());
         assert_eq!(str::from_utf8(&reader[..n]).unwrap(), "Test Device");
+    }
+
+    #[kernel_test(verbose)]
+    fn symlink_() {
+        mount(
+            Path::new("/ram0").into(),
+            Arc::new(RamFS::new()) as Arc<dyn FS>,
+        )
+        .unwrap();
+        mount(
+            Path::new("/ram1").into(),
+            Arc::new(RamFS::new()) as Arc<dyn FS>,
+        )
+        .unwrap();
+
+        let mut file = open(
+            Path::new("/ram0/bar/foo.txt"),
+            OpenOptions::CREATE_ALL | OpenOptions::WRITE,
+        )
+        .unwrap();
+
+        symlink(Path::new("/ram1/foo_link"), Path::new("/ram0/bar/foo.txt")).unwrap();
+
+        let mut link = open(Path::new("/ram1/foo_link"), OpenOptions::WRITE).unwrap();
+        assert_eq!(
+            file.read_all_as_str().unwrap(),
+            link.read_all_as_str().unwrap()
+        );
+        link.set_cursor(0);
+
+        // for some unknown reason str::PartialEq comparison causes UB in this case.
+        // Thus we compare the bytes manually
+        // TODO:  FIX THIS
+
+        fn bytely_assert(display: &str, expected: &str) {
+            let display_bytes = display.as_bytes();
+            let expected_bytes = expected.as_bytes();
+
+            assert_eq!(display_bytes.len(), expected_bytes.len());
+
+            for (i, (&a, &b)) in display_bytes.iter().zip(expected_bytes.iter()).enumerate() {
+                if a != b {
+                    panic!("Diff at {}: {} != {}", i, a, b);
+                }
+            }
+        }
+
+        let str_ = "hello world in foo";
+        file.write_all(str_.as_bytes(), 0).unwrap();
+        file.set_cursor(0);
+
+        bytely_assert(&file.read_all_as_str().unwrap(), str_);
+        file.set_cursor(0);
+
+        bytely_assert(&link.read_all_as_str().unwrap(), str_);
+        link.set_cursor(0);
+
+        let str_ = "well this is a new str!";
+        link.write_all(str_.as_bytes(), 0).unwrap();
+        link.set_cursor(0);
+
+        bytely_assert(&file.read_all_as_str().unwrap(), str_);
+
+        let link2 = open(
+            Path::new("/ram1/foo_link"),
+            OpenOptions::READ | OpenOptions::NO_FOLLOW_LINK,
+        )
+        .unwrap();
+
+        bytely_assert(&link2.read_all_as_str().unwrap(), "/ram0/bar/foo.txt");
+
+        unmount(Path::new("/ram0")).unwrap();
+        unmount(Path::new("/ram1")).unwrap();
     }
 }

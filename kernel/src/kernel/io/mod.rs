@@ -18,7 +18,9 @@ pub trait Read {
         let mut written = 0;
         loop {
             let count = self.read(&mut buf[written..], offset)?;
-            if count == 0 {
+            if count == buf[written..].len() {
+                buf.resize(buf.len().max(1) * 2, 0);
+            } else if count == 0 {
                 return Ok(written);
             }
             written += count;

@@ -32,12 +32,6 @@ use crate::{
     sync::locks::RwLock,
 };
 
-pub static RAMFS: OnceCell<RamFS> = OnceCell::uninit();
-
-pub fn init() {
-    RAMFS.init_once(|| RamFS::new());
-}
-
 #[derive(Error, Debug)]
 pub enum RamFSError {}
 
@@ -263,7 +257,9 @@ impl Read for LockedRamFile {
                 let mut written = 0;
                 loop {
                     let count = Read::read(self, &mut buf[written..], offset)?;
-                    if count == 0 {
+                    if count == buf[written..].len() {
+                        buf.resize(buf.len().max(1) * 2, 0);
+                    } else if count == 0 {
                         return Ok(written);
                     }
                     written += count;
@@ -378,9 +374,10 @@ impl FS for RamFS {
         } else if options.contains(OpenOptions::CREATE_DIR) {
             Ok(as_file(entries.ensure_entry(path.file().into(), ram_dir)).with_perms(options))
         } else if options.contains(OpenOptions::CREATE_LINK) {
-            Ok(as_file(
-                entries.ensure_entry(path.file().into(), empty_ram_link),
-            ))
+            Ok(
+                as_file(entries.ensure_entry(path.file().into(), empty_ram_link))
+                    .with_perms(options),
+            )
         } else if create_all || options.contains(OpenOptions::CREATE) {
             Ok(as_file(entries.ensure_entry(path.file().into(), ram_file)).with_perms(options))
         } else {
@@ -463,7 +460,7 @@ impl FS for RamFS {
     }
 }
 
-// #[cfg(feature = "test_run")]
+#[cfg(feature = "test_run")]
 mod tests {
     use alloc::vec;
     use core::{fmt::Write, ops::AddAssign};

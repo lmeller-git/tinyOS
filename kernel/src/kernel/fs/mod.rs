@@ -15,8 +15,17 @@ use crate::kernel::fd::{File, IOCapable};
 
 pub fn init() {
     procfs::init();
-    ramfs::init();
     vfs::init();
+    mount(
+        Path::new("/ram").into(),
+        Arc::new(ramfs::RamFS::new()) as Arc<dyn FS>,
+    )
+    .expect("failed to mount ramfs");
+    mount(
+        Path::new("/proc").into(),
+        Arc::new(procfs::ProcFS::new()) as Arc<dyn FS>,
+    )
+    .expect("failed to mount procfs");
 }
 
 pub fn fs() -> &'static impl FS {

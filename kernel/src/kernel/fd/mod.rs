@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
 use core::{
     fmt::{self, Debug},
     ops::{Deref, DerefMut},
@@ -10,7 +10,7 @@ use crate::{
     arch::x86::current_time,
     kernel::{
         fs::{FSError, FSErrorKind, OpenOptions, PathBuf},
-        io::{Read, Write},
+        io::{IOResult, Read, Write},
     },
 };
 
@@ -183,6 +183,12 @@ impl File {
     pub fn may_read(&self) -> bool {
         self.perms.contains(FPerms::READ) || self.may_write()
     }
+
+    pub fn read_all_as_str(&self) -> IOResult<String> {
+        let mut buf = String::new();
+        self.read_to_string(&mut buf, 0)?;
+        Ok(buf)
+    }
 }
 
 impl FileRepr for File {
@@ -221,7 +227,10 @@ impl Write for File {
 
 impl fmt::Write for File {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        todo!()
+        let bytes = s.as_bytes();
+        self.write_all(bytes, 0)
+            .map_err(|_| fmt::Error::default())?;
+        Ok(())
     }
 }
 
