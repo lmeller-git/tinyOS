@@ -3,7 +3,7 @@ use core::fmt;
 
 use thiserror::Error;
 
-use crate::kernel::fs::FSError;
+use crate::kernel::fs::{FSError, FSErrorKind};
 
 pub type IOError = FSError;
 pub type IOResult<T> = Result<T, IOError>;
@@ -13,11 +13,27 @@ pub trait Read {
     fn read_exact(&self, buf: &mut [u8], offset: usize) -> IOResult<()> {
         todo!()
     }
-    fn read_to_end(&self, buf: &mut Vec<u8>, offset: usize) -> IOResult<usize> {
-        todo!()
+
+    fn read_to_end(&self, buf: &mut Vec<u8>, mut offset: usize) -> IOResult<usize> {
+        let mut written = 0;
+        loop {
+            let count = self.read(&mut buf[written..], offset)?;
+            if count == 0 {
+                return Ok(written);
+            }
+            written += count;
+            offset += count;
+        }
     }
+
     fn read_to_string(&self, buf: &mut String, offset: usize) -> IOResult<usize> {
-        todo!()
+        let mut buff = Vec::new();
+        let count = self.read_to_end(&mut buff, 0)?;
+        debug_assert!(count <= buff.len());
+        let str_ =
+            str::from_utf8(&buff[..count]).map_err(|_| IOError::simple(FSErrorKind::Other))?;
+        buf.extend(str_.chars());
+        Ok(str_.len())
     }
 }
 

@@ -200,6 +200,10 @@ impl Read for File {
         }
         self.repr.read(buf, offset)
     }
+
+    fn read_to_end(&self, buf: &mut Vec<u8>, offset: usize) -> super::io::IOResult<usize> {
+        self.repr.read_to_end(buf, offset)
+    }
 }
 
 impl Write for File {
@@ -208,6 +212,10 @@ impl Write for File {
             return Err(FSError::simple(FSErrorKind::PermissionDenied));
         }
         self.repr.write(buf, offset)
+    }
+
+    fn write_all(&self, mut buf: &[u8], mut offset: usize) -> super::io::IOResult<()> {
+        self.repr.write_all(buf, offset)
     }
 }
 

@@ -1,10 +1,12 @@
 use alloc::{
     collections::btree_map::BTreeMap,
+    format,
     string::{String, ToString},
     sync::Arc,
+    vec,
     vec::Vec,
 };
-use core::{ops::Sub, ptr};
+use core::{fmt::Display, ops::Sub, ptr};
 
 use conquer_once::spin::OnceCell;
 use hashbrown::DefaultHashBuilder;
@@ -14,7 +16,17 @@ use thiserror::Error;
 use crate::{
     kernel::{
         fd::{FStat, File, FileRepr, IOCapable},
-        fs::{FS, FSError, FSErrorKind, FSResult, OpenOptions, Path, PathBuf, UnlinkOptions},
+        fs::{
+            FS,
+            FSError,
+            FSErrorKind,
+            FSResult,
+            OpenOptions,
+            Path,
+            PathBuf,
+            UnlinkOptions,
+            fs_util::open,
+        },
         io::{Read, Write},
     },
     sync::locks::RwLock,
@@ -87,6 +99,10 @@ fn ram_link(path: PathBuf) -> RamFilePtr {
     RamFilePtr::new(LockedRamFile::new(RamFile::new(RamNode::link(path))))
 }
 
+fn empty_ram_link() -> RamFilePtr {
+    ram_link(PathBuf::new())
+}
+
 fn as_file(ptr: RamFilePtr) -> File {
     File::new(ptr as Arc<dyn FileRepr>)
 }
@@ -123,8 +139,59 @@ impl DirData {
     {
         self.inner.entry(name).or_insert_with(f).clone()
     }
+
+    fn buffered_display(&self, buf: &mut [u8], offset: usize) -> (usize, bool) {
+        let mut written = 0;
+        let mut newly_written = 0;
+        for name in self.inner.keys() {
+            let bytes = name.as_bytes();
+            let total_len = bytes.len() + 1;
+            if written < offset {
+                // skip this entry
+                written += total_len;
+                continue;
+            }
+            if total_len + newly_written > buf.len() {
+                // no space in buf
+                return (newly_written, false);
+            }
+
+            // write entry + '\t' into buf
+            assert!(buf.len() > newly_written + total_len - 1);
+            assert!(bytes.len() == total_len - 1);
+            buf[newly_written..newly_written + total_len - 1].copy_from_slice(bytes);
+            buf[newly_written + total_len - 1] = b'\t';
+            newly_written += total_len;
+        }
+        (newly_written, true)
+    }
 }
 
+impl Display for DirData {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut buf = vec![0; 10];
+        let mut offset = 0;
+        loop {
+            let (read, is_done) = self.buffered_display(&mut buf, offset);
+            assert!(read <= buf.len());
+            match (read, is_done) {
+                (0, true) => break,
+                (0, false) => buf.resize(buf.len() * 2, 0),
+                (n, true) => {
+                    let name = str::from_utf8(&buf[..n]).expect("malformed entry in dir");
+                    f.write_str(name)?;
+                    break;
+                }
+                (n, false) => {
+                    let name = str::from_utf8(&buf[..n]).expect("malformed entry in dir");
+                    f.write_str(name)?;
+                    offset += n;
+                }
+            }
+        }
+        Ok(())
+    }
+}
 #[derive(Debug, Default)]
 struct FileData {
     inner: Vec<u8>,
@@ -141,8 +208,19 @@ impl IOCapable for LockedRamFile {}
 impl Read for LockedRamFile {
     fn read(&self, buf: &mut [u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
         match self.read().node {
-            RamNode::SoftLink(ref l) => Err(FSError::simple(FSErrorKind::NotSupported)),
-            RamNode::Dir(ref d) => Err(FSError::simple(FSErrorKind::NotSupported)),
+            RamNode::SoftLink(ref l) => {
+                let bytes = l.as_str().as_bytes();
+                if offset > bytes.len() {
+                    return Err(FSError::simple(FSErrorKind::UnexpectedEOF));
+                }
+                let n_readable = (bytes.len() - offset).min(buf.len());
+                buf[..n_readable].copy_from_slice(&bytes[offset..n_readable + offset]);
+                Ok(n_readable)
+            }
+            RamNode::Dir(ref d) => {
+                let (written, _at_end) = d.buffered_display(buf, offset);
+                Ok(written)
+            }
             RamNode::File(ref f) => {
                 // bail early if we are at end
                 if offset == f.inner.len() {
@@ -159,12 +237,53 @@ impl Read for LockedRamFile {
             }
         }
     }
+
+    fn read_to_end(
+        &self,
+        buf: &mut Vec<u8>,
+        mut offset: usize,
+    ) -> crate::kernel::io::IOResult<usize> {
+        let reader = self.read();
+        match reader.node {
+            RamNode::SoftLink(ref l) => {
+                let bytes = l.as_str().as_bytes();
+                if offset > bytes.len() {
+                    return Err(FSError::simple(FSErrorKind::UnexpectedEOF));
+                }
+                buf.extend_from_slice(&bytes[offset..]);
+                Ok(bytes.len() - offset)
+            }
+            RamNode::Dir(ref d) => {
+                let res = format!("{}", d);
+                let bytes = res.as_bytes();
+                buf.extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+            RamNode::File(ref f) => {
+                let mut written = 0;
+                loop {
+                    let count = Read::read(self, &mut buf[written..], offset)?;
+                    if count == 0 {
+                        return Ok(written);
+                    }
+                    written += count;
+                    offset += count;
+                }
+            }
+        }
+    }
 }
 
 impl Write for LockedRamFile {
     fn write(&self, buf: &[u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
         match self.write().node {
-            RamNode::SoftLink(ref l) => Err(FSError::simple(FSErrorKind::NotSupported)),
+            RamNode::SoftLink(ref mut l) => {
+                let str_ =
+                    str::from_utf8(buf).map_err(|_| FSError::simple(FSErrorKind::InvalidPath))?;
+                let path = Path::new(str_).into();
+                *l = path;
+                Ok(buf.len())
+            }
             RamNode::Dir(ref d) => Err(FSError::simple(FSErrorKind::NotSupported)),
             RamNode::File(ref mut f) => {
                 // this currently allows to write BELOW end, leaving a 0 initialized region
@@ -258,6 +377,10 @@ impl FS for RamFS {
             Ok(as_file(parent).with_perms(options))
         } else if options.contains(OpenOptions::CREATE_DIR) {
             Ok(as_file(entries.ensure_entry(path.file().into(), ram_dir)).with_perms(options))
+        } else if options.contains(OpenOptions::CREATE_LINK) {
+            Ok(as_file(
+                entries.ensure_entry(path.file().into(), empty_ram_link),
+            ))
         } else if create_all || options.contains(OpenOptions::CREATE) {
             Ok(as_file(entries.ensure_entry(path.file().into(), ram_file)).with_perms(options))
         } else {
@@ -268,7 +391,7 @@ impl FS for RamFS {
             if !options.contains(OpenOptions::NO_FOLLOW_LINK)
                 && let RamNode::SoftLink(ref p) = entry.read_arc().node
             {
-                Err(FSError::simple(FSErrorKind::NotSupported))
+                open(p, options)
             } else {
                 Ok(as_file(entry.clone()).with_perms(options))
             }
@@ -340,7 +463,7 @@ impl FS for RamFS {
     }
 }
 
-#[cfg(feature = "test_run")]
+// #[cfg(feature = "test_run")]
 mod tests {
     use alloc::vec;
     use core::{fmt::Write, ops::AddAssign};
@@ -432,5 +555,46 @@ mod tests {
                 .is_err()
         );
         assert_eq!(foobar.read_continuous(&mut buf).unwrap(), 0)
+    }
+
+    #[kernel_test]
+    fn read_dir() {
+        let dir = ram_dir();
+        with_dir(dir.clone(), |inner| assert_eq!(format!("{}", inner), "")).unwrap();
+        with_mut_dir(dir.clone(), |inner| {
+            inner.ensure_entry("foo".into(), || ram_dir());
+            inner.ensure_entry("foobar".into(), || ram_file());
+            inner.ensure_entry("this is a veeery long directory name!!".into(), || {
+                ram_dir()
+            });
+            inner.ensure_entry("short".into(), || ram_dir());
+        })
+        .unwrap();
+        let mut buf = String::new();
+        let display = Read::read_to_string(dir.as_ref(), &mut buf, 0).unwrap();
+
+        let expected = "foo\tfoobar\tthis is a veeery long directory name!!\tshort\t";
+
+        // for some unknown reason str::PartialEq comparison causes UB in this case.
+        // Thus we compare the bytes manually
+        // TODO:  FIX THIS
+
+        let display_bytes = &buf[..display].as_bytes();
+        let expected_bytes = expected.as_bytes();
+
+        assert_eq!(display_bytes.len(), expected_bytes.len());
+
+        for (i, (&a, &b)) in display_bytes.iter().zip(expected_bytes.iter()).enumerate() {
+            if a != b {
+                panic!("Diff at {}: {} != {}", i, a, b);
+            }
+        }
+
+        // assert_eq!(display_bytes, expected_bytes);
+
+        // assert_eq!(
+        //     display.as_str(),
+        //     "foo\tfoobar\tthis is a veeery long directory name!!\tshort\t"
+        // )
     }
 }

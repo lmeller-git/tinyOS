@@ -1,4 +1,5 @@
 use alloc::{
+    format,
     string::{String, ToString},
     sync::Arc,
     vec,
@@ -66,6 +67,32 @@ impl Read for ProcFile {
         match &self.node {
             ProcNode::Dir(d) => Ok(read_dir(d, buf)), // the Dir d is lazy and will not be updated by this operation. Call flush() prior to ls TODO: automatic update of d (need access to path)
             ProcNode::File(f) => f.read(buf, offset),
+        }
+    }
+
+    fn read_to_end(
+        &self,
+        buf: &mut vec::Vec<u8>,
+        mut offset: usize,
+    ) -> crate::kernel::io::IOResult<usize> {
+        match &self.node {
+            ProcNode::Dir(d) => {
+                let res = format!("{}", d);
+                let bytes = res.as_bytes();
+                buf.extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+            ProcNode::File(f) => loop {
+                let mut written = 0;
+                loop {
+                    let count = self.read(&mut buf[written..], offset)?;
+                    if count == 0 {
+                        return Ok(written);
+                    }
+                    written += count;
+                    offset += count;
+                }
+            },
         }
     }
 }
@@ -208,7 +235,7 @@ impl DirData {
                 written += total_len;
                 continue;
             }
-            if total_len + newly_written >= buf.len() {
+            if total_len + newly_written > buf.len() {
                 // no space in buf
                 return (newly_written, false);
             }
@@ -644,6 +671,7 @@ mod tests {
 
         // for some unknown reason str::PartialEq comparison causes UB in this case.
         // Thus we compare the bytes manually
+        // TODO:  FIX THIS
 
         let display_bytes = display.as_bytes();
         let expected_bytes = expected.as_bytes();
@@ -655,6 +683,8 @@ mod tests {
                 panic!("Diff at {}: {} != {}", i, a, b);
             }
         }
+
+        // assert_eq!(display_bytes, expected_bytes);
 
         // assert_eq!(
         //     display.as_str(),
