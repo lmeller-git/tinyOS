@@ -11,7 +11,7 @@
 extern crate alloc;
 extern crate tiny_os;
 
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
 use embedded_graphics::{prelude::Dimensions, primitives::PrimitiveStyle};
@@ -46,6 +46,8 @@ use tiny_os::{
             StdInTag,
             StdOutTag,
         },
+        fs::{self, OpenOptions, Path, PathBuf},
+        io::{Read, Write},
         threading::{
             self,
             schedule::{self, Scheduler, add_named_ktask, current_task, get_scheduler},
@@ -113,18 +115,41 @@ extern "C" fn idle() -> usize {
     // _ = add_named_ktask(listen, "term".into());
     cross_println!("startup tasks started");
 
-    let binaries: Vec<&'static [u8]> = get_binaries();
+    let mut bin_dir: PathBuf = Path::new("/ram/bin").into();
+    fs::mkdir(&bin_dir).expect("could not create startup bin dir");
+
+    let binaries: Vec<(String, &'static [u8])> = get_binaries();
 
     serial_println!("adding {} user tasks", binaries.len());
-    for bin in &binaries {
-        let task = TaskBuilder::from_bytes(bin)
-            .unwrap()
-            .with_default_devices()
-            .as_usr()
-            .unwrap()
-            .build();
-        serial_println!("task {:?} added", task.pid());
-        schedule::add_built_task(task);
+
+    for (name, bin) in binaries.iter() {
+        bin_dir.push(name.as_str());
+        if let Ok(file) = fs::open(&bin_dir, OpenOptions::CREATE) {
+            file.write_all(bin, 0)
+                .expect("could not write bin to file {name}");
+        } else {
+            eprintln!("failed to add dir {}", name);
+        };
+        bin_dir.up();
+    }
+    let mut bin = Vec::new();
+    for (name, _bin) in &binaries {
+        bin_dir.push(name.as_str());
+        if let Ok(file) = fs::open(&bin_dir, OpenOptions::READ)
+            && let Ok(n_read) = file.read_to_end(&mut bin, 0)
+        {
+            bin_dir.up();
+            let task = TaskBuilder::from_bytes(&bin[..n_read])
+                .unwrap()
+                .with_default_devices()
+                .as_usr()
+                .unwrap()
+                .build();
+            serial_println!("task {:?} added", task.pid());
+            schedule::add_built_task(task);
+        } else {
+            eprintln!("could not open or read binary of task {name}");
+        }
     }
     serial_println!("{} user tasks added", binaries.len());
 

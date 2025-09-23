@@ -213,7 +213,7 @@ impl Path {
     }
 
     pub fn ancestors(&self) -> Ancestors<'_> {
-        Ancestors::new(&self)
+        Ancestors::new(self)
     }
 
     pub fn strip_prefix<S: AsRef<Path>>(&self, prefix: &S) -> Option<&Self> {

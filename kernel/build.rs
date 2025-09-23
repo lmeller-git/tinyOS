@@ -84,10 +84,12 @@ fn build_user_programs() {
     }
 
     let mut includes = String::new();
-    includes.push_str("pub fn get_binaries() -> alloc::vec::Vec<&'static [u8]>{\n\talloc::vec![\n");
+    includes.push_str(
+        "pub fn get_binaries() -> alloc::vec::Vec<(alloc::string::String, &'static [u8])>{\n\talloc::vec![\n",
+    );
     for bin in bins {
         includes.push_str(&format!(
-            "\t\tinclude_bytes!(concat!(env!(\"OUT_DIR\"), \"/{bin}\")),\n"
+            "\t\t(\"{bin}\".into(), include_bytes!(concat!(env!(\"OUT_DIR\"), \"/{bin}\"))),\n"
         ));
     }
     includes.push_str("\t]\n}\n");
