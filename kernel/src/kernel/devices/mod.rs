@@ -346,6 +346,7 @@ impl DeviceBuilder {
 
 pub fn init() {
     tty::init();
+    graphics::init();
     init_default();
 }
 

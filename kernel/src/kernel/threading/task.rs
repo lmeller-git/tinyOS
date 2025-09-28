@@ -25,6 +25,7 @@ use crate::{
     kernel::{
         devices::{Attacheable, FdEntry, FdTag, TaskDevices},
         elf::apply,
+        fd::{FDMap, File, FileDescriptor},
         mem::paging::{PAGETABLE, TaskPageTable, create_new_pagedir},
         threading::trampoline::TaskExitInfo,
     },
@@ -44,6 +45,9 @@ pub trait TaskRepr: Debug {
     fn name(&self) -> Option<&str>;
     fn exit_info(&self) -> &TaskExitInfo;
     fn kstack_top(&self) -> &VirtAddr;
+    fn fd(&self, descriptor: FileDescriptor) -> Option<Arc<File>>;
+    fn add_fd(&self, descriptor: FileDescriptor, fd: File) -> Option<Arc<File>>;
+    fn remove_fd(&self, descriptor: FileDescriptor) -> Option<Arc<File>>;
 }
 
 #[repr(u8)]
@@ -80,6 +84,7 @@ pub struct TaskMetadata {
     pub name: Option<String>,
     pub parent: Option<TaskID>,
     pub devices: RwLock<TaskDevices>,
+    pub fd_table: RwLock<FDMap>,
     pub state_data: Mutex<TaskStateData>,
     _private: PhantomData<()>,
 }
@@ -114,6 +119,7 @@ impl TaskMetadata {
     fn new() -> Self {
         Self {
             devices: TaskDevices::new().into(),
+            fd_table: RwLock::default(),
             name: None,
             parent: None,
             state_data: TaskStateData::default().into(),
@@ -170,7 +176,30 @@ impl TaskRepr for Task {
     fn kstack_top(&self) -> &VirtAddr {
         &self.core.kernel_stack_top
     }
+
+    fn fd(&self, descriptor: FileDescriptor) -> Option<Arc<File>> {
+        self.metadata
+            .fd_table
+            .read()
+            .get(&(descriptor as u32))
+            .cloned()
+    }
+
+    fn add_fd(&self, descriptor: FileDescriptor, fd: File) -> Option<Arc<File>> {
+        self.metadata
+            .fd_table
+            .write()
+            .insert(descriptor, Arc::new(fd))
+    }
+
+    fn remove_fd(&self, descriptor: FileDescriptor) -> Option<Arc<File>> {
+        self.metadata.fd_table.write().remove(&(descriptor as u32))
+    }
 }
+
+// in principle Task is Send + Sync, however care has to be taken, that fields such as nmae are properly synchronized. Might lock this.
+// unsafe impl Send for Task {}
+// unsafe impl Sync for Task {}
 
 #[repr(transparent)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]

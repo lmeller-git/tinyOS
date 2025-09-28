@@ -5,7 +5,14 @@ use conquer_once::spin::OnceCell;
 use crossbeam::queue::SegQueue;
 
 use super::TTYSink;
-use crate::{arch, data_structures::ChunkedArrayQueue, sync::locks::Mutex, term::_print};
+use crate::{
+    arch,
+    data_structures::ChunkedArrayQueue,
+    kernel::devices::tty::TTYSource,
+    register_device_file,
+    sync::locks::Mutex,
+    term::_print,
+};
 
 pub static SERIALBACKEND: OnceCell<Arc<SerialBackend>> = OnceCell::uninit();
 pub static FBBACKEND: OnceCell<Arc<FbBackend>> = OnceCell::uninit();
@@ -13,6 +20,9 @@ pub static FBBACKEND: OnceCell<Arc<FbBackend>> = OnceCell::uninit();
 pub fn init_tty_sinks() {
     _ = SERIALBACKEND.try_init_once(SerialBackend::new);
     _ = FBBACKEND.try_init_once(FbBackend::new);
+
+    let r = register_device_file!(SERIALBACKEND.get().unwrap().clone(), "/serial");
+    let r = register_device_file!(FBBACKEND.get().unwrap().clone(), "/framebuffer");
 }
 
 // the read_locks are only necessary if multiple instances of these Backends are alive at once, as ChunkedArrayQueue is mpsc. Currently this is not the case.
@@ -81,6 +91,12 @@ impl TTYSink for SerialBackend {
     }
 }
 
+impl TTYSource for SerialBackend {
+    fn read(&self) -> Option<u8> {
+        None
+    }
+}
+
 #[derive(Debug)]
 pub struct FbBackend {
     #[cfg(feature = "custom_ds")]
@@ -144,23 +160,35 @@ impl TTYSink for FbBackend {
     }
 }
 
+impl TTYSource for FbBackend {
+    fn read(&self) -> Option<u8> {
+        None
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
-pub struct TTYReceiver<T: TTYSink> {
+pub struct TTYReceiver<T: TTYSink + TTYSource> {
     backend: Arc<T>,
 }
 
-impl<T: TTYSink> TTYReceiver<T> {
+impl<T: TTYSink + TTYSource> TTYReceiver<T> {
     pub fn new(backend: Arc<T>) -> Self {
         Self { backend }
     }
 }
 
-impl<T: TTYSink> TTYSink for TTYReceiver<T> {
+impl<T: TTYSink + TTYSource> TTYSink for TTYReceiver<T> {
     fn write(&self, bytes: &[u8]) {
         self.backend.write(bytes);
     }
 
     fn flush(&self) {
         self.backend.flush();
+    }
+}
+
+impl<T: TTYSource + TTYSink> TTYSource for TTYReceiver<T> {
+    fn read(&self) -> Option<u8> {
+        self.backend.read()
     }
 }

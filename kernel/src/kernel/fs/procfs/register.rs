@@ -3,17 +3,22 @@ use hashbrown::HashMap;
 use thiserror::Error;
 
 use crate::{
-    kernel::fs::{
-        FS,
-        FSError,
-        FSErrorKind,
-        FSResult,
-        Path,
-        PathBuf,
-        UnlinkOptions,
-        procfs::MaybeRefCounted,
-        vfs::VFS,
+    kernel::{
+        fd::{FStat, FileRepr, IOCapable},
+        fs::{
+            FS,
+            FSError,
+            FSErrorKind,
+            FSResult,
+            Path,
+            PathBuf,
+            UnlinkOptions,
+            procfs::MaybeRefCounted,
+            vfs::VFS,
+        },
+        io::{Read, Write},
     },
+    register_device_file,
     sync::locks::RwLock,
 };
 
@@ -21,10 +26,21 @@ pub static DEVICE_REGISTRY: OnceCell<DeviceRegistry> = OnceCell::uninit();
 
 pub fn init() {
     DEVICE_REGISTRY.init_once(|| DeviceRegistry::new());
+    let r: &'static DeviceRegistry = DEVICE_REGISTRY.get().unwrap();
+    DEVICE_REGISTRY
+        .get()
+        .unwrap()
+        .register(r, Path::new("/self/registry").into());
+    // register_device_file!(DEVICE_REGISTRY.get().unwrap(), "/self/registry");
 }
 
 pub fn registry() -> &'static DeviceRegistry {
     DEVICE_REGISTRY.get_or_init(|| DeviceRegistry::new())
+}
+
+#[macro_export]
+macro_rules! register_device_file {
+    ($device:expr, $path:expr) => {{ $crate::kernel::fs::procfs::registry().register($device, $path.into()) }};
 }
 
 #[derive(Error, Debug)]
@@ -56,6 +72,7 @@ impl DeviceEntry {
     }
 }
 
+#[derive(Debug)]
 pub struct DeviceRegistry {
     pub(super) devices: RwLock<HashMap<PathBuf, DeviceEntry>>,
 }
@@ -131,5 +148,45 @@ impl DeviceRegistry {
             .get(path)
             .cloned()
             .ok_or(FSError::simple(FSErrorKind::NotFound))
+    }
+}
+
+impl FileRepr for DeviceRegistry {
+    fn fstat(&self) -> FStat {
+        FStat::new()
+    }
+}
+
+impl IOCapable for DeviceRegistry {}
+
+impl Read for DeviceRegistry {
+    fn read(&self, buf: &mut [u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+        todo!()
+    }
+}
+
+impl Write for DeviceRegistry {
+    fn write(&self, buf: &[u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+        todo!()
+    }
+}
+
+impl FileRepr for DeviceEntry {
+    fn fstat(&self) -> crate::kernel::fd::FStat {
+        FStat::new()
+    }
+}
+
+impl IOCapable for DeviceEntry {}
+
+impl Read for DeviceEntry {
+    fn read(&self, buf: &mut [u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+        todo!()
+    }
+}
+
+impl Write for DeviceEntry {
+    fn write(&self, buf: &[u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+        todo!()
     }
 }

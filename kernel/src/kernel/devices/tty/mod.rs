@@ -6,7 +6,11 @@ use sink::{FBBACKEND, SERIALBACKEND, TTYReceiver};
 use source::{KEYBOARDBACKEND, TTYInput};
 
 use super::{FdEntry, FdTag, RawDeviceID, RawFdEntry};
-use crate::kernel::devices::Null;
+use crate::kernel::{
+    devices::Null,
+    fd::{FileRepr, IOCapable},
+    io::{IOError, IOResult, Read, Write},
+};
 
 pub mod io;
 pub mod sink;
@@ -19,6 +23,39 @@ pub trait TTYSink: Debug + Send + Sync {
 
 pub trait TTYSource: Debug + Send + Sync {
     fn read(&self) -> Option<u8>;
+    fn read_buf(&self, buf: &mut [u8], offset: usize) -> IOResult<usize> {
+        if let Some(r) = self.read() {
+            *buf.get_mut(0).ok_or(IOError::simple(
+                crate::kernel::fs::FSErrorKind::UnexpectedEOF,
+            ))? = r;
+            Ok(0)
+        } else {
+            Err(IOError::simple(
+                crate::kernel::fs::FSErrorKind::UnexpectedEOF,
+            ))
+        }
+    }
+}
+
+impl<T: TTYSink + TTYSource> FileRepr for T {
+    fn fstat(&self) -> crate::kernel::fd::FStat {
+        crate::kernel::fd::FStat::new()
+    }
+}
+
+impl<T: TTYSink + TTYSource> IOCapable for T {}
+
+impl<T: TTYSink + TTYSource> Read for T {
+    fn read(&self, buf: &mut [u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+        TTYSource::read_buf(self, buf, offset)
+    }
+}
+
+impl<T: TTYSink + TTYSource> Write for T {
+    fn write(&self, buf: &[u8], offset: usize) -> IOResult<usize> {
+        TTYSink::write(self, buf);
+        Ok(buf.len())
+    }
 }
 
 pub struct TTYBuilder {

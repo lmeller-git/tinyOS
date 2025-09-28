@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, collections::btree_map::BTreeMap, string::String, sync::Arc, vec::Vec};
 use core::{
     fmt::{self, Debug},
     ops::{Deref, DerefMut},
@@ -15,7 +15,7 @@ use crate::{
 };
 
 pub type FileDescriptor = u32;
-pub type FDMap = Vec<File>;
+pub type FDMap = BTreeMap<FileDescriptor, Arc<File>>;
 
 pub const STDIN_FILENO: FileDescriptor = 0;
 pub const STDOUT_FILENO: FileDescriptor = 1;

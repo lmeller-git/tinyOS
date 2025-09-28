@@ -37,14 +37,17 @@ use tiny_os::{
         abi::syscalls::funcs::{sys_exit, sys_write},
         devices::{
             DeviceBuilder,
+            DeviceID,
             EDebugSinkTag,
             FdEntry,
             FdEntryType,
             GraphicsTag,
+            RawDeviceID,
             RawFdEntry,
             SinkTag,
             StdInTag,
             StdOutTag,
+            graphics::KERNEL_GFX_MANAGER,
         },
         fs::{self, OpenOptions, Path, PathBuf},
         io::{Read, Write},
@@ -89,8 +92,15 @@ unsafe extern "C" fn kmain() -> ! {
             let serial: FdEntry<EDebugSinkTag> = DeviceBuilder::tty().serial();
             let serial2: FdEntry<StdOutTag> = DeviceBuilder::tty().serial();
             let keyboard: FdEntry<StdInTag> = DeviceBuilder::tty().keyboard();
-            let gfx: FdEntry<GraphicsTag> = DeviceBuilder::gfx()
-                .blit_kernel(crate::arch::mem::VirtAddr::new(0xffff_ffff_f000_0000));
+            let gfx: FdEntry<GraphicsTag> = FdEntry::new(
+                RawFdEntry::GraphicsBackend(
+                    RawDeviceID::from(42),
+                    KERNEL_GFX_MANAGER.get().unwrap().clone(),
+                ),
+                RawDeviceID::from(42),
+            );
+            // let gfx: FdEntry<GraphicsTag> = DeviceBuilder::gfx()
+            //     .blit_kernel(crate::arch::mem::VirtAddr::new(0xffff_ffff_f000_0000));
 
             devices.attach(fb);
             devices.attach(serial);

@@ -1,15 +1,30 @@
-use alloc::{boxed::Box, sync::Arc};
+use alloc::{boxed::Box, format, string::String, sync::Arc};
 use core::{fmt::Debug, marker::PhantomData};
 
+use conquer_once::spin::OnceCell;
 use embedded_graphics::prelude::DrawTarget;
 
 use super::{FdEntry, FdTag, Null, RawDeviceID, RawFdEntry};
 use crate::{
+    arch::mem::VirtAddr,
     drivers::graphics::{
         GLOBAL_FRAMEBUFFER,
         colors::{ColorCode, RGBColor},
-        framebuffers::{BoundingBox, FrameBuffer, HasFrameBuffer, RawFrameBuffer},
+        framebuffers::{
+            BoundingBox,
+            FrameBuffer,
+            GlobalFrameBuffer,
+            HasFrameBuffer,
+            RawFrameBuffer,
+            get_config,
+        },
     },
+    kernel::{
+        fd::{FileRepr, IOCapable},
+        fs::{OpenOptions, Path, open},
+        io::{IOError, IOResult, Read, Write},
+    },
+    register_device_file,
     serial_println,
     services::graphics::{
         BlitTarget,
@@ -22,6 +37,56 @@ use crate::{
     },
     sync::locks::Mutex,
 };
+
+pub static KERNEL_GFX_MANAGER: OnceCell<
+    Arc<
+        BlitManager<
+            Simplegraphics<RawFrameBuffer>,
+            Simplegraphics<GlobalFrameBuffer>,
+            RawFrameBuffer,
+        >,
+    >,
+> = OnceCell::uninit();
+
+pub(super) fn init() {
+    let addr = VirtAddr::new(0xffff_ffff_f000_0000);
+    let intermediate = Simplegraphics::new(Box::leak(Box::new(unsafe {
+        RawFrameBuffer::new_kernel(
+            addr,
+            GLOBAL_FRAMEBUFFER.width(),
+            GLOBAL_FRAMEBUFFER.height(),
+            GLOBAL_FRAMEBUFFER.bpp(),
+        )
+    })));
+
+    let target = Simplegraphics::new(&*GLOBAL_FRAMEBUFFER);
+    let entry = Arc::new(BlitManager::new(intermediate, target));
+    KERNEL_GFX_MANAGER.try_init_once(|| entry.clone());
+    register_device_file!(entry, "/gfx");
+    // load config into ramfs
+    // let basic_config = get_config();
+    // let fb = &GLOBAL_FRAMEBUFFER;
+    // let mut gfx_config_file = open(
+    //     Path::new("/ram/.config/gfx/config"),
+    //     OpenOptions::CREATE_ALL | OpenOptions::WRITE,
+    // )
+    // .unwrap();
+    // let mut bytes = format!(
+    //     "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+    //     basic_config.red_mask_shift,
+    //     basic_config.red_mask_size,
+    //     basic_config.green_mask_shift,
+    //     basic_config.green_mask_size,
+    //     basic_config.blue_mask_shift,
+    //     basic_config.blue_mask_size,
+    //     fb.bpp(),
+    //     fb.width(),
+    //     fb.height(),
+    //     fb.pitch()
+    // )
+    // .as_bytes();
+    // gfx_config_file.write_all(bytes, 0).unwrap();
+}
 
 pub struct GFXBuilder {
     id: RawDeviceID,
@@ -104,6 +169,69 @@ pub trait GFXManager: Debug + Send + Sync {
     fn draw_batched_primitives(&self, primitives: &[&PrimitiveGlyph]) -> Result<(), GraphicsError>;
     fn draw_glyph(&self, glyph: &dyn Glyph, color: &ColorCode);
     fn flush(&self, area: &BoundingBox) {}
+}
+
+impl<B, T, F> FileRepr for BlitManager<B, T, F>
+where
+    B: PrimitiveDrawTarget
+        + DrawTarget<Color = RGBColor, Error = GraphicsError>
+        + GraphicsBackend
+        + HasFrameBuffer<F>,
+    F: FrameBuffer,
+    T: BlitTarget,
+{
+    fn fstat(&self) -> crate::kernel::fd::FStat {
+        crate::kernel::fd::FStat::new()
+    }
+}
+
+impl<B, T, F> IOCapable for BlitManager<B, T, F>
+where
+    B: PrimitiveDrawTarget
+        + DrawTarget<Color = RGBColor, Error = GraphicsError>
+        + GraphicsBackend
+        + HasFrameBuffer<F>,
+    F: FrameBuffer,
+    T: BlitTarget,
+{
+}
+
+impl<B, T, F> Read for BlitManager<B, T, F>
+where
+    B: PrimitiveDrawTarget
+        + DrawTarget<Color = RGBColor, Error = GraphicsError>
+        + GraphicsBackend
+        + HasFrameBuffer<F>,
+    F: FrameBuffer,
+    T: BlitTarget,
+{
+    fn read(&self, buf: &mut [u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+        Err(IOError::simple(
+            crate::kernel::fs::FSErrorKind::NotSupported,
+        ))
+    }
+}
+
+impl<B, T, F> Write for BlitManager<B, T, F>
+where
+    B: PrimitiveDrawTarget
+        + DrawTarget<Color = RGBColor, Error = GraphicsError>
+        + GraphicsBackend
+        + HasFrameBuffer<F>,
+    F: FrameBuffer,
+    T: BlitTarget,
+{
+    fn write(&self, buf: &[u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+        // using buf as a mem region of Bounding Boxes and offset as the length of the region
+        let bounds = unsafe {
+            &*core::ptr::slice_from_raw_parts(buf.as_ptr() as *const BoundingBox, offset)
+        };
+        for bound in bounds {
+            self.flush(bound);
+        }
+
+        Ok(offset)
+    }
 }
 
 pub struct SimpleGFXManager<B>

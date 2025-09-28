@@ -1,9 +1,12 @@
 mod path;
-mod procfs;
+pub mod procfs;
 mod ramfs;
 mod vfs;
 use alloc::{boxed::Box, sync::Arc};
-use core::{error, fmt::Debug};
+use core::{
+    error,
+    fmt::{Debug, Write},
+};
 
 use bitflags::bitflags;
 pub use path::*;
@@ -11,7 +14,11 @@ use thiserror::Error;
 mod fs_util;
 pub use fs_util::*;
 
-use crate::kernel::fd::{File, IOCapable};
+use crate::kernel::{
+    devices::tty::sink::SERIALBACKEND,
+    fd::{File, IOCapable},
+    fs::procfs::registry,
+};
 
 pub fn init() {
     procfs::init();
@@ -26,6 +33,13 @@ pub fn init() {
         Arc::new(procfs::ProcFS::new()) as Arc<dyn FS>,
     )
     .expect("failed to mount procfs");
+
+    let mut serial = open(
+        Path::new("/proc/serial"),
+        OpenOptions::CREATE | OpenOptions::WRITE,
+    )
+    .unwrap();
+    serial.write_str("hello from serial via FS!!!").unwrap();
 }
 
 pub fn fs() -> &'static impl FS {
