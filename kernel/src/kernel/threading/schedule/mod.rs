@@ -82,10 +82,6 @@ pub fn current_task() -> Result<GlobalTaskPtr, ThreadingError> {
 pub unsafe extern "C" fn context_switch_local(rsp: u64) {
     // heart of context switching logic. Here we get the next task to run, initialize task_data and scheduler and switch.
     // WE CANNOT BLOCK HERE
-    #[cfg(feature = "gkl")]
-    if GKL.is_locked() {
-        return;
-    }
 
     let task_data = tls::task_data();
     let current = if let Some(current) = task_data.try_get_current() {

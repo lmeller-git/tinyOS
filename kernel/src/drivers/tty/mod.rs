@@ -8,7 +8,6 @@ use crate::{
         },
         threading,
     },
-    locks::GKL,
     serial_println,
 };
 
@@ -16,13 +15,8 @@ use crate::{
 pub fn start_tty_backend() {
     _ = threading::spawn(move || {
         loop {
-            let Ok(gkl) = GKL.try_lock() else {
-                threading::yield_now();
-                continue;
-            };
             SERIALBACKEND.get().unwrap().flush();
             FBBACKEND.get().unwrap().flush();
-            drop(gkl);
             threading::yield_now();
         }
     })

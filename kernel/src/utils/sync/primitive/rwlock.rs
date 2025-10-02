@@ -41,9 +41,6 @@ unsafe impl<S: WaitStrategy> RawRwLock for StaticSemaphore<{ usize::MAX }, S> {
 
 unsafe impl<S: WaitStrategy> RawRwLockDowngrade for StaticSemaphore<{ usize::MAX }, S> {
     unsafe fn downgrade(&self) {
-        #[cfg(feature = "gkl")]
-        // to uphold gkl contract
-        self.down_n(0);
         unsafe {
             self.up_n(usize::MAX - 1);
         }

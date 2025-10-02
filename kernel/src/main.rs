@@ -195,13 +195,6 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
         tls::task_data().current_pid()
     );
 
-    #[cfg(feature = "gkl")]
-    {
-        if GKL.is_locked() {
-            eprintln!("GKL is locked, but the thread is killed.\nUnlocking GKL...");
-            unsafe { GKL.unlock_unchecked() };
-        }
-    }
     if let Ok(current) = current_task() {
         tls::task_data().kill(&tls::task_data().current_pid(), 1);
     }

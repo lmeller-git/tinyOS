@@ -33,9 +33,6 @@ pub mod locks {
 pub enum SyncErr {
     #[error("tried to access a contended lock")]
     LockContended,
-    #[cfg(feature = "gkl")]
-    #[error("GKL is not free")]
-    GKLHeld,
 }
 
 pub trait StatelessWaitStrategy: Send {

@@ -2,8 +2,6 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use lock_api::GuardSend;
 
-#[cfg(feature = "gkl")]
-use crate::locks::GKL;
 use crate::sync::{SyncErr, WaitStrategy};
 
 pub unsafe trait RawSemaphore {
@@ -42,15 +40,6 @@ unsafe impl<S: WaitStrategy> RawSemaphore for DynamicSemaphore<S> {
             })
             .map_err(|_| SyncErr::LockContended)?;
 
-        #[cfg(feature = "gkl")]
-        #[allow(unused_unsafe)]
-        {
-            let guard = GKL.try_lock().map_err(|_| SyncErr::GKLHeld)?;
-            /// # SAFETY This MUST be followed by a call to GKL.unlock() at some point, which is guaranteed under safe usage of the Semaphore. Anything else is ub.
-            unsafe {
-                core::mem::forget(guard);
-            }
-        }
         Ok(())
     }
 
@@ -65,12 +54,6 @@ unsafe impl<S: WaitStrategy> RawSemaphore for DynamicSemaphore<S> {
 
     unsafe fn up(&self) {
         self.counter.fetch_add(1, Ordering::Release);
-        #[cfg(feature = "gkl")]
-        #[allow(unused_unsafe)]
-        /// # SAFETY This MUST be called only after Self::try_down to keep GKL state defined
-        unsafe {
-            GKL.unlock()
-        };
         self.strategy.signal();
     }
 
@@ -81,15 +64,6 @@ unsafe impl<S: WaitStrategy> RawSemaphore for DynamicSemaphore<S> {
             })
             .map_err(|_| SyncErr::LockContended)?;
 
-        #[cfg(feature = "gkl")]
-        #[allow(unused_unsafe)]
-        {
-            let guard = GKL.try_lock().map_err(|_| SyncErr::GKLHeld)?;
-            /// # SAFETY This MUST be followed by a call to GKL.unlock() at some point, which is guaranteed under safe usage of the Semaphore. Anything else is ub.
-            unsafe {
-                core::mem::forget(guard);
-            }
-        }
         Ok(())
     }
 
@@ -104,12 +78,6 @@ unsafe impl<S: WaitStrategy> RawSemaphore for DynamicSemaphore<S> {
 
     unsafe fn up_n(&self, n: usize) {
         self.counter.fetch_add(n, Ordering::Release);
-        #[cfg(feature = "gkl")]
-        #[allow(unused_unsafe)]
-        /// # SAFETY This MUST be called only after Self::try_down to keep GKL state defined
-        unsafe {
-            GKL.unlock()
-        };
         self.strategy.signal();
     }
 }
@@ -198,9 +166,6 @@ mod tests {
             prod.push(
                 threading::spawn(move || {
                     for i in 0..5 {
-                        #[cfg(feature = "gkl")]
-                        // to safely unlock gkl later
-                        sema.down_n(0);
                         unsafe { sema.up() };
                         threading::yield_now();
                     }
@@ -218,11 +183,6 @@ mod tests {
                     for _ in 0..5 {
                         sema.down();
                         items.push(1);
-                        #[cfg(feature = "gkl")]
-                        // to unlock gkl
-                        unsafe {
-                            sema.up_n(0)
-                        }
                     }
                     items
                 })
@@ -253,11 +213,6 @@ mod tests {
                 for _ in 0..10 {
                     sema.down();
                     ret += 1;
-                    #[cfg(feature = "gkl")]
-                    // to unlock gkl
-                    unsafe {
-                        sema.up_n(0)
-                    }
                 }
                 ret
             })
@@ -266,9 +221,6 @@ mod tests {
 
         let t2 = threading::spawn(move || {
             for _ in 0..10 {
-                #[cfg(feature = "gkl")]
-                // to safely unlock gkl later
-                sema.down_n(0);
                 unsafe { sema.up() };
                 threading::yield_now();
             }

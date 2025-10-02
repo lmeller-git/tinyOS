@@ -17,7 +17,7 @@ pub extern crate alloc;
 use core::{panic::PanicInfo, time::Duration};
 
 #[cfg(feature = "test_run")]
-use kernel::threading::{schedule::add_named_ktask, yield_now};
+use kernel::threading::yield_now;
 use os_macros::{kernel_test, with_default_args};
 use thiserror::Error;
 use tiny_os_common::testing::TestCase;
@@ -184,15 +184,7 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
 
     use crate::kernel::threading::tls;
     eprintln!("\ntest {}", info);
-    #[cfg(feature = "gkl")]
-    {
-        use crate::utils::locks::GKL;
 
-        if GKL.is_locked() {
-            eprintln!("GKL is locked, but the thread is killed.\nUnlocking GKL...");
-            unsafe { GKL.unlock_unchecked() };
-        }
-    }
     tls::task_data().kill(&tls::task_data().current_pid(), 1);
     loop {
         threading::yield_now();

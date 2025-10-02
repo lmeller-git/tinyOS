@@ -461,7 +461,6 @@ impl FS for RamFS {
 #[cfg(feature = "test_run")]
 mod tests {
     use alloc::vec;
-    
 
     use os_macros::kernel_test;
 

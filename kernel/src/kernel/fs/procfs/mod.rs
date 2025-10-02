@@ -510,7 +510,6 @@ mod tests {
     use os_macros::kernel_test;
 
     use super::*;
-    
 
     #[kernel_test]
     fn procfs_basic() {

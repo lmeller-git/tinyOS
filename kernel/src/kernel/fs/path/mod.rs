@@ -1,7 +1,4 @@
-use alloc::{
-    borrow::ToOwned,
-    string::String,
-};
+use alloc::{borrow::ToOwned, string::String};
 use core::{borrow::Borrow, fmt::Display, ops::Deref};
 
 // TODO: migrate this to libtinyos and use as dependancy
