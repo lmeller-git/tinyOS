@@ -1,6 +1,6 @@
 use alloc::{collections::btree_map::BTreeMap, sync::Arc};
 
-use conquer_once::spin::{Once, OnceCell};
+use conquer_once::spin::OnceCell;
 use thiserror::Error;
 
 use crate::{
@@ -8,7 +8,6 @@ use crate::{
         fd::MaybeOwned,
         fs::{FS, FSError, FSErrorKind, FSResult, OpenOptions, Path, PathBuf, UnlinkOptions},
     },
-    println,
     sync::{BlockingWaiter, locks::GenericRwLock},
 };
 
@@ -116,10 +115,10 @@ impl Default for VFS {
     }
 }
 
-// #[cfg(feature = "test_run")]
+#[cfg(feature = "test_run")]
 mod tests {
+
     use alloc::vec;
-    use core::ptr;
 
     use os_macros::kernel_test;
 
@@ -127,6 +126,8 @@ mod tests {
     use crate::kernel::{
         fd::{FStat, FileRepr, IOCapable},
         fs::{
+            OpenOptions,
+            Path,
             mount,
             open,
             procfs::{DEVICE_REGISTRY, DeviceRegistry, ProcFS},

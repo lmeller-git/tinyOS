@@ -29,6 +29,24 @@ pub mod tty;
 
 static DEFAULT_DEVICES: OnceCell<Mutex<Box<dyn Fn(&mut TaskDevices) + Send>>> = OnceCell::uninit();
 
+pub fn init() {
+    tty::init();
+    graphics::init();
+    init_default();
+}
+
+fn init_default() {
+    DEFAULT_DEVICES.init_once(|| {
+        Mutex::new(Box::new(|devices| {
+            _ = with_current_device_list(|current_devices| {
+                for (i, entry) in current_devices.fd_table.iter().enumerate() {
+                    devices.fd_table[i] = entry.clone();
+                }
+            });
+        }))
+    });
+}
+
 #[derive(Debug)]
 pub struct TaskDevices {
     // could use HashMap instead for sparse FdEntryTypes
@@ -344,24 +362,6 @@ impl DeviceBuilder {
     }
 }
 
-pub fn init() {
-    tty::init();
-    graphics::init();
-    init_default();
-}
-
-fn init_default() {
-    DEFAULT_DEVICES.init_once(|| {
-        Mutex::new(Box::new(|devices| {
-            _ = with_current_device_list(|current_devices| {
-                for (i, entry) in current_devices.fd_table.iter().enumerate() {
-                    devices.fd_table[i] = entry.clone();
-                }
-            });
-        }))
-    });
-}
-
 pub fn get_default_device_init() -> Option<&'static Mutex<Box<dyn Fn(&mut TaskDevices) + Send>>> {
     DEFAULT_DEVICES.get()
 }
@@ -441,6 +441,7 @@ macro_rules! with_devices {
 }
 
 mod tests {
+
     use alloc::string::String;
 
     use os_macros::kernel_test;

@@ -18,7 +18,6 @@ use crate::{
         },
         io::{Read, Write},
     },
-    register_device_file,
     sync::locks::RwLock,
 };
 

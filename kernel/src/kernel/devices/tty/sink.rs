@@ -7,22 +7,23 @@ use crossbeam::queue::SegQueue;
 use super::TTYSink;
 use crate::{
     arch,
-    data_structures::ChunkedArrayQueue,
+    create_device_file,
     kernel::devices::tty::TTYSource,
-    register_device_file,
-    sync::locks::Mutex,
     term::_print,
 };
 
 pub static SERIALBACKEND: OnceCell<Arc<SerialBackend>> = OnceCell::uninit();
 pub static FBBACKEND: OnceCell<Arc<FbBackend>> = OnceCell::uninit();
 
+pub const SERIAL_FILE: &str = "/kernel/io/serial";
+pub const FBBACKEND_FILE: &str = "/kernel/io/fbbackend";
+
 pub fn init_tty_sinks() {
     _ = SERIALBACKEND.try_init_once(SerialBackend::new);
     _ = FBBACKEND.try_init_once(FbBackend::new);
 
-    let r = register_device_file!(SERIALBACKEND.get().unwrap().clone(), "/serial");
-    let r = register_device_file!(FBBACKEND.get().unwrap().clone(), "/framebuffer");
+    let r = create_device_file!(SERIALBACKEND.get().unwrap().clone(), SERIAL_FILE);
+    let r = create_device_file!(FBBACKEND.get().unwrap().clone(), FBBACKEND_FILE);
 }
 
 // the read_locks are only necessary if multiple instances of these Backends are alive at once, as ChunkedArrayQueue is mpsc. Currently this is not the case.

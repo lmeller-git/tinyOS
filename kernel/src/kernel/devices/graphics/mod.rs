@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, format, string::String, sync::Arc};
+use alloc::{boxed::Box, sync::Arc};
 use core::{fmt::Debug, marker::PhantomData};
 
 use conquer_once::spin::OnceCell;
@@ -16,13 +16,11 @@ use crate::{
             GlobalFrameBuffer,
             HasFrameBuffer,
             RawFrameBuffer,
-            get_config,
         },
     },
     kernel::{
         fd::{FileRepr, IOCapable},
-        fs::{OpenOptions, Path, open},
-        io::{IOError, IOResult, Read, Write},
+        io::{IOError, Read, Write},
     },
     register_device_file,
     serial_println,

@@ -276,7 +276,9 @@ pub enum QueueErr {
     InvalidCommit,
 }
 
+#[cfg(feature = "test_run")]
 mod tests {
+
     use alloc::sync::Arc;
 
     use os_macros::kernel_test;

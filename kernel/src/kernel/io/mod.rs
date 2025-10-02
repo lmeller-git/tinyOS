@@ -1,7 +1,5 @@
 use alloc::{string::String, vec::Vec};
-use core::fmt;
 
-use thiserror::Error;
 
 use crate::kernel::fs::{FSError, FSErrorKind};
 

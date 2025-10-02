@@ -4,9 +4,9 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use os_macros::kernel_test;
 use schedule::{GlobalTaskPtr, add_task_ptr__};
 use task::{Arg, Args, TaskBuilder, TaskState};
+use thiserror::Error;
 use trampoline::{TaskExitInfo, closure_trampoline};
 
 use crate::{
@@ -52,11 +52,15 @@ pub fn is_running() -> bool {
     IS_INITIALIZED.load(Ordering::Relaxed)
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Error)]
 pub enum ThreadingError {
+    #[error("the stack for a task could not be built")]
     StackNotBuilt,
+    #[error("the stack of a task could not be deallocated")]
     StackNotFreed,
+    #[error("the pagedir of a task could not be built")]
     PageDirNotBuilt,
+    #[error("unspecified threading error:\n{0}")]
     Unknown(String),
 }
 
@@ -226,7 +230,7 @@ where
 
 #[cfg(feature = "test_run")]
 mod tests {
-    use os_macros::with_default_args;
+    use os_macros::{kernel_test, with_default_args};
 
     use super::*;
     use crate::args;

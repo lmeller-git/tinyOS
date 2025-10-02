@@ -3,9 +3,8 @@ use core::{fmt::Debug, ops::Deref, ptr::NonNull};
 
 use atomic_pool::pool;
 use conquer_once::spin::OnceCell;
-use crossbeam::queue::ArrayQueue;
 use hashbrown::HashMap;
-use nblfq::{HeapBackedQueue, HeaplessQueue};
+use nblfq::HeaplessQueue;
 
 use crate::{
     arch::interrupt,
@@ -15,7 +14,6 @@ use crate::{
         tls,
         wait::{condition::WaitCondition, queues::WaitQueue},
     },
-    serial_println,
     sync::locks::RwLock,
 };
 

@@ -17,7 +17,6 @@ use crate::{
         task::{Task, Uninit},
         tls,
     },
-    locks::GKL,
     serial_println,
 };
 

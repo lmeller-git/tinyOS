@@ -1,6 +1,6 @@
 use alloc::{
     borrow::ToOwned,
-    string::{String, ToString},
+    string::String,
 };
 use core::{borrow::Borrow, fmt::Display, ops::Deref};
 

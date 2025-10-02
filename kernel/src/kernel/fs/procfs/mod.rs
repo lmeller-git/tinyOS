@@ -4,10 +4,9 @@ use alloc::{
     sync::Arc,
     vec,
 };
-use core::{fmt::Display, mem, ops::Deref, ptr};
+use core::{fmt::Display, ops::Deref};
 
 use bitflags::Flags;
-use conquer_once::spin::OnceCell;
 use hashbrown::DefaultHashBuilder;
 use indexmap::IndexMap;
 use thiserror::Error;
@@ -18,7 +17,6 @@ use crate::{
         fs::{FS, FSError, FSErrorKind, FSResult, OpenOptions, Path, UnlinkOptions},
         io::{Read, Write},
     },
-    serial_println,
     sync::locks::RwLock,
 };
 
@@ -512,7 +510,7 @@ mod tests {
     use os_macros::kernel_test;
 
     use super::*;
-    use crate::serial_println;
+    
 
     #[kernel_test]
     fn procfs_basic() {

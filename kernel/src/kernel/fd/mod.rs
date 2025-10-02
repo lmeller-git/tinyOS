@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, collections::btree_map::BTreeMap, string::String, sync::Arc, vec::Vec};
 use core::{
     fmt::{self, Debug},
-    ops::{Deref, DerefMut},
+    ops::Deref,
 };
 
 use bitflags::bitflags;
@@ -78,7 +78,7 @@ impl<T: ?Sized> MaybeOwned<T> {
         value.into()
     }
 
-    pub fn into_shared(mut self) -> Self {
+    pub fn into_shared(self) -> Self {
         match self {
             Self::Owned(t) => Self::Shared(t.into()),
             Self::Shared(_) => self,
@@ -220,7 +220,7 @@ impl Write for File {
         self.repr.write(buf, offset)
     }
 
-    fn write_all(&self, mut buf: &[u8], mut offset: usize) -> super::io::IOResult<()> {
+    fn write_all(&self, buf: &[u8], offset: usize) -> super::io::IOResult<()> {
         self.repr.write_all(buf, offset)
     }
 }

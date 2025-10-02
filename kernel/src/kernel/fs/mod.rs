@@ -14,11 +14,10 @@ use thiserror::Error;
 mod fs_util;
 pub use fs_util::*;
 
-use crate::kernel::{
-    devices::tty::sink::SERIALBACKEND,
-    fd::{File, IOCapable},
-    fs::procfs::registry,
-};
+use crate::kernel::fd::File;
+
+pub const PROCFS_PATH: &str = "/proc";
+pub const RAMFS_PATH: &str = "/ram";
 
 pub fn init() {
     procfs::init();
@@ -29,17 +28,10 @@ pub fn init() {
     )
     .expect("failed to mount ramfs");
     mount(
-        Path::new("/proc").into(),
+        Path::new(PROCFS_PATH).into(),
         Arc::new(procfs::ProcFS::new()) as Arc<dyn FS>,
     )
     .expect("failed to mount procfs");
-
-    let mut serial = open(
-        Path::new("/proc/serial"),
-        OpenOptions::CREATE | OpenOptions::WRITE,
-    )
-    .unwrap();
-    serial.write_str("hello from serial via FS!!!").unwrap();
 }
 
 pub fn fs() -> &'static impl FS {

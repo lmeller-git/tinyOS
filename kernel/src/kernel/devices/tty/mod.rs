@@ -16,6 +16,11 @@ pub mod io;
 pub mod sink;
 pub mod source;
 
+pub fn init() {
+    sink::init_tty_sinks();
+    source::init_source_tty();
+}
+
 pub trait TTYSink: Debug + Send + Sync {
     fn write(&self, bytes: &[u8]);
     fn flush(&self);
@@ -97,11 +102,6 @@ impl TTYSource for Null {
     fn read(&self) -> Option<u8> {
         None
     }
-}
-
-pub fn init() {
-    sink::init_tty_sinks();
-    source::init_source_tty();
 }
 
 #[macro_export]

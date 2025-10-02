@@ -3,7 +3,7 @@ use core::fmt::Arguments;
 
 use super::TTYSink;
 use crate::{
-    arch::{self, interrupt},
+    arch::{self},
     drivers::{keyboard::parse_scancode, tty::map_key},
     get_device,
     kernel::{

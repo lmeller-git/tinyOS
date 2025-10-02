@@ -14,23 +14,27 @@
 pub extern crate alloc;
 
 #[cfg(feature = "test_run")]
-use core::panic::PanicInfo;
-use core::time::Duration;
+use core::{panic::PanicInfo, time::Duration};
 
 #[cfg(feature = "test_run")]
 use kernel::threading::{schedule::add_named_ktask, yield_now};
-use kernel::{
-    devices::{DeviceBuilder, FdEntry, GraphicsTag, SinkTag, StdErrTag, StdInTag, TaskDevices},
-    threading::task::{Arg, TaskRepr},
-};
 use os_macros::{kernel_test, with_default_args};
 use thiserror::Error;
 use tiny_os_common::testing::TestCase;
 pub use utils::*;
 
-use crate::arch::x86::current_time;
 #[cfg(feature = "test_run")]
-use crate::kernel::threading::schedule::testing::{self, TestRunner};
+use crate::kernel::threading::{
+    ProcessReturn,
+    schedule::testing::{self, TestRunner},
+};
+use crate::kernel::{
+    io::IOError,
+    threading::{
+        ThreadingError,
+        task::{Arg, TaskRepr},
+    },
+};
 
 pub mod arch;
 pub mod bootinfo;
@@ -69,6 +73,11 @@ pub fn test_test_main() -> ! {
     use drivers::start_drivers;
     use kernel::threading;
 
+    use crate::kernel::{
+        devices::{DeviceBuilder, FdEntry, GraphicsTag, SinkTag, StdInTag},
+        threading::schedule::add_named_ktask,
+    };
+
     threading::init();
     testing::init();
     with_devices!(
@@ -82,6 +91,7 @@ pub fn test_test_main() -> ! {
         },
         || { add_named_ktask(kernel_test_runner, "test runner".into()) }
     );
+
     start_drivers();
     threading::finalize();
 
@@ -90,19 +100,24 @@ pub fn test_test_main() -> ! {
     unreachable!()
 }
 
-use kernel::threading::ProcessReturn;
 #[cfg(feature = "test_run")]
 #[with_default_args]
 extern "C" fn kernel_test_runner() -> ProcessReturn {
     use common::get_kernel_tests;
     use kernel::threading::spawn_fn;
 
-    use crate::kernel::threading;
+    use crate::kernel::{
+        devices::{DeviceBuilder, FdEntry, StdErrTag, TaskDevices},
+        threading,
+    };
+
     let tests = unsafe { get_kernel_tests() };
     println!("running {} tests...", tests.len());
     let mut tests_failed = false;
     let max_len = tests.iter().map(|t| t.name().len()).max().unwrap_or(0);
     for test in tests {
+        use crate::arch::x86::current_time;
+
         let dots = ".".repeat(max_len - test.name().len() + 3);
         print!("{}{} ", test.name(), dots);
 
@@ -200,8 +215,17 @@ pub fn exit_qemu(exit_code: QemuExitCode) {
     }
 }
 
+pub type KernelRes<T> = Result<T, KernelError>;
+
 #[derive(Error, Debug)]
-pub enum KernelError {}
+pub enum KernelError {
+    #[error("IO error:\n{0}")]
+    IO(#[from] IOError),
+    #[error("Threading error:\n{0}")]
+    Threading(#[from] ThreadingError),
+    #[error("Unknown error:\n{0}")]
+    Unexpected(&'static str),
+}
 
 #[kernel_test(should_panic, silent)]
 fn should_panic_err() {

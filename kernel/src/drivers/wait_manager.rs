@@ -6,7 +6,6 @@ use crate::{
         task::TaskID,
         tls,
         wait::{
-            MESSAGE_QUEUE,
             QueuTypeCondition,
             QueueHandle,
             QueueType,
