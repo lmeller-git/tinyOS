@@ -11,30 +11,42 @@
     incomplete_features,
     clippy::missing_safety_doc
 )]
+
 pub extern crate alloc;
 
-#[cfg(feature = "test_run")]
-use core::{panic::PanicInfo, time::Duration};
+cfg_if! {
+    if #[cfg(feature = "test_run")] {
+        use core::{panic::PanicInfo, time::Duration};
 
-#[cfg(feature = "test_run")]
-use kernel::threading::yield_now;
-use os_macros::{kernel_test, with_default_args};
+        use os_macros::with_default_args;
+        use tiny_os_common::testing::TestCase;
+
+        use crate::{
+            arch::interrupt::enable_threading_interrupts,
+            common::get_kernel_tests,
+            drivers::start_drivers,
+            kernel::{
+                devices::{DeviceBuilder, FdEntry, GraphicsTag, SinkTag, StdErrTag, StdInTag, TaskDevices},
+                threading::{
+                    self,
+                    ProcessReturn,
+                    schedule::add_named_ktask,
+                    spawn_fn,
+                    task::{Arg, TaskRepr},
+                    tls,
+                    yield_now,
+                },
+            },
+        };
+    } else {}
+}
+
+use cfg_if::cfg_if;
+use os_macros::kernel_test;
 use thiserror::Error;
-use tiny_os_common::testing::TestCase;
 pub use utils::*;
 
-#[cfg(feature = "test_run")]
-use crate::kernel::threading::{
-    ProcessReturn,
-    schedule::testing::{self, TestRunner},
-};
-use crate::kernel::{
-    io::IOError,
-    threading::{
-        ThreadingError,
-        task::{Arg, TaskRepr},
-    },
-};
+use crate::kernel::{io::IOError, threading::ThreadingError};
 
 pub mod arch;
 pub mod bootinfo;
@@ -53,6 +65,7 @@ const MAX_TEST_TIME: Duration = Duration::from_secs(10);
 
 #[cfg(feature = "test_run")]
 struct TestLogger {}
+
 #[cfg(feature = "test_run")]
 impl tiny_os_common::logging::Logger for TestLogger {
     fn log(&self, msg: ::core::fmt::Arguments) {
@@ -69,17 +82,8 @@ pub fn test_main() {
 
 #[cfg(feature = "test_run")]
 pub fn test_test_main() -> ! {
-    use arch::interrupt::enable_threading_interrupts;
-    use drivers::start_drivers;
-    use kernel::threading;
-
-    use crate::kernel::{
-        devices::{DeviceBuilder, FdEntry, GraphicsTag, SinkTag, StdInTag},
-        threading::schedule::add_named_ktask,
-    };
-
     threading::init();
-    testing::init();
+    // testing::init();
     with_devices!(
         |devices| {
             let out: FdEntry<SinkTag> = DeviceBuilder::tty().serial();
@@ -103,14 +107,6 @@ pub fn test_test_main() -> ! {
 #[cfg(feature = "test_run")]
 #[with_default_args]
 extern "C" fn kernel_test_runner() -> ProcessReturn {
-    use common::get_kernel_tests;
-    use kernel::threading::spawn_fn;
-
-    use crate::kernel::{
-        devices::{DeviceBuilder, FdEntry, StdErrTag, TaskDevices},
-        threading,
-    };
-
     let tests = unsafe { get_kernel_tests() };
     println!("running {} tests...", tests.len());
     let mut tests_failed = false;
@@ -139,8 +135,6 @@ extern "C" fn kernel_test_runner() -> ProcessReturn {
             let now = current_time();
             if now - start_time >= MAX_TEST_TIME {
                 arch::interrupt::without_interrupts(|| {
-                    use crate::kernel::threading::tls;
-
                     print!("\x1b[31m[TASK TIMEOUT] \x1b[0m");
                     tls::task_data().kill(&handle.get_task().unwrap().pid(), 1);
                 })
@@ -180,9 +174,6 @@ extern "C" fn kernel_test_runner() -> ProcessReturn {
 
 #[cfg(feature = "test_run")]
 pub fn test_panic_handler(info: &PanicInfo) -> ! {
-    use kernel::threading::{self};
-
-    use crate::kernel::threading::tls;
     eprintln!("\ntest {}", info);
 
     tls::task_data().kill(&tls::task_data().current_pid(), 1);

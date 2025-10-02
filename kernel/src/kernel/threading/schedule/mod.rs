@@ -20,9 +20,6 @@ use crate::{
     serial_println,
 };
 
-#[cfg(feature = "test_run")]
-pub mod testing;
-
 mod round_robin;
 
 pub trait Scheduler {
