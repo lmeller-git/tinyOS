@@ -13,7 +13,10 @@ pub static KEYBOARDBACKEND: OnceCell<Arc<KeyboardBackend>> = OnceCell::uninit();
 
 pub fn init_source_tty() {
     KEYBOARDBACKEND.init_once(KeyboardBackend::new);
-    register_device_file!(KEYBOARDBACKEND.get().unwrap().clone(), "/keyboard");
+    register_device_file!(
+        KEYBOARDBACKEND.get().unwrap().clone(),
+        "/kernel/io/keyboard"
+    );
 }
 
 #[derive(Debug, PartialEq, Eq)]

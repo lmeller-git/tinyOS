@@ -193,6 +193,14 @@ impl FileRepr for LockedRamFile {
     fn fstat(&self) -> FStat {
         self.read().stat.clone()
     }
+
+    fn node_type(&self) -> super::NodeType {
+        match self.read().node {
+            RamNode::SoftLink(_) => super::NodeType::SymLink,
+            RamNode::Dir(_) => super::NodeType::Dir,
+            RamNode::File(_) => super::NodeType::File,
+        }
+    }
 }
 
 impl IOCapable for LockedRamFile {}

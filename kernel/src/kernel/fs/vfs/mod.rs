@@ -126,6 +126,7 @@ mod tests {
     use crate::kernel::{
         fd::{FStat, FileRepr, IOCapable},
         fs::{
+            NodeType,
             OpenOptions,
             Path,
             mount,
@@ -187,6 +188,10 @@ mod tests {
         impl FileRepr for TestDevice {
             fn fstat(&self) -> FStat {
                 FStat::new()
+            }
+
+            fn node_type(&self) -> NodeType {
+                NodeType::Void
             }
         }
 

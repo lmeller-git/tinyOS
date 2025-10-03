@@ -9,7 +9,7 @@ use bitflags::bitflags;
 use crate::{
     arch::x86::current_time,
     kernel::{
-        fs::{FSError, FSErrorKind, OpenOptions, PathBuf},
+        fs::{FSError, FSErrorKind, NodeType, OpenOptions, PathBuf},
         io::{IOResult, Read, Write},
     },
 };
@@ -24,7 +24,11 @@ pub const STDERR_FILENO: FileDescriptor = 2;
 pub trait IOCapable: Read + Write {}
 
 pub trait FileRepr: Debug + IOCapable + Send + Sync {
-    fn fstat(&self) -> FStat;
+    fn fstat(&self) -> FStat {
+        FStat::new()
+    }
+
+    fn node_type(&self) -> NodeType;
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -195,6 +199,10 @@ impl FileRepr for File {
     fn fstat(&self) -> FStat {
         self.repr.fstat()
     }
+
+    fn node_type(&self) -> NodeType {
+        self.repr.node_type()
+    }
 }
 
 impl IOCapable for File {}
@@ -242,30 +250,5 @@ pub struct FCursor {
 impl FCursor {
     pub fn advance(&mut self, n: usize) {
         self.inner += n
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Link {
-    to: PathBuf,
-}
-
-impl FileRepr for Link {
-    fn fstat(&self) -> FStat {
-        todo!()
-    }
-}
-
-impl IOCapable for Link {}
-
-impl Read for Link {
-    fn read(&self, buf: &mut [u8], offset: usize) -> super::io::IOResult<usize> {
-        todo!()
-    }
-}
-
-impl Write for Link {
-    fn write(&self, buf: &[u8], offset: usize) -> super::io::IOResult<usize> {
-        todo!()
     }
 }

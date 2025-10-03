@@ -46,6 +46,10 @@ impl<T: TTYSink + TTYSource> FileRepr for T {
     fn fstat(&self) -> crate::kernel::fd::FStat {
         crate::kernel::fd::FStat::new()
     }
+
+    fn node_type(&self) -> crate::kernel::fs::NodeType {
+        crate::kernel::fs::NodeType::File
+    }
 }
 
 impl<T: TTYSink + TTYSource> IOCapable for T {}

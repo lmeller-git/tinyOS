@@ -154,6 +154,10 @@ impl FileRepr for DeviceRegistry {
     fn fstat(&self) -> FStat {
         FStat::new()
     }
+
+    fn node_type(&self) -> crate::kernel::fs::NodeType {
+        crate::kernel::fs::NodeType::Dir
+    }
 }
 
 impl IOCapable for DeviceRegistry {}
@@ -173,6 +177,10 @@ impl Write for DeviceRegistry {
 impl FileRepr for DeviceEntry {
     fn fstat(&self) -> crate::kernel::fd::FStat {
         FStat::new()
+    }
+
+    fn node_type(&self) -> crate::kernel::fs::NodeType {
+        crate::kernel::fs::NodeType::File
     }
 }
 

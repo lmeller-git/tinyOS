@@ -29,8 +29,7 @@ pub fn late_init() {
 
 pub fn default_task() -> KernelRes<()> {
     let mut bin_path = Path::new(INCLUDED_BINS).to_owned();
-    let bins = fs::open(&bin_path, OpenOptions::READ)?;
-    let binaries = bins.read_all_as_str()?;
+    let binaries = fs::lsdir(&bin_path)?;
     let mut bin_data = Vec::new();
 
     for name in binaries.split('\t').filter(|n| !n.is_empty()) {
@@ -87,7 +86,7 @@ macro_rules! create_device_file {
 
     ($device:expr, $path:expr, $permissions:expr) => {{
         let mut p = $crate::kernel::fs::Path::new($crate::kernel::fs::PROCFS_PATH).to_owned();
-        p.push($path);
+        p.push($path.strip_prefix("/").unwrap_or($path));
         $crate::register_device_file!($device, $path)
             .and_then(|_| $crate::kernel::fs::open(&p, $permissions))
     }};

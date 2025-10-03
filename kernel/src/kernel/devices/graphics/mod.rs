@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, sync::Arc};
+use alloc::{boxed::Box, format, sync::Arc};
 use core::{fmt::Debug, marker::PhantomData};
 
 use conquer_once::spin::OnceCell;
@@ -7,6 +7,7 @@ use embedded_graphics::prelude::DrawTarget;
 use super::{FdEntry, FdTag, Null, RawDeviceID, RawFdEntry};
 use crate::{
     arch::mem::VirtAddr,
+    create_device_file,
     drivers::graphics::{
         GLOBAL_FRAMEBUFFER,
         colors::{ColorCode, RGBColor},
@@ -16,10 +17,12 @@ use crate::{
             GlobalFrameBuffer,
             HasFrameBuffer,
             RawFrameBuffer,
+            get_config,
         },
     },
     kernel::{
         fd::{FileRepr, IOCapable},
+        fs::{OpenOptions, Path, open},
         io::{IOError, Read, Write},
     },
     register_device_file,
@@ -60,30 +63,38 @@ pub(super) fn init() {
     let target = Simplegraphics::new(&*GLOBAL_FRAMEBUFFER);
     let entry = Arc::new(BlitManager::new(intermediate, target));
     KERNEL_GFX_MANAGER.try_init_once(|| entry.clone());
-    register_device_file!(entry, "/gfx");
-    // load config into ramfs
-    // let basic_config = get_config();
-    // let fb = &GLOBAL_FRAMEBUFFER;
-    // let mut gfx_config_file = open(
-    //     Path::new("/ram/.config/gfx/config"),
-    //     OpenOptions::CREATE_ALL | OpenOptions::WRITE,
-    // )
-    // .unwrap();
-    // let mut bytes = format!(
-    //     "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
-    //     basic_config.red_mask_shift,
-    //     basic_config.red_mask_size,
-    //     basic_config.green_mask_shift,
-    //     basic_config.green_mask_size,
-    //     basic_config.blue_mask_shift,
-    //     basic_config.blue_mask_size,
-    //     fb.bpp(),
-    //     fb.width(),
-    //     fb.height(),
-    //     fb.pitch()
-    // )
-    // .as_bytes();
-    // gfx_config_file.write_all(bytes, 0).unwrap();
+    let _file = create_device_file!(
+        entry,
+        "/gfx/manager",
+        OpenOptions::CREATE_ALL | OpenOptions::READ
+    )
+    .unwrap();
+
+    let basic_config = get_config();
+    let fb = &GLOBAL_FRAMEBUFFER;
+
+    let mut gfx_config_file = open(
+        Path::new("/ram/.devconf/gfx/config.conf"),
+        OpenOptions::CREATE_ALL | OpenOptions::WRITE,
+    )
+    .unwrap();
+
+    let fmt_str = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        basic_config.red_mask_shift,
+        basic_config.red_mask_size,
+        basic_config.green_mask_shift,
+        basic_config.green_mask_size,
+        basic_config.blue_mask_shift,
+        basic_config.blue_mask_size,
+        fb.bpp(),
+        fb.width(),
+        fb.height(),
+        fb.pitch()
+    );
+    let bytes = fmt_str.as_bytes();
+
+    gfx_config_file.write_all(bytes, 0).unwrap();
 }
 
 pub struct GFXBuilder {
@@ -180,6 +191,10 @@ where
 {
     fn fstat(&self) -> crate::kernel::fd::FStat {
         crate::kernel::fd::FStat::new()
+    }
+
+    fn node_type(&self) -> crate::kernel::fs::NodeType {
+        crate::kernel::fs::NodeType::Dir
     }
 }
 

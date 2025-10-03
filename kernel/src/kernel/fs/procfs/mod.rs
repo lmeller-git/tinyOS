@@ -56,6 +56,13 @@ impl FileRepr for ProcFile {
     fn fstat(&self) -> FStat {
         self.stat.read().clone()
     }
+
+    fn node_type(&self) -> super::NodeType {
+        match self.node {
+            ProcNode::Dir(_) => super::NodeType::Dir,
+            ProcNode::File(_) => super::NodeType::File,
+        }
+    }
 }
 
 impl IOCapable for ProcFile {}
@@ -284,6 +291,10 @@ impl FileRepr for Null {
     fn fstat(&self) -> FStat {
         FStat::new()
     }
+
+    fn node_type(&self) -> super::NodeType {
+        super::NodeType::Void
+    }
 }
 
 impl IOCapable for Null {}
@@ -484,6 +495,10 @@ impl FileRepr for ProcFS {
     fn fstat(&self) -> FStat {
         FStat::new()
     }
+
+    fn node_type(&self) -> super::NodeType {
+        super::NodeType::Mount
+    }
 }
 
 impl IOCapable for ProcFS {}
@@ -510,6 +525,7 @@ mod tests {
     use os_macros::kernel_test;
 
     use super::*;
+    use crate::kernel::fs::NodeType;
 
     #[kernel_test]
     fn procfs_basic() {
@@ -580,6 +596,10 @@ mod tests {
         impl FileRepr for TestDevice {
             fn fstat(&self) -> FStat {
                 FStat::new()
+            }
+
+            fn node_type(&self) -> NodeType {
+                NodeType::File
             }
         }
 

@@ -31,7 +31,7 @@ run:
 .PHONY: debug
 debug:
 	$(MAKE) run QEMUFLAGS="$(QEMUFLAGS) -s -S"
-	
+
 .PHONY: debug-test
 debug-test:
 	$(MAKE) test QEMUFLAGS="$(QEMUFLAGS) -s -S"

@@ -23,7 +23,7 @@ pub fn init() {
     procfs::init();
     vfs::init();
     mount(
-        Path::new("/ram").into(),
+        Path::new(RAMFS_PATH).into(),
         Arc::new(ramfs::RamFS::new()) as Arc<dyn FS>,
     )
     .expect("failed to mount ramfs");
@@ -44,6 +44,15 @@ pub trait FS: Debug + Send + Sync {
     fn open(&self, path: &Path, options: OpenOptions) -> FSResult<File>;
     fn unlink(&self, path: &Path, options: UnlinkOptions) -> FSResult<File>;
     fn flush(&self, path: &Path) -> FSResult<()>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NodeType {
+    File,
+    Dir,
+    SymLink,
+    Mount,
+    Void,
 }
 
 bitflags! {

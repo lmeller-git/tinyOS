@@ -25,7 +25,8 @@ use crate::{
     kernel::{
         devices::{Attacheable, FdEntry, FdTag, TaskDevices},
         elf::apply,
-        fd::{FDMap, File, FileDescriptor},
+        fd::{FDMap, File, FileDescriptor, STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO},
+        fs::{self, Path},
         mem::paging::{PAGETABLE, TaskPageTable, create_new_pagedir},
         threading::trampoline::TaskExitInfo,
     },
@@ -46,7 +47,7 @@ pub trait TaskRepr: Debug {
     fn exit_info(&self) -> &TaskExitInfo;
     fn kstack_top(&self) -> &VirtAddr;
     fn fd(&self, descriptor: FileDescriptor) -> Option<Arc<File>>;
-    fn add_fd(&self, descriptor: FileDescriptor, fd: File) -> Option<Arc<File>>;
+    fn add_fd(&self, descriptor: FileDescriptor, f: File) -> Option<Arc<File>>;
     fn remove_fd(&self, descriptor: FileDescriptor) -> Option<Arc<File>>;
 }
 
@@ -185,11 +186,11 @@ impl TaskRepr for Task {
             .cloned()
     }
 
-    fn add_fd(&self, descriptor: FileDescriptor, fd: File) -> Option<Arc<File>> {
+    fn add_fd(&self, descriptor: FileDescriptor, f: File) -> Option<Arc<File>> {
         self.metadata
             .fd_table
             .write()
-            .insert(descriptor, Arc::new(fd))
+            .insert(descriptor, Arc::new(f))
     }
 
     fn remove_fd(&self, descriptor: FileDescriptor) -> Option<Arc<File>> {
@@ -377,6 +378,28 @@ impl<S> TaskBuilder<Task, S> {
 
     pub fn with_exit_info(mut self, exit_info: TaskExitInfo) -> TaskBuilder<Task, S> {
         *self.inner.core.exit_info = exit_info;
+        self
+    }
+
+    pub fn with_file(self, fd: FileDescriptor, f: File) -> TaskBuilder<Task, S> {
+        _ = self.inner.add_fd(fd, f);
+        self
+    }
+
+    pub fn with_default_files(self) -> TaskBuilder<Task, S> {
+        // TODO overwritable default device initializer, copied from parent
+        let stdin = fs::open(Path::new("/proc/kernel/io/keyboard"), fs::OpenOptions::READ).unwrap();
+        let stdout = fs::open(
+            Path::new("/proc/kernel/io/fbbackend"),
+            fs::OpenOptions::READ,
+        )
+        .unwrap();
+        let stderr = fs::open(Path::new("/proc/kernel/io/serial"), fs::OpenOptions::READ).unwrap();
+
+        _ = self.inner.add_fd(STDIN_FILENO, stdin);
+        _ = self.inner.add_fd(STDOUT_FILENO, stdout);
+        _ = self.inner.add_fd(STDERR_FILENO, stderr);
+
         self
     }
 
