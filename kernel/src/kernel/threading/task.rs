@@ -28,7 +28,7 @@ use crate::{
         fd::{FDMap, File, FileDescriptor, STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO},
         fs::{self, Path},
         mem::paging::{PAGETABLE, TaskPageTable, create_new_pagedir},
-        threading::trampoline::TaskExitInfo,
+        threading::{tls, trampoline::TaskExitInfo},
     },
     sync::locks::{Mutex, RwLock},
 };
@@ -357,7 +357,7 @@ pub struct TaskBuilder<T: TaskRepr, S> {
 
 pub struct ExtendedUsrTaskInfo<'a> {
     info: UsrTaskInfo,
-    _phatom: PhantomData<&'a u8>,
+    _phatom: PhantomData<&'a ()>,
 }
 
 impl<T, S> TaskBuilder<T, S>
@@ -386,20 +386,54 @@ impl<S> TaskBuilder<Task, S> {
         self
     }
 
+    /// adds open files of current into the new process, if current is accessible, else uses defaults for stdin, stderr and stdout
     pub fn with_default_files(self) -> TaskBuilder<Task, S> {
-        // TODO overwritable default device initializer, copied from parent
-        let stdin = fs::open(Path::new("/proc/kernel/io/keyboard"), fs::OpenOptions::READ).unwrap();
-        let stdout = fs::open(
-            Path::new("/proc/kernel/io/fbbackend"),
-            fs::OpenOptions::READ,
-        )
-        .unwrap();
-        let stderr = fs::open(Path::new("/proc/kernel/io/serial"), fs::OpenOptions::READ).unwrap();
+        if let Some(current) = tls::task_data().get_current() {
+            self.override_files(
+                current
+                    .metadata
+                    .fd_table
+                    .read()
+                    .iter()
+                    .map(|(&fd, f)| (fd, f.clone())),
+            )
+        } else {
+            let stdin =
+                fs::open(Path::new("/proc/kernel/io/keyboard"), fs::OpenOptions::READ).unwrap();
+            let stdout = fs::open(
+                Path::new("/proc/kernel/io/fbbackend"),
+                fs::OpenOptions::READ | fs::OpenOptions::WRITE,
+            )
+            .unwrap();
+            let stderr = fs::open(
+                Path::new("/proc/kernel/io/serial"),
+                fs::OpenOptions::READ | fs::OpenOptions::WRITE,
+            )
+            .unwrap();
 
-        _ = self.inner.add_fd(STDIN_FILENO, stdin);
-        _ = self.inner.add_fd(STDOUT_FILENO, stdout);
-        _ = self.inner.add_fd(STDERR_FILENO, stderr);
+            self.override_files(
+                [
+                    (STDIN_FILENO, stdin.into()),
+                    (STDOUT_FILENO, stdout.into()),
+                    (STDERR_FILENO, stderr.into()),
+                ]
+                .into_iter(),
+            )
+        }
+    }
 
+    pub fn override_files(
+        self,
+        files: impl Iterator<Item = (FileDescriptor, Arc<File>)>,
+    ) -> TaskBuilder<Task, S> {
+        let mut table = self.inner.metadata.fd_table.write();
+        for (fd, f) in files {
+            table
+                .entry(fd)
+                .and_modify(|v| *v = f.clone())
+                .or_insert(f.clone());
+        }
+        drop(table);
         self
     }
 
