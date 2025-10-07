@@ -36,6 +36,8 @@ cfg_if! {
                     tls,
                     yield_now,
                 },
+                fd::{STDERR_FILENO, STDOUT_FILENO},
+                fs::{self, OpenOptions, Path},
             },
         };
     } else {}
@@ -83,18 +85,8 @@ pub fn test_main() {
 #[cfg(feature = "test_run")]
 pub fn test_test_main() -> ! {
     threading::init();
-    // testing::init();
-    with_devices!(
-        |devices| {
-            let out: FdEntry<SinkTag> = DeviceBuilder::tty().serial();
-            let input: FdEntry<StdInTag> = DeviceBuilder::tty().keyboard();
-            let gfx: FdEntry<GraphicsTag> = DeviceBuilder::gfx().simple();
-            devices.attach(out);
-            devices.attach(input);
-            devices.attach(gfx);
-        },
-        || { add_named_ktask(kernel_test_runner, "test runner".into()) }
-    );
+
+    add_named_ktask(kernel_test_runner, "test runner".into());
 
     start_drivers();
     threading::finalize();
@@ -107,6 +99,17 @@ pub fn test_test_main() -> ! {
 #[cfg(feature = "test_run")]
 #[with_default_args]
 extern "C" fn kernel_test_runner() -> ProcessReturn {
+    let current = tls::task_data().get_current().unwrap();
+    _ = current.add_fd(
+        STDERR_FILENO,
+        fs::open(Path::new("/proc/kernel/io/serial"), OpenOptions::WRITE).unwrap(),
+    );
+    _ = current.add_fd(
+        STDOUT_FILENO,
+        fs::open(Path::new("/proc/kernel/io/serial"), OpenOptions::WRITE).unwrap(),
+    );
+    drop(current);
+
     let tests = unsafe { get_kernel_tests() };
     println!("running {} tests...", tests.len());
     let mut tests_failed = false;
@@ -117,6 +120,7 @@ extern "C" fn kernel_test_runner() -> ProcessReturn {
         let dots = ".".repeat(max_len - test.name().len() + 3);
         print!("{}{} ", test.name(), dots);
 
+        // TODO fix this in proc macro to use paths (i guess)
         let handle = with_devices!(
             |devices| {
                 let sink: FdEntry<StdErrTag> = DeviceBuilder::tty().serial();

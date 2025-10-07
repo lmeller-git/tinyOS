@@ -11,6 +11,7 @@
 extern crate alloc;
 extern crate tiny_os;
 
+use alloc::sync::Arc;
 use core::time::Duration;
 
 use embedded_graphics::{prelude::Dimensions, primitives::PrimitiveStyle};
@@ -46,10 +47,12 @@ use tiny_os::{
             StdOutTag,
             graphics::KERNEL_GFX_MANAGER,
         },
+        fd::{File, FileRepr},
         init,
         threading::{
             self,
             schedule::{Scheduler, add_named_ktask, current_task, get_scheduler},
+            task::TaskRepr,
             tls,
             wait::{QueuTypeCondition, QueueType, condition::WaitCondition},
         },
@@ -80,29 +83,7 @@ unsafe extern "C" fn kmain() -> ! {
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
 
-    _ = with_devices!(
-        |devices| {
-            let fb: FdEntry<SinkTag> = DeviceBuilder::tty().fb();
-            let serial: FdEntry<EDebugSinkTag> = DeviceBuilder::tty().serial();
-            let serial2: FdEntry<StdOutTag> = DeviceBuilder::tty().serial();
-            let keyboard: FdEntry<StdInTag> = DeviceBuilder::tty().keyboard();
-            let gfx: FdEntry<GraphicsTag> = FdEntry::new(
-                RawFdEntry::GraphicsBackend(
-                    RawDeviceID::from(42),
-                    KERNEL_GFX_MANAGER.get().unwrap().clone(),
-                ),
-                RawDeviceID::from(42),
-            );
-            // let gfx: FdEntry<GraphicsTag> = DeviceBuilder::gfx()
-            //     .blit_kernel(crate::arch::mem::VirtAddr::new(0xffff_ffff_f000_0000));
-
-            devices.attach(fb);
-            devices.attach(serial);
-            devices.attach(keyboard);
-            devices.attach(gfx);
-        },
-        || { add_named_ktask(idle, "idle".into()) }
-    );
+    add_named_ktask(idle, "idle".into()).unwrap();
     serial_println!("idle task started");
     enable_threading_interrupts();
     threading::yield_now();
@@ -111,6 +92,11 @@ unsafe extern "C" fn kmain() -> ! {
 
 #[with_default_args]
 extern "C" fn idle() -> usize {
+    _ = tls::task_data().get_current().unwrap().add_fd(
+        4,
+        File::new(KERNEL_GFX_MANAGER.get().unwrap().clone() as Arc<dyn FileRepr>),
+    );
+
     start_drivers();
     threading::finalize();
     serial_println!("threads finalized");

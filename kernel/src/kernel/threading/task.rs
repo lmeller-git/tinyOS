@@ -186,6 +186,7 @@ impl TaskRepr for Task {
             .cloned()
     }
 
+    /// inserts a K, V pair into fd table. If K was present, old V is returned in Some
     fn add_fd(&self, descriptor: FileDescriptor, f: File) -> Option<Arc<File>> {
         self.metadata
             .fd_table

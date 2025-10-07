@@ -130,7 +130,7 @@ pub fn add_built_task(task: GlobalTask) {
 pub fn add_named_ktask(func: ProcessEntry, name: String) -> Result<(), ThreadingError> {
     let task = TaskBuilder::from_fn(func)?
         .with_name(name)
-        .with_default_devices()
+        .with_default_files()
         .as_kernel()?
         .build();
     add_built_task(task);
@@ -139,7 +139,7 @@ pub fn add_named_ktask(func: ProcessEntry, name: String) -> Result<(), Threading
 
 pub fn add_ktask(func: ProcessEntry) -> Result<(), ThreadingError> {
     let task = TaskBuilder::from_fn(func)?
-        .with_default_devices()
+        .with_default_files()
         .as_kernel()?
         .build();
     add_built_task(task);
@@ -149,7 +149,7 @@ pub fn add_ktask(func: ProcessEntry) -> Result<(), ThreadingError> {
 pub fn add_named_usr_task(func: ProcessEntry, name: String) -> Result<(), ThreadingError> {
     let task = TaskBuilder::from_fn(func)?
         .with_name(name)
-        .with_default_devices();
+        .with_default_files();
     let task = task.as_usr()?;
     let task = task.build();
     add_built_task(task);
@@ -163,7 +163,7 @@ pub unsafe fn add_named_usr_task_from_addr(
 ) -> Result<(), ThreadingError> {
     let task: TaskBuilder<Task, crate::kernel::threading::task::Init> =
         TaskBuilder::<Task, Uninit>::from_addr(addr)?;
-    let task = task.with_name(name).with_default_devices();
+    let task = task.with_name(name).with_default_files();
     let task = task.as_usr()?;
     let task = task.build();
     add_built_task(task);
