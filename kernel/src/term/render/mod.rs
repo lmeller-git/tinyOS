@@ -519,7 +519,7 @@ mod tests {
     use super::*;
     use crate::kernel::{devices::SinkTag, threading};
 
-    #[kernel_test(devices = [framebuffer(SinkTag)])]
+    #[kernel_test]
     fn print_to_buffer() {
         // SAFETY This is safe, as long it is not run parallely to some other functionality accessing FOOBAR / BAR, and init_term() was run in the same execution context
         use crate::{print, println};
@@ -592,7 +592,7 @@ mod tests {
         };
     }
 
-    #[kernel_test(devices = [framebuffer(SinkTag)])]
+    #[kernel_test]
     fn buf_shifts() {
         // SAFETY This is safe, as long it is not run parallely to some other functionality accessing FOOBAR / BAR, and init_term() was run in the same execution context
         use crate::println;

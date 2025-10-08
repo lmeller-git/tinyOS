@@ -115,23 +115,14 @@ extern "C" fn kernel_test_runner() -> ProcessReturn {
     let mut tests_failed = false;
     let max_len = tests.iter().map(|t| t.name().len()).max().unwrap_or(0);
     for test in tests {
-        use crate::arch::x86::current_time;
+        use crate::{arch::x86::current_time, kernel::threading::spawn_fn_with_init};
 
         let dots = ".".repeat(max_len - test.name().len() + 3);
         print!("{}{} ", test.name(), dots);
 
-        // TODO fix this in proc macro to use paths (i guess)
-        let handle = with_devices!(
-            |devices| {
-                let sink: FdEntry<StdErrTag> = DeviceBuilder::tty().serial();
-                devices.attach(sink);
-                let device_ptr = devices as *mut TaskDevices as *mut ();
-                for init in test.config.device_inits {
-                    init(device_ptr);
-                }
-            },
-            || { spawn_fn(test.func, args!()).expect("test spawn failed") }
-        )
+        let handle = spawn_fn_with_init(test.func, |builder| {
+            Ok(builder.with_args(args!()).with_default_files())
+        })
         .unwrap();
 
         let start_time = current_time();

@@ -8,15 +8,8 @@ use common::{
 };
 use mem::addr::derive_addr;
 use proc_macro::TokenStream;
-use quote::quote;
 use syn::{DeriveInput, ItemStruct, parse_macro_input};
-use test_gen::{TestParser, kernel_test_handler};
-
-#[proc_macro]
-pub fn tests(input: TokenStream) -> TokenStream {
-    let out = parse_macro_input!(input as TestParser);
-    quote! { #out }.into()
-}
+use test_gen::kernel_test_handler;
 
 #[proc_macro_attribute]
 pub fn runner(_attr: TokenStream, input: TokenStream) -> TokenStream {

@@ -184,24 +184,9 @@ pub fn spawn_fn(
     func: ProcessEntry,
     args: Args,
 ) -> Result<JoinHandle<ProcessReturn>, ThreadingError> {
-    let mut handle: JoinHandle<ProcessReturn> = JoinHandle::default();
-    let raw = handle.inner.clone();
-    let task: GlobalTaskPtr = TaskBuilder::from_fn(func)?
-        .with_args(args)
-        .with_default_files()
-        .as_kernel()?
-        .with_exit_info(TaskExitInfo::new_with_default_trampoline(
-            move |v: usize| {
-                raw.val.write().replace(v);
-                raw.finished.store(true, Ordering::Release);
-                sys_exit(0)
-            },
-        ))
-        .build()
-        .into();
-    handle.attach(task.clone());
-    add_task_ptr__(task);
-    Ok(handle)
+    spawn_fn_with_init(func, |builder| {
+        Ok(builder.with_args(args).with_default_files())
+    })
 }
 
 pub fn spawn<F, R>(func: F) -> Result<JoinHandle<R>, ThreadingError>
@@ -209,9 +194,19 @@ where
     F: FnOnce() -> R + 'static + Send,
     R: Send + Sync + 'static,
 {
+    spawn_with_init(func, |builder| Ok(builder.with_default_files()))
+}
+
+pub fn spawn_with_init<'a, F, R, I>(func: F, init: I) -> Result<JoinHandle<R>, ThreadingError>
+where
+    F: FnOnce() -> R + 'static + Send,
+    R: Send + Sync + 'static,
+    I: FnOnce(
+        TaskBuilder<task::Task, task::Init<'a>>,
+    ) -> Result<TaskBuilder<task::Task, task::Init<'a>>, ThreadingError>,
+{
     let mut handle: JoinHandle<R> = JoinHandle::default();
     let raw = handle.inner.clone();
-
     let wrapper = move || {
         let ret = func();
         raw.val.write().replace(ret);
@@ -220,11 +215,45 @@ where
 
     let mut args = args!();
     *args.get_mut(0) = Arg::from_fn(wrapper);
-    let _outer_handle = spawn_fn(closure_trampoline, args)?;
+    let init_wrapper = |builder: TaskBuilder<task::Task, task::Init<'a>>| {
+        let builder: TaskBuilder<task::Task, task::Init<'a>> = builder.with_args(args);
+        init(builder)
+    };
+
+    let _outer_handle = spawn_fn_with_init(closure_trampoline, init_wrapper)?;
+
     if let Some(ptr) = _outer_handle.task {
         handle.attach(ptr);
     }
 
+    Ok(handle)
+}
+
+pub fn spawn_fn_with_init<'a, I>(
+    func: ProcessEntry,
+    init: I,
+) -> Result<JoinHandle<ProcessReturn>, ThreadingError>
+where
+    I: FnOnce(
+        TaskBuilder<task::Task, task::Init<'a>>,
+    ) -> Result<TaskBuilder<task::Task, task::Init<'a>>, ThreadingError>,
+{
+    let mut handle: JoinHandle<ProcessReturn> = JoinHandle::default();
+    let raw = handle.inner.clone();
+
+    let builder = TaskBuilder::from_fn(func)?.with_exit_info(
+        TaskExitInfo::new_with_default_trampoline(move |v: usize| {
+            raw.val.write().replace(v);
+            raw.finished.store(true, Ordering::Release);
+            sys_exit(0)
+        }),
+    );
+
+    let builder = init(builder)?;
+    let task: Arc<task::Task> = builder.as_kernel()?.build().into();
+
+    handle.attach(task.clone());
+    add_task_ptr__(task);
     Ok(handle)
 }
 
