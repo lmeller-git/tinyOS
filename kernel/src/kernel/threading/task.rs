@@ -179,11 +179,7 @@ impl TaskRepr for Task {
     }
 
     fn fd(&self, descriptor: FileDescriptor) -> Option<Arc<File>> {
-        self.metadata
-            .fd_table
-            .read()
-            .get(&(descriptor as u32))
-            .cloned()
+        self.metadata.fd_table.read().get(&descriptor).cloned()
     }
 
     /// inserts a K, V pair into fd table. If K was present, old V is returned in Some

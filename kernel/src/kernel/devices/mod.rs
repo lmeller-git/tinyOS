@@ -13,7 +13,7 @@ use hashbrown::HashMap;
 use os_macros::{FDTable, fd_composite_tag};
 use tty::{TTYBuilder, TTYSink, TTYSource};
 
-use crate::{kernel::threading::task::TaskRepr, sync::locks::Mutex};
+use crate::{create_device_file, kernel::threading::task::TaskRepr, sync::locks::Mutex};
 
 pub mod graphics;
 pub mod tty;
@@ -29,7 +29,15 @@ pub mod tty;
 
 static DEFAULT_DEVICES: OnceCell<Mutex<Box<dyn Fn(&mut TaskDevices) + Send>>> = OnceCell::uninit();
 
+pub static NULL: Null = Null;
+pub const NULL_FILE: &str = "/kernel/null";
+
+fn init_() {
+    _ = create_device_file!(&NULL, NULL_FILE);
+}
+
 pub fn init() {
+    init_();
     tty::init();
     graphics::init();
     init_default();

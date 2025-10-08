@@ -157,6 +157,12 @@ impl<'a, T: FileRepr> From<&'a T> for MaybeRefCounted<'a> {
     }
 }
 
+// impl<T: FileRepr + 'static> From<T> for MaybeRefCounted<'_> {
+//     fn from(value: T) -> Self {
+//         Arc::new(value).into()
+//     }
+// }
+
 impl<'a> From<&'a dyn FileRepr> for MaybeRefCounted<'a> {
     fn from(value: &'a dyn FileRepr) -> Self {
         Self::Ref(value)

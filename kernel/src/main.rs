@@ -171,11 +171,11 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
         }
     }
 
-    #[cfg(not(feature = "test_run"))]
-    serial_println!("panic: {:#?}", info);
-
     #[cfg(feature = "test_run")]
     tiny_os::test_panic_handler(info);
+
+    serial_println!("panic: {:#?}", info);
+
     eprintln!(
         "unrecoverable error in task {:?}\nKilling this task...",
         tls::task_data().current_pid()

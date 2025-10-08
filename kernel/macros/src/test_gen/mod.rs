@@ -92,11 +92,20 @@ impl TestConfigParser {
                     p if p.is_ident("should_panic") => self_.inner.should_panic = true,
                     p if p.is_ident("silent") => {
                         self_.inner.verbose = false;
-                        //TODO
+                        // set stderr, stdout to /kernel/null
+                        self_.should_open.extend_from_slice(&[
+                            (1, "/proc/kernel/null".into()),
+                            (2, "/proc/kernel/null".into()),
+                        ]);
                     }
                     p if p.is_ident("verbose") => {
                         self_.inner.verbose = true;
-                        // TODO
+                        // set stdout and stderr to serial
+                        // TODO fork also into fb
+                        self_.should_open.extend_from_slice(&[
+                            (1, "/proc/kernel/io/serial".into()),
+                            (2, "/proc/kernel/io/serial".into()),
+                        ]);
                     }
                     _ => panic!("option not supported"),
                 },

@@ -17,13 +17,14 @@ pub extern crate alloc;
 cfg_if! {
     if #[cfg(feature = "test_run")] {
         use core::{panic::PanicInfo, time::Duration};
+        use alloc::{vec::Vec, sync::Arc};
 
         use os_macros::with_default_args;
         use tiny_os_common::testing::TestCase;
 
         use crate::{
             arch::interrupt::enable_threading_interrupts,
-            common::get_kernel_tests,
+            common::{get_kernel_tests, KernelTest},
             drivers::start_drivers,
             kernel::{
                 devices::{DeviceBuilder, FdEntry, GraphicsTag, SinkTag, StdErrTag, StdInTag, TaskDevices},
@@ -36,7 +37,7 @@ cfg_if! {
                     tls,
                     yield_now,
                 },
-                fd::{STDERR_FILENO, STDOUT_FILENO},
+                fd::{STDERR_FILENO, STDOUT_FILENO, FileDescriptor, File},
                 fs::{self, OpenOptions, Path},
             },
         };
@@ -110,7 +111,7 @@ extern "C" fn kernel_test_runner() -> ProcessReturn {
     );
     drop(current);
 
-    let tests = unsafe { get_kernel_tests() };
+    let tests: &[KernelTest] = unsafe { get_kernel_tests() };
     println!("running {} tests...", tests.len());
     let mut tests_failed = false;
     let max_len = tests.iter().map(|t| t.name().len()).max().unwrap_or(0);
@@ -120,10 +121,30 @@ extern "C" fn kernel_test_runner() -> ProcessReturn {
         let dots = ".".repeat(max_len - test.name().len() + 3);
         print!("{}{} ", test.name(), dots);
 
-        let handle = spawn_fn_with_init(test.func, |builder| {
-            Ok(builder.with_args(args!()).with_default_files())
-        })
-        .unwrap();
+        let Ok(files): Result<Vec<(FileDescriptor, Arc<File>)>, _> =
+            test.config.open_files.iter().try_fold(
+                Vec::with_capacity(test.config.open_files.len()),
+                |mut acc, (fd, path)| {
+                    let file = fs::open(Path::new(path), OpenOptions::WRITE)?;
+                    acc.push((*fd as FileDescriptor, file.into()));
+                    Ok::<Vec<(FileDescriptor, Arc<File>)>, IOError>(acc)
+                },
+            )
+        else {
+            println!("\x1b[31m[ERR]\x1b[0m");
+            continue;
+        };
+
+        let Ok(handle) = spawn_fn_with_init(test.func, |builder| {
+            // TODO add OpenOptions to macro
+            Ok(builder
+                .with_args(args!())
+                .with_default_files()
+                .override_files(files.into_iter()))
+        }) else {
+            println!("\x1b[31m[ERR]\x1b[0m");
+            continue;
+        };
 
         let start_time = current_time();
         match handle.wait_while(|handle| {
