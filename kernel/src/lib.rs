@@ -17,16 +17,16 @@ pub extern crate alloc;
 cfg_if! {
     if #[cfg(feature = "test_run")] {
         use core::{panic::PanicInfo, time::Duration};
+        use alloc::{vec::Vec, sync::Arc};
 
         use os_macros::with_default_args;
         use tiny_os_common::testing::TestCase;
 
         use crate::{
             arch::interrupt::enable_threading_interrupts,
-            common::get_kernel_tests,
+            common::{get_kernel_tests, KernelTest},
             drivers::start_drivers,
             kernel::{
-                devices::{DeviceBuilder, FdEntry, GraphicsTag, SinkTag, StdErrTag, StdInTag, TaskDevices},
                 threading::{
                     self,
                     ProcessReturn,
@@ -36,6 +36,8 @@ cfg_if! {
                     tls,
                     yield_now,
                 },
+                fd::{STDERR_FILENO, STDOUT_FILENO, FileDescriptor, File},
+                fs::{self, OpenOptions, Path},
             },
         };
     } else {}
@@ -83,18 +85,8 @@ pub fn test_main() {
 #[cfg(feature = "test_run")]
 pub fn test_test_main() -> ! {
     threading::init();
-    // testing::init();
-    with_devices!(
-        |devices| {
-            let out: FdEntry<SinkTag> = DeviceBuilder::tty().serial();
-            let input: FdEntry<StdInTag> = DeviceBuilder::tty().keyboard();
-            let gfx: FdEntry<GraphicsTag> = DeviceBuilder::gfx().simple();
-            devices.attach(out);
-            devices.attach(input);
-            devices.attach(gfx);
-        },
-        || { add_named_ktask(kernel_test_runner, "test runner".into()) }
-    );
+
+    add_named_ktask(kernel_test_runner, "test runner".into());
 
     start_drivers();
     threading::finalize();
@@ -107,28 +99,51 @@ pub fn test_test_main() -> ! {
 #[cfg(feature = "test_run")]
 #[with_default_args]
 extern "C" fn kernel_test_runner() -> ProcessReturn {
-    let tests = unsafe { get_kernel_tests() };
+    let current = tls::task_data().get_current().unwrap();
+    _ = current.add_fd(
+        STDERR_FILENO,
+        fs::open(Path::new("/proc/kernel/io/serial"), OpenOptions::WRITE).unwrap(),
+    );
+    _ = current.add_fd(
+        STDOUT_FILENO,
+        fs::open(Path::new("/proc/kernel/io/serial"), OpenOptions::WRITE).unwrap(),
+    );
+    drop(current);
+
+    let tests: &[KernelTest] = unsafe { get_kernel_tests() };
     println!("running {} tests...", tests.len());
     let mut tests_failed = false;
     let max_len = tests.iter().map(|t| t.name().len()).max().unwrap_or(0);
     for test in tests {
-        use crate::arch::x86::current_time;
+        use crate::{arch::x86::current_time, kernel::threading::spawn_fn_with_init};
 
         let dots = ".".repeat(max_len - test.name().len() + 3);
         print!("{}{} ", test.name(), dots);
 
-        let handle = with_devices!(
-            |devices| {
-                let sink: FdEntry<StdErrTag> = DeviceBuilder::tty().serial();
-                devices.attach(sink);
-                let device_ptr = devices as *mut TaskDevices as *mut ();
-                for init in test.config.device_inits {
-                    init(device_ptr);
-                }
-            },
-            || { spawn_fn(test.func, args!()).expect("test spawn failed") }
-        )
-        .unwrap();
+        let Ok(files): Result<Vec<(FileDescriptor, Arc<File>)>, _> =
+            test.config.open_files.iter().try_fold(
+                Vec::with_capacity(test.config.open_files.len()),
+                |mut acc, (fd, path)| {
+                    let file = fs::open(Path::new(path), OpenOptions::WRITE)?;
+                    acc.push((*fd as FileDescriptor, file.into()));
+                    Ok::<Vec<(FileDescriptor, Arc<File>)>, IOError>(acc)
+                },
+            )
+        else {
+            println!("\x1b[31m[ERR]\x1b[0m");
+            continue;
+        };
+
+        let Ok(handle) = spawn_fn_with_init(test.func, |builder| {
+            // TODO add OpenOptions to macro
+            Ok(builder
+                .with_args(args!())
+                .with_default_files()
+                .override_files(files.into_iter()))
+        }) else {
+            println!("\x1b[31m[ERR]\x1b[0m");
+            continue;
+        };
 
         let start_time = current_time();
         match handle.wait_while(|handle| {

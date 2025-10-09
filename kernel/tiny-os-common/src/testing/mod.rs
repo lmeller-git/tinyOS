@@ -65,7 +65,7 @@ where
 pub struct TestConfig {
     pub should_panic: bool,
     pub verbose: bool,
-    pub device_inits: &'static [fn(*mut ())], // ptr to TaskDevices
+    pub open_files: &'static [(u32, &'static str)], // pub device_inits: &'static [fn(*mut ())], // ptr to TaskDevices
 }
 
 #[allow(unused_imports)]

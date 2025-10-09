@@ -1,14 +1,14 @@
-use alloc::format;
+use alloc::{format, vec::Vec};
 use core::fmt::Arguments;
 
 use super::TTYSink;
 use crate::{
     arch::{self},
     drivers::{keyboard::parse_scancode, tty::map_key},
-    get_device,
     kernel::{
-        devices::{FdEntryType, RawFdEntry},
-        threading::{self},
+        fd::{STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO},
+        io::Read,
+        threading::{self, task::TaskRepr, tls},
     },
     term,
 };
@@ -21,31 +21,31 @@ pub fn __write_stdout(input: Arguments) {
         let bytes = format!("{}", input);
         let bytes = bytes.as_bytes();
 
-        get_device!(FdEntryType::StdOut, RawFdEntry::TTYSink(sinks) => {
-            for (k, s) in sinks {
-                s.write(bytes)
-            }
-        });
+        tls::task_data()
+            .get_current()
+            .unwrap()
+            .fd(STDOUT_FILENO)
+            .unwrap()
+            .write_continuous(bytes)
+            .unwrap();
     }
 }
 
 pub fn __write_stderr(input: Arguments) {
     let bytes = format!("{}", input);
     let bytes = bytes.as_bytes();
-    get_device!(FdEntryType::StdErr, RawFdEntry::TTYSink(sinks) => {
-        for (k, s) in sinks {
-            s.write(bytes);
-        }
-    });
+
+    tls::task_data()
+        .get_current()
+        .unwrap()
+        .fd(STDERR_FILENO)
+        .unwrap()
+        .write_continuous(bytes)
+        .unwrap();
 }
 
 pub fn __write_debug(input: &str) {
-    let bytes = input.as_bytes();
-    get_device!(FdEntryType::DebugSink, RawFdEntry::TTYSink(sinks) => {
-        for (k, s) in sinks {
-            s.write(bytes);
-        }
-    });
+    todo!()
 }
 
 // force prints something to serial
@@ -60,18 +60,26 @@ pub fn __serial_stub(input: Arguments) {
 }
 
 pub fn read_all(buf: &mut [u8]) -> usize {
-    let mut n_read = 0;
-    get_device!(FdEntryType::StdIn, RawFdEntry::TTYSource(id, source) => {
-     while let Some(next) = source.read()
-         && let Ok(res) = parse_scancode(next) {
-             let mapped_bytes = map_key(res, buf);
-             if mapped_bytes < 0 {
-                 break;
-             }
-             let buf = &mut buf[mapped_bytes as usize..];
-             n_read += mapped_bytes as usize;
+    let mut intermediate_buf = alloc::vec![0;buf.len()];
 
-     }
-    });
-    n_read
+    let n_read = tls::task_data()
+        .get_current()
+        .unwrap()
+        .fd(STDIN_FILENO)
+        .unwrap()
+        .read_continuous(&mut intermediate_buf)
+        .unwrap();
+
+    let mut n_mapped = 0;
+    for &byte in &intermediate_buf[..n_read] {
+        if let Ok(res) = parse_scancode(byte) {
+            let mapped_bytes = map_key(res, buf);
+            if mapped_bytes < 0 {
+                break;
+            }
+            let buf = &mut buf[mapped_bytes as usize..];
+            n_mapped += mapped_bytes as usize;
+        }
+    }
+    n_mapped
 }

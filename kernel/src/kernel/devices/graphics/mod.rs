@@ -4,7 +4,7 @@ use core::{fmt::Debug, marker::PhantomData};
 use conquer_once::spin::OnceCell;
 use embedded_graphics::prelude::DrawTarget;
 
-use super::{FdEntry, FdTag, Null, RawDeviceID, RawFdEntry};
+use super::*;
 use crate::{
     arch::mem::VirtAddr,
     create_device_file,
@@ -97,52 +97,28 @@ pub(super) fn init() {
     gfx_config_file.write_all(bytes, 0).unwrap();
 }
 
-pub struct GFXBuilder {
-    id: RawDeviceID,
+pub fn simple_manager() -> SimpleGFXManager<Simplegraphics<'static, GlobalFrameBuffer>> {
+    SimpleGFXManager::new(Simplegraphics::new(&*GLOBAL_FRAMEBUFFER))
 }
 
-impl GFXBuilder {
-    pub(super) fn new(id: RawDeviceID) -> Self {
-        Self { id }
-    }
-
-    pub fn simple<T: FdTag>(self) -> FdEntry<T> {
-        let entry = Arc::new(SimpleGFXManager::new(Simplegraphics::new(
-            &*GLOBAL_FRAMEBUFFER,
-        )));
-        FdEntry::new(RawFdEntry::GraphicsBackend(self.id, entry), self.id)
-    }
-
-    //TODO refactor this to remove duplication (also in framebuffer.rs)
-    pub fn blit_user<T: FdTag>(self, addr: crate::arch::mem::VirtAddr) -> FdEntry<T> {
-        let intermediate = Simplegraphics::new(Box::leak(Box::new(unsafe {
-            RawFrameBuffer::new_user(
-                addr,
-                GLOBAL_FRAMEBUFFER.width(),
-                GLOBAL_FRAMEBUFFER.height(),
-                GLOBAL_FRAMEBUFFER.bpp(),
-            )
-        })));
-
-        let target = Simplegraphics::new(&*GLOBAL_FRAMEBUFFER);
-        let entry = Arc::new(BlitManager::new(intermediate, target));
-        FdEntry::new(RawFdEntry::GraphicsBackend(self.id, entry), self.id)
-    }
-
-    pub fn blit_kernel<T: FdTag>(self, addr: crate::arch::mem::VirtAddr) -> FdEntry<T> {
-        let intermediate = Simplegraphics::new(Box::leak(Box::new(unsafe {
-            RawFrameBuffer::new_kernel(
-                addr,
-                GLOBAL_FRAMEBUFFER.width(),
-                GLOBAL_FRAMEBUFFER.height(),
-                GLOBAL_FRAMEBUFFER.bpp(),
-            )
-        })));
-
-        let target = Simplegraphics::new(&*GLOBAL_FRAMEBUFFER);
-        let entry = Arc::new(BlitManager::new(intermediate, target));
-        FdEntry::new(RawFdEntry::GraphicsBackend(self.id, entry), self.id)
-    }
+//TODO refactor this to remove duplication (also in framebuffer.rs)
+pub fn blit_user(
+    addr: crate::arch::mem::VirtAddr,
+) -> BlitManager<
+    Simplegraphics<'static, RawFrameBuffer>,
+    Simplegraphics<'static, GlobalFrameBuffer>,
+    RawFrameBuffer,
+> {
+    let intermediate = Simplegraphics::new(Box::leak(Box::new(unsafe {
+        RawFrameBuffer::new_user(
+            addr,
+            GLOBAL_FRAMEBUFFER.width(),
+            GLOBAL_FRAMEBUFFER.height(),
+            GLOBAL_FRAMEBUFFER.bpp(),
+        )
+    })));
+    let target = Simplegraphics::new(&*GLOBAL_FRAMEBUFFER);
+    BlitManager::new(intermediate, target)
 }
 
 impl PrimitiveDrawTarget for Null {
@@ -236,14 +212,15 @@ where
 {
     fn write(&self, buf: &[u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
         // using buf as a mem region of Bounding Boxes and offset as the length of the region
+        let len = unsafe { *(buf[0..8].as_ptr() as *const usize) };
         let bounds = unsafe {
-            &*core::ptr::slice_from_raw_parts(buf.as_ptr() as *const BoundingBox, offset)
+            &*core::ptr::slice_from_raw_parts(buf[8..].as_ptr() as *const BoundingBox, len)
         };
         for bound in bounds {
             self.flush(bound);
         }
 
-        Ok(offset)
+        Ok(len)
     }
 }
 

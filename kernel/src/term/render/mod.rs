@@ -517,9 +517,9 @@ where
 
 mod tests {
     use super::*;
-    use crate::kernel::{devices::SinkTag, threading};
+    use crate::{kernel::threading, serial_println};
 
-    #[kernel_test(devices = [framebuffer(SinkTag)])]
+    #[kernel_test(files = [1 = "/proc/kernel/io/fbbackend"])]
     fn print_to_buffer() {
         // SAFETY This is safe, as long it is not run parallely to some other functionality accessing FOOBAR / BAR, and init_term() was run in the same execution context
         use crate::{print, println};
@@ -592,7 +592,7 @@ mod tests {
         };
     }
 
-    #[kernel_test(devices = [framebuffer(SinkTag)])]
+    #[kernel_test(files = [1 = "/proc/kernel/io/fbbackend"])]
     fn buf_shifts() {
         // SAFETY This is safe, as long it is not run parallely to some other functionality accessing FOOBAR / BAR, and init_term() was run in the same execution context
         use crate::println;
@@ -641,7 +641,7 @@ mod tests {
         //TODO also test/implement shift_down
     }
 
-    #[kernel_test]
+    #[kernel_test(files = [1 = "/proc/kernel/io/fbbackend"])]
     fn print_many() {
         return;
         use crate::print;

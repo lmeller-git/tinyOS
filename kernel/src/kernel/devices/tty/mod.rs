@@ -5,7 +5,6 @@ use hashbrown::HashMap;
 use sink::{FBBACKEND, SERIALBACKEND, TTYReceiver};
 use source::{KEYBOARDBACKEND, TTYInput};
 
-use super::{FdEntry, FdTag, RawDeviceID, RawFdEntry};
 use crate::kernel::{
     devices::Null,
     fd::{FileRepr, IOCapable},
@@ -64,35 +63,6 @@ impl<T: TTYSink + TTYSource> Write for T {
     fn write(&self, buf: &[u8], offset: usize) -> IOResult<usize> {
         TTYSink::write(self, buf);
         Ok(buf.len())
-    }
-}
-
-pub struct TTYBuilder {
-    id: RawDeviceID,
-}
-
-impl TTYBuilder {
-    pub(super) fn new(id: RawDeviceID) -> Self {
-        Self { id }
-    }
-
-    pub fn keyboard<T: FdTag>(self) -> FdEntry<T> {
-        let backend = TTYInput::new(KEYBOARDBACKEND.get().unwrap().clone());
-        FdEntry::new(RawFdEntry::TTYSource(self.id, Arc::new(backend)), self.id)
-    }
-
-    pub fn serial<T: FdTag>(self) -> FdEntry<T> {
-        let backend = TTYReceiver::new(SERIALBACKEND.get().unwrap().clone());
-        let mut new_map = HashMap::new();
-        new_map.insert(self.id, Arc::new(backend) as Arc<dyn TTYSink>);
-        FdEntry::new(RawFdEntry::TTYSink(new_map), self.id)
-    }
-
-    pub fn fb<T: FdTag>(self) -> FdEntry<T> {
-        let backend = TTYReceiver::new(FBBACKEND.get().unwrap().clone());
-        let mut new_map = HashMap::new();
-        new_map.insert(self.id, Arc::new(backend) as Arc<dyn TTYSink>);
-        FdEntry::new(RawFdEntry::TTYSink(new_map), self.id)
     }
 }
 

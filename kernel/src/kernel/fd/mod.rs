@@ -2,6 +2,7 @@ use alloc::{boxed::Box, collections::btree_map::BTreeMap, string::String, sync::
 use core::{
     fmt::{self, Debug},
     ops::Deref,
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use bitflags::bitflags;
@@ -88,6 +89,13 @@ impl<T: ?Sized> MaybeOwned<T> {
             Self::Shared(_) => self,
         }
     }
+
+    pub fn try_clone(&self) -> Option<Self> {
+        match self {
+            Self::Owned(_) => None,
+            Self::Shared(t) => Some(Self::Shared(t.clone())),
+        }
+    }
 }
 
 impl<T: ?Sized> From<Arc<T>> for MaybeOwned<T> {
@@ -99,12 +107,6 @@ impl<T: ?Sized> From<Arc<T>> for MaybeOwned<T> {
 impl<T: ?Sized> From<Box<T>> for MaybeOwned<T> {
     fn from(value: Box<T>) -> Self {
         Self::Owned(value)
-    }
-}
-
-impl<T> From<T> for MaybeOwned<T> {
-    fn from(value: T) -> Self {
-        Self::Owned(value.into())
     }
 }
 
@@ -134,6 +136,18 @@ where
     }
 }
 
+impl<T> Clone for MaybeOwned<T>
+where
+    T: ?Sized + Clone,
+{
+    fn clone(&self) -> Self {
+        match self {
+            Self::Owned(t) => Self::Owned(t.clone()),
+            Self::Shared(t) => Self::Shared(t.clone()),
+        }
+    }
+}
+
 unsafe impl<T> Sync for MaybeOwned<T> where T: Sync + ?Sized {}
 unsafe impl<T> Send for MaybeOwned<T> where T: Send + ?Sized {}
 
@@ -145,15 +159,17 @@ pub struct File {
 }
 
 impl File {
-    pub fn new<V>(repr: V) -> Self
-    where
-        MaybeOwned<dyn FileRepr>: From<V>,
-    {
+    pub fn new(repr: impl Into<MaybeOwned<dyn FileRepr>>) -> Self {
         Self {
             repr: repr.into(),
             cursor: FCursor::default(),
             perms: FPerms::empty(),
         }
+    }
+
+    pub fn new_shareable(repr: impl Into<MaybeOwned<dyn FileRepr>>) -> Self {
+        let repr: MaybeOwned<_> = repr.into();
+        Self::new(repr.into_shared())
     }
 
     pub fn with_perms<T>(mut self, perms: T) -> Self
@@ -164,20 +180,20 @@ impl File {
         self
     }
 
-    pub fn read_continuous(&mut self, buf: &mut [u8]) -> super::io::IOResult<usize> {
-        let n = self.read(buf, self.cursor.inner)?;
+    pub fn read_continuous(&self, buf: &mut [u8]) -> super::io::IOResult<usize> {
+        let n = self.read(buf, self.cursor.get())?;
         self.cursor.advance(n);
         Ok(n)
     }
 
-    pub fn write_continuous(&mut self, buf: &[u8]) -> super::io::IOResult<usize> {
-        let n = self.write(buf, self.cursor.inner)?;
+    pub fn write_continuous(&self, buf: &[u8]) -> super::io::IOResult<usize> {
+        let n = self.write(buf, self.cursor.get())?;
         self.cursor.advance(n);
         Ok(n)
     }
 
-    pub fn set_cursor(&mut self, offset: usize) {
-        self.cursor.inner = offset;
+    pub fn set_cursor(&self, offset: usize) {
+        self.cursor.inner.store(offset, Ordering::Release);
     }
 
     pub fn may_write(&self) -> bool {
@@ -192,6 +208,14 @@ impl File {
         let mut buf = String::new();
         self.read_to_string(&mut buf, 0)?;
         Ok(buf)
+    }
+
+    pub fn try_clone_without_offset(&self) -> Option<Self> {
+        Some(Self {
+            repr: self.repr.try_clone()?,
+            cursor: FCursor::default(),
+            perms: self.perms.clone(),
+        })
     }
 }
 
@@ -242,13 +266,25 @@ impl fmt::Write for File {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default)]
 pub struct FCursor {
-    inner: usize,
+    inner: AtomicUsize,
 }
 
 impl FCursor {
-    pub fn advance(&mut self, n: usize) {
-        self.inner += n
+    pub fn advance(&self, n: usize) {
+        self.inner.fetch_add(n, Ordering::Release);
+    }
+
+    pub fn get(&self) -> usize {
+        self.inner.load(Ordering::Acquire)
+    }
+}
+
+impl Clone for FCursor {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.load(Ordering::Acquire).into(),
+        }
     }
 }

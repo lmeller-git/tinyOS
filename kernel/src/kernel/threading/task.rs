@@ -3,7 +3,7 @@ use core::{
     fmt::{Debug, LowerHex},
     marker::PhantomData,
     pin::Pin,
-    sync::atomic::{AtomicU8, AtomicU64, AtomicUsize, Ordering},
+    sync::atomic::{AtomicU8, AtomicU32, AtomicU64, AtomicUsize, Ordering},
 };
 
 use super::{ProcessEntry, ThreadingError};
@@ -23,7 +23,6 @@ use crate::{
         mem::VirtAddr,
     },
     kernel::{
-        devices::{Attacheable, FdEntry, FdTag, TaskDevices},
         elf::apply,
         fd::{FDMap, File, FileDescriptor, STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO},
         fs::{self, Path},
@@ -39,7 +38,6 @@ pub trait TaskRepr: Debug {
     fn set_krsp(&self, addr: &VirtAddr);
     fn privilege(&self) -> PrivilegeLevel;
     fn pagedir(&self) -> Option<&Mutex<TaskPageTable<'static>>>;
-    fn devices(&self) -> &RwLock<TaskDevices>;
     fn state(&self) -> TaskState;
     fn set_state(&self, state: TaskState);
     fn state_data(&self) -> &Mutex<TaskStateData>;
@@ -49,6 +47,7 @@ pub trait TaskRepr: Debug {
     fn fd(&self, descriptor: FileDescriptor) -> Option<Arc<File>>;
     fn add_fd(&self, descriptor: FileDescriptor, f: File) -> Option<Arc<File>>;
     fn remove_fd(&self, descriptor: FileDescriptor) -> Option<Arc<File>>;
+    fn add_next_file(&self, f: File);
 }
 
 #[repr(u8)]
@@ -84,9 +83,9 @@ pub struct TaskCore {
 pub struct TaskMetadata {
     pub name: Option<String>,
     pub parent: Option<TaskID>,
-    pub devices: RwLock<TaskDevices>,
     pub fd_table: RwLock<FDMap>,
     pub state_data: Mutex<TaskStateData>,
+    pub next_fd: AtomicU32,
     _private: PhantomData<()>,
 }
 
@@ -119,11 +118,11 @@ impl TaskCore {
 impl TaskMetadata {
     fn new() -> Self {
         Self {
-            devices: TaskDevices::new().into(),
             fd_table: RwLock::default(),
             name: None,
             parent: None,
             state_data: TaskStateData::default().into(),
+            next_fd: AtomicU32::new(0),
             _private: PhantomData,
         }
     }
@@ -148,10 +147,6 @@ impl TaskRepr for Task {
 
     fn pagedir(&self) -> Option<&Mutex<TaskPageTable<'static>>> {
         self.core.pagedir.as_ref()
-    }
-
-    fn devices(&self) -> &RwLock<TaskDevices> {
-        &self.metadata.devices
     }
 
     fn state(&self) -> TaskState {
@@ -179,14 +174,20 @@ impl TaskRepr for Task {
     }
 
     fn fd(&self, descriptor: FileDescriptor) -> Option<Arc<File>> {
-        self.metadata
-            .fd_table
-            .read()
-            .get(&(descriptor as u32))
-            .cloned()
+        self.metadata.fd_table.read().get(&descriptor).cloned()
     }
 
+    /// inserts a K, V pair into fd table. If K was present, old V is returned in Some
     fn add_fd(&self, descriptor: FileDescriptor, f: File) -> Option<Arc<File>> {
+        self.metadata
+            .next_fd
+            .fetch_update(Ordering::Release, Ordering::Acquire, |n| {
+                if n <= descriptor {
+                    Some(descriptor + 1)
+                } else {
+                    None
+                }
+            });
         self.metadata
             .fd_table
             .write()
@@ -195,6 +196,11 @@ impl TaskRepr for Task {
 
     fn remove_fd(&self, descriptor: FileDescriptor) -> Option<Arc<File>> {
         self.metadata.fd_table.write().remove(&(descriptor as u32))
+    }
+
+    fn add_next_file(&self, f: File) {
+        let next_fd = self.metadata.next_fd.fetch_add(1, Ordering::AcqRel);
+        self.add_fd(next_fd, f);
     }
 }
 
@@ -434,20 +440,6 @@ impl<S> TaskBuilder<Task, S> {
                 .or_insert(f.clone());
         }
         drop(table);
-        self
-    }
-
-    pub fn with_device<T>(self, device: FdEntry<T>) -> TaskBuilder<Task, S>
-    where
-        T: FdTag,
-        FdEntry<T>: Attacheable,
-    {
-        self.inner.devices().write().attach(device);
-        self
-    }
-
-    pub fn with_default_devices(mut self) -> TaskBuilder<Task, S> {
-        self.inner.metadata.devices = TaskDevices::new().add_default().into();
         self
     }
 }

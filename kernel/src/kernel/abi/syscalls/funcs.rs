@@ -1,4 +1,10 @@
-use core::{arch::global_asm, ptr::null_mut, sync::atomic::Ordering, time::Duration};
+use alloc::boxed::Box;
+use core::{
+    arch::global_asm,
+    ptr::{self, null_mut},
+    sync::atomic::Ordering,
+    time::Duration,
+};
 
 use super::SysRetCode;
 use crate::{
@@ -12,17 +18,9 @@ use crate::{
         wait_manager::wait_self,
     },
     exit_qemu,
-    get_device,
     kernel::{
-        devices::{
-            DeviceBuilder,
-            FdEntry,
-            FdEntryType,
-            GraphicsTag,
-            RawDeviceID,
-            RawFdEntry,
-            tty::io::read_all,
-        },
+        devices::{graphics::blit_user, tty::io::read_all},
+        fd::{File, FileRepr},
         mem::{
             heap::{MAX_USER_HEAP_SIZE, USER_HEAP_START},
             paging::map_region,
@@ -64,76 +62,27 @@ pub fn sys_yield() -> SysRetCode {
 }
 
 pub fn sys_write(device_type: usize, buf: *const u8, len: usize) -> isize {
-    // device_type maps 1:1 to FdEntryType
-    // -1: device type not writeable
-    // -2: no device available or device type not writeable
-    // -3: device list cannot be accessed??
-    let Ok(entry_type) = FdEntryType::try_from(device_type) else {
-        return -1;
-    };
-
-    match entry_type {
-        FdEntryType::StdOut | FdEntryType::StdErr | FdEntryType::DebugSink => {
-            get_device!(entry_type, RawFdEntry::TTYSink(sinks) => {
-                let bytes = unsafe {&*core::ptr::slice_from_raw_parts(buf, len)};
-                for device in sinks.values() {
-                    device.write(bytes);
-                }
-                len as isize
-            } | {
-                -2
-            })
-            .unwrap_or(-3)
+    if let Some(d) = tls::task_data()
+        .get_current()
+        .map(|task| task.fd(device_type as u32))
+        .flatten()
+    {
+        let arr = unsafe { &*ptr::slice_from_raw_parts(buf, len) };
+        if let Ok(w) = d.write_continuous(arr) {
+            return w as isize;
+        } else {
+            return -1;
         }
-        FdEntryType::Graphics => {
-            get_device!(entry_type, RawFdEntry::GraphicsBackend(id, device) => {
-                let bounds = unsafe {&*core::ptr::slice_from_raw_parts(buf as *const BoundingBox, len)};
-                for bound in bounds {
-                    device.flush(bound);
-                }
-            
-                len as isize
-            } | {-2})
-            .unwrap_or(-3)
-        }
-        _ => todo!(),
     }
+    -1
 }
 
+// TODO remove
 pub fn sys_write_single(device_type: usize, device_id: u64, buf: *const u8, len: usize) -> isize {
-    // device_type maps 1:1 to FdEntryType
-    // -1: device type not writeable
-    // -2: no device available or device type not writeable
-    // -3: device list cannot be accessed??
-    let Ok(entry_type) = FdEntryType::try_from(device_type) else {
-        return -1;
-    };
-
-    get_device!(entry_type, RawFdEntry::TTYSink(sinks) => {
-        let id: RawDeviceID = device_id.into();
-        if let Some(device) = sinks.get(&id) {
-            let bytes = unsafe {&*core::ptr::slice_from_raw_parts(buf, len)};
-            device.write(bytes);
-            len as isize
-        } else {
-            -2
-        }
-        } | {
-        -2
-    })
-    .unwrap_or(-3)
+    -5
 }
 
 pub fn sys_read(device_type: usize, buf: *mut u8, len: usize, timeout: usize) -> isize {
-    // device_type maps 1:1 to FdEntryType
-    // -1: device type not writeable
-    // -2: no device available or device type not writeable
-    // -3: device list cannot be accessed??
-    // currently defaults to StdIn and ignores device_type
-    // reads up to len bytes from stdin and will block until stdin contains at least one byte
-    let Ok(entry_type) = FdEntryType::try_from(device_type) else {
-        return -1;
-    };
     let bytes = unsafe { &mut *core::ptr::slice_from_raw_parts_mut(buf, len) };
     let until = Duration::from_millis(timeout as u64) + current_time();
     let conditions = [
@@ -187,31 +136,20 @@ pub fn sys_heap(size: usize) -> *mut u8 {
 }
 
 pub fn sys_map_device(device_type: usize, addr: *mut ()) -> Result<*mut (), SysRetCode> {
-    let Ok(entry_type) = FdEntryType::try_from(device_type) else {
-        return Err(SysRetCode::Fail);
-    };
-
-    serial_println!("mapping device");
-
-    // TODO dynamically determine this addr + discriminate between user + kernel
-    // needs some thread local memmap
+    // // TODO dynamically determine this addr + discriminate between user + kernel
+    // // needs some thread local memmap
     let addr = if addr.is_null() {
         USER_DEVICE_MAP.as_mut_ptr()
     } else {
         addr
     };
 
-    match entry_type {
-        FdEntryType::Graphics => {
-            let addr = VirtAddr::from_ptr(addr);
-            serial_println!("building fb");
-            let entry: FdEntry<GraphicsTag> = DeviceBuilder::gfx().blit_user(addr);
-            with_current_task(|task| task.devices().write().attach(entry));
-        }
-        _ => todo!(),
-    }
-    serial_println!("mapped device");
-
+    let vaddr = VirtAddr::from_ptr(addr);
+    let device = blit_user(vaddr);
+    tls::task_data()
+        .get_current()
+        .ok_or(SysRetCode::Fail)?
+        .add_next_file(File::new(Box::new(device) as Box<dyn FileRepr>));
     Ok(addr)
 }
 
@@ -295,16 +233,16 @@ global_asm!(
             push r10
             push r9
             push r8
-            
+
             // save current rsp
             mov r9, rsp
-           
+
             // align stack, save rsp and save xmm registers
             sub rsp, 512 + 16
             and rsp, -16
             fxsave [rsp]
             push r9
-            
+
             mov rdi, rsp
             call context_switch_local
 
@@ -331,7 +269,7 @@ global_asm!(
             pop rbp
             pop rax
             jmp interrupt_cleanup
-        
+
     "
 );
 
