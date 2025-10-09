@@ -5,9 +5,7 @@ use super::TTYSink;
 use crate::{
     arch::{self},
     drivers::{keyboard::parse_scancode, tty::map_key},
-    get_device,
     kernel::{
-        devices::{FdEntryType, RawFdEntry},
         fd::{STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO},
         io::Read,
         threading::{self, task::TaskRepr, tls},
@@ -30,12 +28,6 @@ pub fn __write_stdout(input: Arguments) {
             .unwrap()
             .write_continuous(bytes)
             .unwrap();
-
-        // get_device!(FdEntryType::StdOut, RawFdEntry::TTYSink(sinks) => {
-        //     for (k, s) in sinks {
-        //         s.write(bytes)
-        //     }
-        // });
     }
 }
 
@@ -50,21 +42,10 @@ pub fn __write_stderr(input: Arguments) {
         .unwrap()
         .write_continuous(bytes)
         .unwrap();
-
-    // get_device!(FdEntryType::StdErr, RawFdEntry::TTYSink(sinks) => {
-    //     for (k, s) in sinks {
-    //         s.write(bytes);
-    //     }
-    // });
 }
 
 pub fn __write_debug(input: &str) {
-    let bytes = input.as_bytes();
-    get_device!(FdEntryType::DebugSink, RawFdEntry::TTYSink(sinks) => {
-        for (k, s) in sinks {
-            s.write(bytes);
-        }
-    });
+    todo!()
 }
 
 // force prints something to serial
@@ -101,18 +82,4 @@ pub fn read_all(buf: &mut [u8]) -> usize {
         }
     }
     n_mapped
-
-    // get_device!(FdEntryType::StdIn, RawFdEntry::TTYSource(id, source) => {
-    //  while let Some(next) = source.read()
-    //      && let Ok(res) = parse_scancode(next) {
-    //          let mapped_bytes = map_key(res, buf);
-    //          if mapped_bytes < 0 {
-    //              break;
-    //          }
-    //          let buf = &mut buf[mapped_bytes as usize..];
-    //          n_read += mapped_bytes as usize;
-
-    //  }
-    // });
-    // n_read
 }

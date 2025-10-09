@@ -110,12 +110,6 @@ impl<T: ?Sized> From<Box<T>> for MaybeOwned<T> {
     }
 }
 
-impl<T> From<T> for MaybeOwned<T> {
-    fn from(value: T) -> Self {
-        Self::Owned(value.into())
-    }
-}
-
 impl<T: ?Sized> Deref for MaybeOwned<T> {
     type Target = T;
 

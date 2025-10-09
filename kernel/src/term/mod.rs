@@ -54,17 +54,6 @@ pub fn init_term() {
     }
 }
 
-pub fn synced_keyboard_listener() {
-    let mut buf = [0; 20];
-    loop {
-        let n_read = read_all(&mut buf);
-        for c in str::from_utf8(&buf[..n_read]).unwrap().chars() {
-            print!("{c}");
-        }
-        threading::yield_now();
-    }
-}
-
 #[doc(hidden)]
 pub fn _print(args: Arguments) {
     // SAFETY must make sure that this is not calles prior to init_term()

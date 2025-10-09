@@ -30,23 +30,10 @@ use tiny_os::{
         wait_manager,
     },
     eprintln,
-    get_device,
     kernel::{
         self,
         abi::syscalls::funcs::{sys_exit, sys_write},
-        devices::{
-            DeviceBuilder,
-            EDebugSinkTag,
-            FdEntry,
-            FdEntryType,
-            GraphicsTag,
-            RawDeviceID,
-            RawFdEntry,
-            SinkTag,
-            StdInTag,
-            StdOutTag,
-            graphics::KERNEL_GFX_MANAGER,
-        },
+        devices::graphics::KERNEL_GFX_MANAGER,
         fd::{File, FileRepr},
         init,
         threading::{
@@ -60,7 +47,6 @@ use tiny_os::{
     serial_println,
     services::graphics::PrimitiveGlyph,
     term,
-    with_devices,
 };
 
 #[unsafe(no_mangle)]
@@ -101,8 +87,6 @@ extern "C" fn idle() -> usize {
     threading::finalize();
     serial_println!("threads finalized");
 
-    _ = add_named_ktask(graphics, "graphic drawer".into());
-    // _ = add_named_ktask(listen, "term".into());
     cross_println!("startup tasks started");
 
     init::default_task().unwrap();
@@ -122,44 +106,6 @@ extern "C" fn idle() -> usize {
         wait_manager::add_wait(&tls::task_data().current_pid(), conditions);
         threading::yield_now();
     }
-}
-
-#[with_default_args]
-extern "C" fn listen() -> usize {
-    tiny_os::term::synced_keyboard_listener();
-    0
-}
-
-#[with_default_args]
-extern "C" fn graphics() -> usize {
-    let glyphs = [&PrimitiveGlyph::Circle(
-        embedded_graphics::primitives::Circle {
-            top_left: embedded_graphics::prelude::Point { x: 250, y: 250 },
-            diameter: 42,
-        },
-        PrimitiveStyle::with_stroke(ColorCode::Pink.into(), 3),
-    )];
-    get_device!(FdEntryType::Graphics, RawFdEntry::GraphicsBackend(id, backend) => {
-
-        backend.draw_batched_primitives(&glyphs).unwrap();
-    });
-
-    let PrimitiveGlyph::Circle(c, s) = glyphs[0] else {
-        unreachable!()
-    };
-
-    sys_write(
-        FdEntryType::Graphics as usize,
-        &Into::<BoundingBox>::into(c.bounding_box()) as *const BoundingBox as *const u8,
-        1,
-    );
-
-    serial_println!("exiting task {:?}", tls::task_data().current_pid());
-
-    sys_exit(0);
-
-    unreachable!();
-    0
 }
 
 #[panic_handler]

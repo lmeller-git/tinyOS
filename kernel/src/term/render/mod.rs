@@ -517,10 +517,7 @@ where
 
 mod tests {
     use super::*;
-    use crate::{
-        kernel::{devices::SinkTag, threading},
-        serial_println,
-    };
+    use crate::{kernel::threading, serial_println};
 
     #[kernel_test(files = [1 = "/proc/kernel/io/fbbackend"])]
     fn print_to_buffer() {

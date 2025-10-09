@@ -27,7 +27,6 @@ cfg_if! {
             common::{get_kernel_tests, KernelTest},
             drivers::start_drivers,
             kernel::{
-                devices::{DeviceBuilder, FdEntry, GraphicsTag, SinkTag, StdErrTag, StdInTag, TaskDevices},
                 threading::{
                     self,
                     ProcessReturn,
