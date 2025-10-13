@@ -249,7 +249,7 @@ global_asm!(
             /// iretq
 
             mov rsp, rdi
-           
+
             call end_interrupt
             // now on tasks kstack, with state on stack
 
@@ -257,7 +257,7 @@ global_asm!(
             pop r9
             fxrstor [rsp]
             mov rsp, r9
-            
+
             pop r8
             pop r9
             pop r10
@@ -275,14 +275,14 @@ global_asm!(
             pop rdi
             pop rbp
             pop rax
-          
+
             jmp interrupt_cleanup
 
         init_kernel_task:
             mov rax, rsp
             mov rsp, [rdi + 8]
 
-            
+
             /// pushes return addr after trampoline
             /// trampoline addr
             /// and relevant context
@@ -294,8 +294,8 @@ global_asm!(
 
             push [rsi] // trampoline
             push rsi // task exit info
-        
-                    
+
+
             // return stub
             lea r8, return_trampoline_stub
             push r8
@@ -345,7 +345,7 @@ global_asm!(
             mov rax, rsp
             mov rsp, [rdi + 48] // kernel stack top
 
-            
+
             /// pushes return addr after trampoline
             /// trampoline addr
             /// and relevant context
@@ -358,10 +358,10 @@ global_asm!(
             push [rsi] // trampoline
             push rsi // task exit info
 
-            
+
             call setup_usr_stack
             // user task rsp in r8
-                   
+
             // return stub
             lea r9, return_trampoline_stub
             push r9
@@ -392,14 +392,14 @@ global_asm!(
             push 0
             push [rdx + 40]
             push [rdx + 32] // r8
-            
+
             // save xmm registers
             mov r9, rsp
             sub rsp, 512 + 16
             and rsp, -16
             fxsave [rsp]
             push r9
-            
+
             // restore rsp
             mov rsi, rsp
             mov rsp, rax
@@ -419,7 +419,7 @@ global_asm!(
 
             // push return trampolines
             // TODO (currently exit() is expected)
-            
+
             mov r8, rsp
             mov rsp, r9
             ret

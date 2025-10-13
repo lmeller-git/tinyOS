@@ -74,11 +74,12 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
                 SysRetCode::Success
             }
         }
-        8 => match sys_map_device(args.first() as usize, args.second() as *mut ()) {
+        8 => match sys_map_device(args.first() as *mut ()) {
             Err(_) => SysRetCode::Fail,
             Ok(addr) => {
-                args.ret2(addr as usize as i64);
-                SysRetCode::Success
+                args.ret2(addr.0 as usize as i64);
+                args.ret(addr.1 as u64 as i64);
+                return;
             }
         },
         9 => {

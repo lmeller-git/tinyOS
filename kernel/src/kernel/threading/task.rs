@@ -47,7 +47,7 @@ pub trait TaskRepr: Debug {
     fn fd(&self, descriptor: FileDescriptor) -> Option<Arc<File>>;
     fn add_fd(&self, descriptor: FileDescriptor, f: File) -> Option<Arc<File>>;
     fn remove_fd(&self, descriptor: FileDescriptor) -> Option<Arc<File>>;
-    fn add_next_file(&self, f: File);
+    fn add_next_file(&self, f: File) -> FileDescriptor;
 }
 
 #[repr(u8)]
@@ -198,9 +198,10 @@ impl TaskRepr for Task {
         self.metadata.fd_table.write().remove(&(descriptor as u32))
     }
 
-    fn add_next_file(&self, f: File) {
+    fn add_next_file(&self, f: File) -> FileDescriptor {
         let next_fd = self.metadata.next_fd.fetch_add(1, Ordering::AcqRel);
         self.add_fd(next_fd, f);
+        next_fd
     }
 }
 

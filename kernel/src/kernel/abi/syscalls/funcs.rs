@@ -135,7 +135,7 @@ pub fn sys_heap(size: usize) -> *mut u8 {
     base_addr.as_mut_ptr()
 }
 
-pub fn sys_map_device(device_type: usize, addr: *mut ()) -> Result<*mut (), SysRetCode> {
+pub fn sys_map_device(addr: *mut ()) -> Result<(*mut (), u32), SysRetCode> {
     // // TODO dynamically determine this addr + discriminate between user + kernel
     // // needs some thread local memmap
     let addr = if addr.is_null() {
@@ -146,11 +146,11 @@ pub fn sys_map_device(device_type: usize, addr: *mut ()) -> Result<*mut (), SysR
 
     let vaddr = VirtAddr::from_ptr(addr);
     let device = blit_user(vaddr);
-    tls::task_data()
+    let fd = tls::task_data()
         .get_current()
         .ok_or(SysRetCode::Fail)?
         .add_next_file(File::new(Box::new(device) as Box<dyn FileRepr>));
-    Ok(addr)
+    Ok((addr, fd))
 }
 
 pub fn sys_shutdown() {
