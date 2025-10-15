@@ -4,7 +4,7 @@ use core::fmt::Debug;
 use os_macros::with_default_args;
 
 use super::{ProcessReturn, task::Arg};
-use crate::kernel::abi::syscalls::funcs::sys_exit;
+use crate::kernel::abi::syscalls::funcs::exit;
 
 #[unsafe(no_mangle)]
 #[with_default_args]
@@ -32,7 +32,7 @@ pub extern "C" fn test_kernel_return_trampoline(ret: ProcessReturn, returnto: ex
 }
 
 pub fn default_exit(ret: usize) {
-    sys_exit(ret as i64);
+    exit(ret as i64);
 }
 
 #[repr(C)]

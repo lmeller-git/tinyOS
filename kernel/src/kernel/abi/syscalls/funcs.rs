@@ -1,285 +1,163 @@
-use alloc::boxed::Box;
-use core::{
-    arch::global_asm,
-    ptr::{self, null_mut},
-    sync::atomic::Ordering,
-    time::Duration,
-};
-
-use super::SysRetCode;
 use crate::{
-    QemuExitCode,
-    arch::{interrupt::gdt::get_kernel_selectors, mem::VirtAddr, x86::current_time},
-    drivers::{
-        graphics::{
-            GLOBAL_FRAMEBUFFER,
-            framebuffers::{BoundingBox, FrameBuffer, get_config},
-        },
-        wait_manager::wait_self,
+    arch::{
+        interrupt::gdt::get_kernel_selectors,
+        mem::{PageSize, PageTableFlags, Size4KiB, VirtAddr},
     },
-    exit_qemu,
     kernel::{
-        devices::{graphics::blit_user, tty::io::read_all},
-        fd::{File, FileRepr},
-        mem::{
-            heap::{MAX_USER_HEAP_SIZE, USER_HEAP_START},
-            paging::map_region,
+        abi::syscalls::{
+            SysCallRes,
+            SysRetCode,
+            utils::{__sys_yield, valid_ptr},
         },
+        fd::FileDescriptor,
+        fs::{self, OpenOptions, Path},
+        mem::paging::{map_region, unmap_region},
         threading::{
-            schedule::{context_switch_local, with_current_task},
+            self,
             task::TaskRepr,
             tls,
-            wait::{QueuTypeCondition, QueueType, WaitEvent, condition::WaitCondition, post_event},
-            yield_now,
+            wait::{QueueType, WaitEvent, post_event},
         },
     },
-    println,
-    serial_println,
 };
 
-const USER_DEVICE_MAP: VirtAddr = VirtAddr::new(0x0000_3000_0000);
+// all lengths denote the number of ELEMENTS, not the number of bytes.
 
-pub fn sys_exit(status: i64) {
-    post_event(WaitEvent::new(QueueType::Thread(
-        tls::task_data().current_pid(),
-    )));
-    tls::task_data().kill(&tls::task_data().current_pid(), 0);
-    yield_now();
-    unreachable!();
+pub fn open(path: *const u8, len: usize, flags: OpenOptions) -> SysCallRes<FileDescriptor> {
+    if !valid_ptr(path, len) {
+        return Err(SysRetCode::Fail);
+    }
+    let p = unsafe { &*core::ptr::slice_from_raw_parts(path, len) };
+    let p = str::from_utf8(p).map_err(|_| SysRetCode::Fail)?;
+    let p = Path::new(p);
+    Ok(tls::task_data()
+        .get_current()
+        .ok_or(SysRetCode::Fail)?
+        .add_next_file(fs::open(p, flags).map_err(|_| SysRetCode::Fail)?))
 }
 
-pub fn sys_kill(id: u64, status: i64) -> SysRetCode {
-    tls::task_data().kill(&id.into(), status as i32);
-    SysRetCode::Success
+pub fn close(fd: FileDescriptor) -> SysCallRes<()> {
+    tls::task_data()
+        .get_current()
+        .map(|t| t.remove_fd(fd))
+        .flatten()
+        .ok_or(SysRetCode::Fail)?;
+    Ok(())
 }
 
-pub fn sys_yield() -> SysRetCode {
+pub fn read(fd: FileDescriptor, buf: *mut u8, len: usize, timeout: u64) -> SysCallRes<isize> {
+    // TODO add wait event till timeout/ read event (may want to put that in userspace though)
+    if !valid_ptr(buf, len) {
+        return Err(SysRetCode::Fail);
+    }
+    let b = unsafe { &mut *core::ptr::slice_from_raw_parts_mut(buf, len) };
+    let n = tls::task_data()
+        .get_current()
+        .map(|t| t.fd(fd).map(|f| f.read_continuous(b).ok()))
+        .flatten()
+        .flatten()
+        .ok_or(SysRetCode::Fail)?;
+    Ok(n as isize)
+}
+
+pub fn write(fd: FileDescriptor, buf: *const u8, len: usize) -> SysCallRes<isize> {
+    if !valid_ptr(buf, len) {
+        return Err(SysRetCode::Fail);
+    }
+    let b = unsafe { &*core::ptr::slice_from_raw_parts(buf, len) };
+    let n = tls::task_data()
+        .get_current()
+        .map(|t| t.fd(fd).map(|f| f.write_continuous(b).ok()))
+        .flatten()
+        .flatten()
+        .ok_or(SysRetCode::Fail)?;
+    Ok(n as isize)
+}
+
+pub fn seek(fd: FileDescriptor, offset: usize) -> SysCallRes<()> {
+    tls::task_data()
+        .get_current()
+        .map(|t| t.fd(fd).map(|f| f.set_cursor(offset)))
+        .flatten()
+        .ok_or(SysRetCode::Fail)?;
+    Ok(())
+}
+
+pub fn yield_now() -> SysCallRes<()> {
     let (cs, ss) = get_kernel_selectors();
     unsafe {
         __sys_yield(cs.0 as u64, ss.0 as u64);
     }
-    SysRetCode::Success
+    Ok(())
 }
 
-pub fn sys_write(device_type: usize, buf: *const u8, len: usize) -> isize {
-    if let Some(d) = tls::task_data()
-        .get_current()
-        .map(|task| task.fd(device_type as u32))
-        .flatten()
-    {
-        let arr = unsafe { &*ptr::slice_from_raw_parts(buf, len) };
-        if let Ok(w) = d.write_continuous(arr) {
-            return w as isize;
-        } else {
-            return -1;
-        }
-    }
-    -1
+pub fn exit(status: i64) -> ! {
+    // why do we post an event?????
+    // TODO understand this (i believe this is to notify waiting threads of this threads death)
+    post_event(WaitEvent::new(QueueType::Thread(
+        tls::task_data().current_pid(),
+    )));
+    tls::task_data().kill(&tls::task_data().current_pid(), 0);
+    threading::yield_now();
+    unreachable!("task did not exit properly");
 }
 
-// TODO remove
-pub fn sys_write_single(device_type: usize, device_id: u64, buf: *const u8, len: usize) -> isize {
-    -5
+pub fn kill(pid: u64, signal: i64) -> SysCallRes<()> {
+    tls::task_data()
+        .kill(&pid.into(), signal as i32)
+        .ok_or(SysRetCode::Fail)
 }
 
-pub fn sys_read(device_type: usize, buf: *mut u8, len: usize, timeout: usize) -> isize {
-    let bytes = unsafe { &mut *core::ptr::slice_from_raw_parts_mut(buf, len) };
-    let until = Duration::from_millis(timeout as u64) + current_time();
-    let conditions = [
-        QueuTypeCondition::with_cond(QueueType::Timer, WaitCondition::Time(until)),
-        QueuTypeCondition::with_cond(QueueType::KeyBoard, WaitCondition::Keyboard),
-    ];
-    loop {
-        let r = read_all(bytes);
-        if r == 0 && until > current_time() {
-            serial_println!(
-                "added self to waitqueues until {until:?}, currently: {:?}",
-                current_time()
-            );
-            wait_self(&conditions).unwrap();
-        } else {
-            serial_println!("returning {r}");
-            return r as isize;
-        }
-    }
-}
+pub fn mmap(len: usize, addr: *mut u8, flags: u32) -> SysCallRes<*mut u8> {
+    let addr = if !valid_ptr(addr, len) { todo!() } else { addr };
+    let base_addr = VirtAddr::new(addr).align_up(Size4KiB::SIZE);
+    let current = tls::task_data().get_current().ok_or(SysRetCode::Fail)?;
 
-pub fn sys_heap(size: usize) -> *mut u8 {
-    use crate::arch::mem::{PageSize, PageTableFlags, Size4KiB, VirtAddr};
-    serial_println!("mapping heap");
-
-    let current = tls::task_data().get_current().unwrap();
-
-    let current_size = current.core.heap_size.load(Ordering::Relaxed);
-    if current_size + size > MAX_USER_HEAP_SIZE {
-        return null_mut();
-    }
-    let base_addr = VirtAddr::new((USER_HEAP_START + current_size) as u64).align_up(Size4KiB::SIZE);
-
-    let flags =
-        PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE | PageTableFlags::WRITABLE;
-
-    if map_region(
+    map_region(
         base_addr,
-        size,
+        len,
         flags,
-        &mut *current.pagedir().unwrap().lock().table,
+        &mut *current.pagedir().ok_or(SysRetCode::Fail)?.lock().table,
     )
-    .is_err()
-    {
-        return null_mut();
+    .map_err(|_| SysRetCode::Fail)?;
+    Ok(base_addr.as_ptr())
+}
+
+pub fn munmap(addr: *mut u8, len: usize) -> SysCallRes<()> {
+    if !valid_ptr(addr, len) {
+        return Err(SysRetCode::Fail);
     }
 
-    current.core.heap_size.fetch_add(size, Ordering::Relaxed);
-    serial_println!("mapped heap");
-    base_addr.as_mut_ptr()
+    let base = VirtAddr::from_ptr(addr).align_up(Size4KiB::SIZE);
+    let current = tls::task_data().get_current().ok_or(SysRetCode::Fail)?;
+
+    unmap_region(
+        base,
+        len,
+        &mut *current.pagedir().ok_or(SysRetCode::Fail)?.lock().table,
+    )
+    .map_err(|_| SysRetCode::Fail)
 }
 
-pub fn sys_map_device(addr: *mut ()) -> Result<(*mut (), u32), SysRetCode> {
-    // // TODO dynamically determine this addr + discriminate between user + kernel
-    // // needs some thread local memmap
-    let addr = if addr.is_null() {
-        USER_DEVICE_MAP.as_mut_ptr()
-    } else {
-        addr
-    };
-
-    let vaddr = VirtAddr::from_ptr(addr);
-    let device = blit_user(vaddr);
-    let fd = tls::task_data()
-        .get_current()
-        .ok_or(SysRetCode::Fail)?
-        .add_next_file(File::new(Box::new(device) as Box<dyn FileRepr>));
-    Ok((addr, fd))
+pub fn clone() -> SysCallRes<bool> {
+    // procedure:
+    // - copy relevant structures from current task into new task (devices, privilege, ....)
+    // - create a new stack for the new task and copy all contents of the old task into it (including current interrupt frame, saved state)
+    // - modify the interrupt frame, such that the syscall returns true (1) for the new task in RAX. The old task will receive false (0) in RAX.
+    // - add the new task to task data
+    // - sysret
+    let current_task = tls::task_data().get_current().ok_or(SysRetCode::Fail)?;
+    Err(SysRetCode::Fail)
 }
 
-pub fn sys_shutdown() {
-    serial_println!("System Shutdown");
-    println!("System Shutdown");
-    exit_qemu(QemuExitCode::Success);
+pub fn wait() -> SysCallRes<()> {
+    todo!()
 }
 
-// TEMP: This is used to pass config until fs is ready
-// TODO: port this into fs, such that configs can be queried from special files/ dirs
-#[deprecated]
-#[repr(C)]
-pub struct GFXConfig {
-    pub red_mask_shift: u8,
-    pub red_mask_size: u8,
-    pub green_mask_shift: u8,
-    pub green_mask_size: u8,
-    pub blue_mask_shift: u8,
-    pub blue_mask_size: u8,
-    pub bpp: u16,
-    pub width: u32,
-    pub height: u32,
-    pub pitch: u32,
+pub fn machine() -> SysCallRes<()> {
+    todo!()
 }
 
-impl GFXConfig {
-    fn apply_defaults(&mut self) {
-        let config = get_config();
-        self.red_mask_shift = config.red_mask_shift;
-        self.red_mask_size = config.red_mask_size;
-        self.green_mask_shift = config.green_mask_shift;
-        self.green_mask_size = config.green_mask_size;
-        self.blue_mask_shift = config.blue_mask_shift;
-        self.blue_mask_size = config.blue_mask_size;
-        self.bpp = GLOBAL_FRAMEBUFFER.bpp();
-        self.width = GLOBAL_FRAMEBUFFER.width() as u32;
-        self.height = GLOBAL_FRAMEBUFFER.height() as u32;
-        self.pitch = GLOBAL_FRAMEBUFFER.pitch() as u32;
-    }
-}
-
-#[deprecated]
-pub fn sys_gfx_config(config: *mut GFXConfig) {
-    unsafe { &mut *config }.apply_defaults();
-}
-
-global_asm!(
-    "
-    .global __sys_yield
-
-    __sys_yield:
-        mov rax, rsp
-        push rsi // ss
-        push rax
-        pushfq
-        push rdi // cs
-        lea rax, [rip + _sys_yield_label]
-        push rax
-        jmp __context_switch_stub
-
-    _sys_yield_label:
-        ret
-
-    __context_switch_stub:
-            cli
-            push rax
-            push rbp
-            push rdi
-            push rsi
-            push rdx
-            push rcx
-            push rbx
-            mov rax, cr3
-            push rax
-            push r15
-            push r14
-            push r13
-            push r12
-            push r11
-            push r10
-            push r9
-            push r8
-
-            // save current rsp
-            mov r9, rsp
-
-            // align stack, save rsp and save xmm registers
-            sub rsp, 512 + 16
-            and rsp, -16
-            fxsave [rsp]
-            push r9
-
-            mov rdi, rsp
-            call context_switch_local
-
-            // pop xmm registers
-            pop r9
-            fxrstor [rsp]
-            mov rsp, r9
-
-            pop r8
-            pop r9
-            pop r10
-            pop r11
-            pop r12
-            pop r13
-            pop r14
-            pop r15
-            pop rax // cr3
-            mov cr3, rax // not necessary, as task not switched
-            pop rbx
-            pop rcx
-            pop rdx
-            pop rsi
-            pop rdi
-            pop rbp
-            pop rax
-            jmp interrupt_cleanup
-
-    "
-);
-
-unsafe extern "C" {
-    fn __sys_yield(cs: u64, ss: u64);
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn call_context_switch(rsp: u64) {
-    unsafe {
-        context_switch_local(rsp);
-    }
+pub fn get_pid() -> SysCallRes<u64> {
+    Ok(tls::task_data().current_pid().get_inner())
 }
