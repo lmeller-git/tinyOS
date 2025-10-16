@@ -6,7 +6,9 @@ use crate::kernel::{mem::paging::HIGHER_HALF_START, threading::schedule::context
 /// len is assumed to be the numebr of ELEMENTS T.
 pub fn valid_ptr<T>(ptr: *const T, len: usize) -> bool {
     let base = ptr.addr();
-    !ptr.is_null() && base < HIGHER_HALF_START && base + (len * size_of::<T>()) < HIGHER_HALF_START
+    !ptr.is_null()
+        && base < HIGHER_HALF_START as usize
+        && base + (len * size_of::<T>()) < HIGHER_HALF_START as usize
 }
 
 global_asm!(

@@ -108,9 +108,9 @@ pub fn kill(pid: u64, signal: i64) -> SysCallRes<()> {
         .ok_or(SysRetCode::Fail)
 }
 
-pub fn mmap(len: usize, addr: *mut u8, flags: u32) -> SysCallRes<*mut u8> {
+pub fn mmap(len: usize, addr: *mut u8, flags: PageTableFlags) -> SysCallRes<*mut u8> {
     let addr = if !valid_ptr(addr, len) { todo!() } else { addr };
-    let base_addr = VirtAddr::new(addr).align_up(Size4KiB::SIZE);
+    let base_addr = VirtAddr::from_ptr(addr).align_up(Size4KiB::SIZE);
     let current = tls::task_data().get_current().ok_or(SysRetCode::Fail)?;
 
     map_region(
@@ -120,7 +120,7 @@ pub fn mmap(len: usize, addr: *mut u8, flags: u32) -> SysCallRes<*mut u8> {
         &mut *current.pagedir().ok_or(SysRetCode::Fail)?.lock().table,
     )
     .map_err(|_| SysRetCode::Fail)?;
-    Ok(base_addr.as_ptr())
+    Ok(base_addr.as_mut_ptr())
 }
 
 pub fn munmap(addr: *mut u8, len: usize) -> SysCallRes<()> {

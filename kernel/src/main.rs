@@ -32,7 +32,6 @@ use tiny_os::{
     eprintln,
     kernel::{
         self,
-        abi::syscalls::funcs::{sys_exit, sys_write},
         devices::graphics::KERNEL_GFX_MANAGER,
         fd::{File, FileRepr},
         init,

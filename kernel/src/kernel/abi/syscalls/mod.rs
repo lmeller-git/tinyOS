@@ -1,5 +1,5 @@
 use crate::{
-    arch::context::SysCallCtx,
+    arch::{context::SysCallCtx, mem::PageTableFlags},
     kernel::{
         abi::syscalls::funcs::{
             clone,
@@ -22,7 +22,6 @@ use crate::{
 };
 
 pub mod funcs;
-mod sys_core;
 pub mod utils;
 
 type SysCallRes<T> = Result<T, SysRetCode>;
@@ -57,7 +56,7 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
         SysCallDispatch::Open => open(
             args.first() as usize as *const u8,
             args.second() as usize,
-            OpenOptions::from_bits(args.third() as u32),
+            OpenOptions::from_bits(args.third() as u32).unwrap_or(OpenOptions::default()),
         )
         .map(|r| r as i64),
         SysCallDispatch::Close => close(args.first() as u32).map(|_| 0),
@@ -65,7 +64,7 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
             args.first() as u32,
             args.second() as usize as *mut u8,
             args.third() as usize,
-            args.fourth() as u64,
+            args.fourth(),
         )
         .map(|r| r as i64),
         SysCallDispatch::Write => write(
@@ -75,12 +74,12 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
         )
         .map(|r| r as i64),
         SysCallDispatch::Yield => yield_now().map(|_| 0),
-        SysCallDispatch::Exit => exit(args.first()).max(|_| 0),
-        SysCallDispatch::Kill => kill(args.first() as u64, args.second()).map(|_| 0),
+        SysCallDispatch::Exit => exit(args.first() as i64),
+        SysCallDispatch::Kill => kill(args.first(), args.second() as i64).map(|_| 0),
         SysCallDispatch::Mmap => mmap(
             args.first() as usize,
             args.second() as usize as *mut u8,
-            args.third() as u32,
+            PageTableFlags::from_bits(args.third()).unwrap_or(PageTableFlags::empty()),
         )
         .map(|r| r as usize as i64),
         SysCallDispatch::Munmap => {
@@ -94,88 +93,6 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
     res.inspect_err(|e| args.ret(*e as i64))
         .inspect(|r| args.ret2(*r));
 }
-
-// pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
-//     serial_println!("syscall {} hit", args.rax);
-//     let res: SysRetCode = match args.num() {
-//         1 => {
-//             sys_exit(args.first() as i64);
-//             unreachable!()
-//         }
-//         2 => sys_kill(args.first(), args.second() as i64),
-//         3 => sys_yield(),
-//         4 => {
-//             let written = sys_write(
-//                 args.first() as usize,
-//                 args.second() as *const u8,
-//                 args.third() as usize,
-//             );
-//             args.ret2(written as i64);
-//             if written >= 0 {
-//                 SysRetCode::Success
-//             } else {
-//                 SysRetCode::Fail
-//             }
-//         }
-//         5 => {
-//             let written = sys_write_single(
-//                 args.first() as usize,
-//                 args.second(),
-//                 args.third() as *const u8,
-//                 args.fourth() as usize,
-//             );
-//             args.ret2(written as i64);
-//             if written >= 0 {
-//                 SysRetCode::Success
-//             } else {
-//                 SysRetCode::Fail
-//             }
-//         }
-//         6 => {
-//             let n_read = sys_read(
-//                 args.first() as usize,
-//                 args.second() as *mut u8,
-//                 args.third() as usize,
-//                 args.fourth() as usize,
-//             );
-//             args.ret2(n_read as i64);
-//             if n_read < 0 {
-//                 SysRetCode::Fail
-//             } else {
-//                 SysRetCode::Success
-//             }
-//         }
-//         7 => {
-//             let r = sys_heap(args.first() as usize);
-//             args.ret2(r as i64);
-//             if r.is_null() {
-//                 SysRetCode::Fail
-//             } else {
-//                 SysRetCode::Success
-//             }
-//         }
-//         8 => match sys_map_device(args.first() as *mut ()) {
-//             Err(_) => SysRetCode::Fail,
-//             Ok(addr) => {
-//                 args.ret2(addr.0 as usize as i64);
-//                 args.ret(addr.1 as u64 as i64);
-//                 return;
-//             }
-//         },
-//         9 => {
-//             sys_gfx_config(args.first() as *mut GFXConfig);
-//             SysRetCode::Success
-//         }
-//         10 => SysRetCode::Success, // No action
-//         11 => {
-//             sys_shutdown();
-//             unreachable!()
-//         }
-//         _ => SysRetCode::Unknown,
-//     };
-
-//     args.ret(res as i64);
-// }
 
 #[repr(i64)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
