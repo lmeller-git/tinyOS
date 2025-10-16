@@ -41,13 +41,7 @@ pub fn user_map_region(start: VirtAddr, len: usize) -> Result<(), String> {
         start,
         len,
         flags,
-        &mut *tls::task_data()
-            .get_current()
-            .unwrap()
-            .pagedir()
-            .unwrap()
-            .lock()
-            .table,
+        tls::task_data().get_current().unwrap().pagedir(),
     )
 }
 

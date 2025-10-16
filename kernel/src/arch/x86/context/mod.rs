@@ -612,7 +612,10 @@ pub fn allocate_userstack(tbl: &mut TaskPageTable) -> Result<VirtAddr, Threading
     Ok(stack_top)
 }
 
-pub fn copy_ustack_mappings_into(from: &TaskPageTable, into: &mut OffsetPageTable) {
+pub fn copy_ustack_mappings_into<M: Mapper<Size4KiB>, M2: Mapper<Size4KiB>>(
+    from: &mut M,
+    into: &mut M2,
+) {
     let flags =
         PageTableFlags::WRITABLE | PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE;
 
@@ -627,7 +630,7 @@ pub fn copy_ustack_mappings_into(from: &TaskPageTable, into: &mut OffsetPageTabl
         let mut frame_allocator = get_frame_alloc().lock();
         for page in Page::range_inclusive(start_page, end_page) {
             unsafe {
-                let frame = from.table.translate_page(page).unwrap();
+                let frame = from.translate_page(page).unwrap();
                 into.map_to(page, frame, flags, &mut *frame_allocator)
                     .unwrap()
                     .flush();

@@ -44,7 +44,6 @@ use tiny_os::{
         },
     },
     serial_println,
-    services::graphics::PrimitiveGlyph,
     term,
 };
 

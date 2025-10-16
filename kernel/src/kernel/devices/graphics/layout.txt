@@ -1,0 +1,5 @@
+Global FB, wrapped by some kind of manager file at /proc/gfx/fb (or similar)
+may be written to using write() (at offset), where offset is the offset into the framebuffer. the written bytes must respect pitch, bpp, ...
+This is used internal for all fb write operations.
+User processes (handled by libtinygraphics) can instead (to avoid excessive syscalls) mmap their own temporary framebuffer and write to it normally.
+once this is done N flushes may be done, flushing buffers of length L_i at offsets O_i into the global framebuffer
