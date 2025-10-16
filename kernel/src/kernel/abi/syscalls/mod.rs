@@ -43,6 +43,8 @@ enum SysCallDispatch {
     GetPid = 12,
 }
 
+// all syscalls return their first return value in rax (x86_64) and their error value in rdx (x86_64)
+
 const MAX_SYSCALL: u64 = 12;
 
 pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
@@ -90,8 +92,13 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
         SysCallDispatch::Machine => machine().map(|_| 0),
         SysCallDispatch::GetPid => get_pid().map(|r| r as i64),
     };
-    res.inspect_err(|e| args.ret(*e as i64))
-        .inspect(|r| args.ret2(*r));
+
+    // in case of err we return the error value in ret2 and do not touch ret1
+    // in case of success we return the return value in ret1 and return success value in ret2
+    res.inspect_err(|e| args.ret2(*e as i64)).inspect(|r| {
+        args.ret(*r);
+        args.ret2(SysRetCode::Success as i64);
+    });
 }
 
 #[repr(i64)]
