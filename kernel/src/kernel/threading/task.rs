@@ -1,5 +1,6 @@
 use alloc::{boxed::Box, format, string::String, sync::Arc};
 use core::{
+    cell::UnsafeCell,
     fmt::{Debug, LowerHex},
     marker::PhantomData,
     pin::Pin,
@@ -26,7 +27,7 @@ use crate::{
         elf::apply,
         fd::{FDMap, File, FileDescriptor, STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO},
         fs::{self, Path},
-        mem::paging::{PAGETABLE, TaskPageTable, create_new_pagedir},
+        mem::paging::{APageTable, PAGETABLE, TaskPageTable, create_new_pagedir},
         threading::{tls, trampoline::TaskExitInfo},
     },
     sync::locks::{Mutex, RwLock},
@@ -37,7 +38,8 @@ pub trait TaskRepr: Debug {
     fn krsp(&self) -> VirtAddr;
     fn set_krsp(&self, addr: &VirtAddr);
     fn privilege(&self) -> PrivilegeLevel;
-    fn pagedir(&self) -> Option<&Mutex<TaskPageTable<'static>>>;
+    #[allow(clippy::mut_from_ref)]
+    fn pagedir(&self) -> &'static mut APageTable<'static>;
     fn state(&self) -> TaskState;
     fn set_state(&self, state: TaskState);
     fn state_data(&self) -> &Mutex<TaskStateData>;
@@ -69,7 +71,7 @@ pub struct Task {
 #[derive(Debug)]
 pub struct TaskCore {
     pub krsp: AtomicU64,
-    pub pagedir: Option<Mutex<TaskPageTable<'static>>>,
+    pub pagedir: UnsafeCell<APageTable<'static>>,
     pub heap_size: AtomicUsize,
     pub exit_info: Pin<Box<TaskExitInfo>>,
     pub state: AtomicU8,
@@ -104,7 +106,7 @@ impl TaskCore {
         Self {
             krsp: 0.into(),
             pid: get_pid(),
-            pagedir: None,
+            pagedir: APageTable::global().into(),
             heap_size: 0.into(),
             exit_info: Box::pin(TaskExitInfo::default()),
             state: (TaskState::default() as u8).into(),
@@ -145,8 +147,14 @@ impl TaskRepr for Task {
         self.core.privilege
     }
 
-    fn pagedir(&self) -> Option<&Mutex<TaskPageTable<'static>>> {
-        self.core.pagedir.as_ref()
+    // SAFTEY: This operation is safe IFF APageTable ownes ONLY locked types / shared refs.
+    // Further, APageTable does NOT really live for 'static, it will be deallocated, once Task gets cleaned up.
+    // Thus we must ensure, that no references remain (to be used) on cleanup.
+    // Since the task will not be picked up after cleanup, this is only possible to occur, if some other task tries to use this tasks pagedir.
+    // This should not be done anyways.
+    // TODO: this should probably be marked as unsafe
+    fn pagedir(&self) -> &'static mut APageTable<'static> {
+        unsafe { &mut *self.core.pagedir.get() }
     }
 
     fn state(&self) -> TaskState {
@@ -206,8 +214,8 @@ impl TaskRepr for Task {
 }
 
 // in principle Task is Send + Sync, however care has to be taken, that fields such as nmae are properly synchronized. Might lock this.
-// unsafe impl Send for Task {}
-// unsafe impl Sync for Task {}
+unsafe impl Send for Task {}
+unsafe impl Sync for Task {}
 
 #[repr(transparent)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -535,7 +543,12 @@ impl TaskBuilder<Task, Init<'_>> {
         }
         .into();
 
-        self.inner.core.pagedir = Some(tbl.into());
+        unsafe {
+            self.inner
+                .core
+                .pagedir
+                .replace(APageTable::owned(tbl.into()));
+        }
 
         Ok(TaskBuilder {
             inner: self.inner,
@@ -552,10 +565,7 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
             interrupt::disable();
         }
 
-        copy_ustack_mappings_into(
-            &*self.inner.pagedir().unwrap().lock(),
-            &mut PAGETABLE.lock(),
-        );
+        copy_ustack_mappings_into(self.inner.pagedir(), &mut *PAGETABLE.lock());
 
         let next_top =
             unsafe { init_usr_task(&self._marker.inner.info, self.inner.exit_info(), &self.data) };

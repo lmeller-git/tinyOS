@@ -9,7 +9,6 @@ use core::{fmt::Debug, mem::ManuallyDrop};
 
 use lazy_static::lazy_static;
 pub use map::{kernel_map_region, map_region, unmap_region, user_map_region};
-use spin::Mutex;
 
 //TODO make arch agnostic / abstract arch stuff away
 use crate::{
@@ -17,6 +16,7 @@ use crate::{
         current_page_tbl,
         mem::{
             FrameAllocator,
+            Mapper,
             OffsetPageTable,
             PageSize,
             PageTable,
@@ -27,6 +27,7 @@ use crate::{
     },
     bootinfo,
     kernel::mem::heap::map_heap,
+    sync::locks::Mutex,
 };
 
 pub const HIGHER_HALF_START: u64 = 256 * Size4KiB::SIZE;
@@ -70,11 +71,6 @@ pub fn create_new_pagedir<'a, 'b>() -> Result<TaskPageTable<'b>, &'a str> {
         VirtAddr::new(current_frame.start_address().as_u64() + bootinfo::get_phys_offset());
     let current_tbl: &PageTable = unsafe { &*(current_tbl_ptr.as_mut_ptr()) };
 
-    // let flags = PageTableFlags::PRESENT
-    // | PageTableFlags::WRITABLE
-    // | PageTableFlags::USER_ACCESSIBLE
-    // | PageTableFlags::NO_EXECUTE;
-
     //copy higher half
     for i in 256..512 {
         new_table[i] = current_tbl[i].clone();
@@ -100,6 +96,162 @@ impl Debug for TaskPageTable<'_> {
 
 impl Drop for TaskPageTable<'_> {
     fn drop(&mut self) {
-        // unsafe { ManuallyDrop::drop(self.table) };
+        // TODO
+    }
+}
+
+#[derive(Debug)]
+pub enum APageTable<'a> {
+    Global(&'a Mutex<OffsetPageTable<'a>>),
+    Owned(Mutex<TaskPageTable<'a>>),
+}
+
+impl APageTable<'static> {
+    pub fn global() -> Self {
+        Self::Global(&PAGETABLE)
+    }
+}
+
+impl<'a> APageTable<'a> {
+    pub fn owned(table: Mutex<TaskPageTable<'a>>) -> Self {
+        Self::Owned(table)
+    }
+}
+
+#[allow(unsafe_op_in_unsafe_fn)]
+impl<'a> Mapper<Size4KiB> for APageTable<'a> {
+    unsafe fn map_to<A>(
+        &mut self,
+        page: x86_64::structures::paging::Page<Size4KiB>,
+        frame: PhysFrame<Size4KiB>,
+        flags: x86_64::structures::paging::PageTableFlags,
+        frame_allocator: &mut A,
+    ) -> Result<
+        x86_64::structures::paging::mapper::MapperFlush<Size4KiB>,
+        x86_64::structures::paging::mapper::MapToError<Size4KiB>,
+    >
+    where
+        Self: Sized,
+        A: FrameAllocator<Size4KiB> + ?Sized,
+    {
+        match self {
+            Self::Global(m) => m.lock().map_to(page, frame, flags, frame_allocator),
+            Self::Owned(m) => m.lock().table.map_to(page, frame, flags, frame_allocator),
+        }
+    }
+
+    unsafe fn map_to_with_table_flags<A>(
+        &mut self,
+        page: x86_64::structures::paging::Page<Size4KiB>,
+        frame: PhysFrame<Size4KiB>,
+        flags: x86_64::structures::paging::PageTableFlags,
+        parent_table_flags: x86_64::structures::paging::PageTableFlags,
+        frame_allocator: &mut A,
+    ) -> Result<
+        x86_64::structures::paging::mapper::MapperFlush<Size4KiB>,
+        x86_64::structures::paging::mapper::MapToError<Size4KiB>,
+    >
+    where
+        Self: Sized,
+        A: FrameAllocator<Size4KiB> + ?Sized,
+    {
+        match self {
+            Self::Global(m) => m.lock().map_to_with_table_flags(
+                page,
+                frame,
+                flags,
+                parent_table_flags,
+                frame_allocator,
+            ),
+            Self::Owned(m) => m.lock().table.map_to_with_table_flags(
+                page,
+                frame,
+                flags,
+                parent_table_flags,
+                frame_allocator,
+            ),
+        }
+    }
+
+    fn unmap(
+        &mut self,
+        page: x86_64::structures::paging::Page<Size4KiB>,
+    ) -> Result<
+        (
+            PhysFrame<Size4KiB>,
+            x86_64::structures::paging::mapper::MapperFlush<Size4KiB>,
+        ),
+        x86_64::structures::paging::mapper::UnmapError,
+    > {
+        match self {
+            Self::Global(m) => m.lock().unmap(page),
+            Self::Owned(m) => m.lock().table.unmap(page),
+        }
+    }
+
+    unsafe fn update_flags(
+        &mut self,
+        page: x86_64::structures::paging::Page<Size4KiB>,
+        flags: x86_64::structures::paging::PageTableFlags,
+    ) -> Result<
+        x86_64::structures::paging::mapper::MapperFlush<Size4KiB>,
+        x86_64::structures::paging::mapper::FlagUpdateError,
+    > {
+        match self {
+            Self::Global(m) => m.lock().update_flags(page, flags),
+            Self::Owned(m) => m.lock().table.update_flags(page, flags),
+        }
+    }
+
+    unsafe fn set_flags_p4_entry(
+        &mut self,
+        page: x86_64::structures::paging::Page<Size4KiB>,
+        flags: x86_64::structures::paging::PageTableFlags,
+    ) -> Result<
+        x86_64::structures::paging::mapper::MapperFlushAll,
+        x86_64::structures::paging::mapper::FlagUpdateError,
+    > {
+        match self {
+            Self::Global(m) => m.lock().set_flags_p4_entry(page, flags),
+            Self::Owned(m) => m.lock().table.set_flags_p4_entry(page, flags),
+        }
+    }
+
+    unsafe fn set_flags_p3_entry(
+        &mut self,
+        page: x86_64::structures::paging::Page<Size4KiB>,
+        flags: x86_64::structures::paging::PageTableFlags,
+    ) -> Result<
+        x86_64::structures::paging::mapper::MapperFlushAll,
+        x86_64::structures::paging::mapper::FlagUpdateError,
+    > {
+        match self {
+            Self::Global(m) => m.lock().set_flags_p3_entry(page, flags),
+            Self::Owned(m) => m.lock().table.set_flags_p3_entry(page, flags),
+        }
+    }
+
+    unsafe fn set_flags_p2_entry(
+        &mut self,
+        page: x86_64::structures::paging::Page<Size4KiB>,
+        flags: x86_64::structures::paging::PageTableFlags,
+    ) -> Result<
+        x86_64::structures::paging::mapper::MapperFlushAll,
+        x86_64::structures::paging::mapper::FlagUpdateError,
+    > {
+        match self {
+            Self::Global(m) => m.lock().set_flags_p2_entry(page, flags),
+            Self::Owned(m) => m.lock().table.set_flags_p2_entry(page, flags),
+        }
+    }
+
+    fn translate_page(
+        &self,
+        page: x86_64::structures::paging::Page<Size4KiB>,
+    ) -> Result<PhysFrame<Size4KiB>, x86_64::structures::paging::mapper::TranslateError> {
+        match self {
+            Self::Global(m) => m.lock().translate_page(page),
+            Self::Owned(m) => m.lock().table.translate_page(page),
+        }
     }
 }

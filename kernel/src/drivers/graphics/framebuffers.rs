@@ -3,11 +3,18 @@ use embedded_graphics::primitives::Rectangle;
 
 use super::colors::RGBColor;
 use crate::{
+    arch::mem::VirtAddr,
     bootinfo,
     drivers::graphics::GLOBAL_FRAMEBUFFER,
-    kernel::mem::{
-        align_up,
-        paging::{kernel_map_region, user_map_region},
+    eprintln,
+    kernel::{
+        fs::FSErrorKind,
+        io::{IOError, Write},
+        mem::{
+            align_up,
+            paging::{PAGETABLE, kernel_map_region, unmap_region, user_map_region},
+        },
+        threading::{task::TaskRepr, tls},
     },
     serial_println,
 };
@@ -32,6 +39,7 @@ pub fn get_rgb_pixel(color: &RGBColor, config: &FramBufferConfig) -> u32 {
     red | green | blue
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FramBufferConfig {
     pub red_mask_shift: u8,
     pub red_mask_size: u8,
@@ -71,7 +79,7 @@ pub trait FrameBuffer {
     fn set_pixel(&self, value: &RGBColor, x: usize, y: usize);
     fn clear_pixel(&self, x: usize, y: usize);
     fn clear_all(&self);
-    fn fill(&self, value: RGBColor); // TODO add some Area struct?
+    fn fill(&self, value: RGBColor);
     // Deprecated. Use devices
     fn flush(&self);
 
@@ -81,11 +89,38 @@ pub trait FrameBuffer {
     fn pixel_offset(&self, x: usize, y: usize) -> usize;
 }
 
+macro_rules! impl_write_for_fb {
+    ($name:ty) => {
+        impl Write for $name {
+            fn write(&self, buf: &[u8], offset: usize) -> $crate::kernel::io::IOResult<usize> {
+                let fb = self.addr();
+                if buf.len() >= (self.pitch() * self.height() - offset) {
+                    return Err($crate::kernel::io::IOError::simple(
+                        $crate::kernel::fs::FSErrorKind::UnexpectedEOF,
+                    ));
+                }
+                unsafe {
+                    core::ptr::copy_nonoverlapping(
+                        buf.as_ptr(),
+                        fb.offset(offset as isize),
+                        buf.len(),
+                    )
+                };
+                Ok(buf.len())
+            }
+        }
+    };
+}
+
+impl_write_for_fb!(LimineFrameBuffer<'_>);
+impl_write_for_fb!(GlobalFrameBuffer);
+impl_write_for_fb!(RawFrameBuffer);
+
 pub trait HasFrameBuffer<B: FrameBuffer> {
     fn get_framebuffer(&self) -> &B;
 }
 
-// 32 bit
+// 32 bits per pixel
 pub struct LimineFrameBuffer<'a> {
     inner: limine::framebuffer::Framebuffer<'a>,
 }
@@ -96,45 +131,17 @@ impl<'a> LimineFrameBuffer<'a> {
     ) -> Option<Self> {
         bufs.next().map(|f| Self { inner: f })
     }
-
-    // pub fn new_static<'b>(
-    //     bufs: &mut impl Iterator<Item = limine::framebuffer::Framebuffer<'b>>,
-    // ) -> Option<LimineFrameBuffer<'b>>
-    // where
-    //     'b: 'static,
-    // {
-    //     bufs.next().map(|fb| Self { inner: fb })
-    // }
-
-    // pub fn new_static() -> LimineFrameBuffer<'static> {
-    //     Self {
-    //         inner: bootinfo::FIRST_FRAMEBUFFER,
-    //     }
-    // }
-
-    fn get_rgb_pixel(&self, color: &RGBColor) -> u32 {
-        let red = ((color.0 as u32) & ((1 << self.inner.red_mask_size()) - 1))
-            << self.inner.red_mask_shift();
-        let green = ((color.1 as u32) & ((1 << self.inner.green_mask_size()) - 1))
-            << self.inner.green_mask_shift();
-        let blue = ((color.2 as u32) & ((1 << self.inner.blue_mask_size()) - 1))
-            << self.inner.blue_mask_shift();
-        red | green | blue
-    }
 }
 
 impl FrameBuffer for LimineFrameBuffer<'_> {
     fn set_pixel(&self, value: &RGBColor, x: usize, y: usize) {
-        // TODO verify
-        // should be correct:
-        // pitch is bytes per row(ie pixels), bpp is bits per pixel, since one byte == 8 bit bpp / 8 byte
         let pixel_offset = y * self.inner.pitch() as usize + x * (self.inner.bpp() / 8) as usize;
         unsafe {
             self.inner
                 .addr()
                 .add(pixel_offset)
                 .cast::<u32>()
-                .write(self.get_rgb_pixel(value))
+                .write(get_rgb_pixel(value, get_config()))
         };
     }
 
@@ -185,7 +192,7 @@ impl FrameBuffer for LimineFrameBuffer<'_> {
     }
 }
 
-// 32 bit
+// 32 bits per pixel
 pub struct GlobalFrameBuffer {
     inner: &'static limine::framebuffer::Framebuffer<'static>,
 }
@@ -196,30 +203,17 @@ impl GlobalFrameBuffer {
             inner: &bootinfo::FIRST_FRAMEBUFFER,
         }
     }
-
-    fn get_rgb_pixel(&self, color: &RGBColor) -> u32 {
-        let red = ((color.0 as u32) & ((1 << self.inner.red_mask_size()) - 1))
-            << self.inner.red_mask_shift();
-        let green = ((color.1 as u32) & ((1 << self.inner.green_mask_size()) - 1))
-            << self.inner.green_mask_shift();
-        let blue = ((color.2 as u32) & ((1 << self.inner.blue_mask_size()) - 1))
-            << self.inner.blue_mask_shift();
-        red | green | blue
-    }
 }
 
 impl FrameBuffer for GlobalFrameBuffer {
     fn set_pixel(&self, value: &RGBColor, x: usize, y: usize) {
-        // TODO verify
-        // should be correct:
-        // pitch is bytes per row(ie pixels), bpp is bits per pixel, since one byte == 8 bit bpp / 8 byte
         let pixel_offset = y * self.inner.pitch() as usize + x * (self.inner.bpp() / 8) as usize;
         unsafe {
             self.inner
                 .addr()
                 .add(pixel_offset)
                 .cast::<u32>()
-                .write(self.get_rgb_pixel(value))
+                .write(get_rgb_pixel(value, get_config()))
         };
     }
 
@@ -280,8 +274,8 @@ pub struct RawFrameBuffer {
 }
 
 impl RawFrameBuffer {
-    // SAFETY: will allocate space of at least pitch * height at addr
-    // caller needs to ensure a valid address and valid values for width, height and pitch
+    /// SAFETY: will allocate space of at least pitch * height at addr
+    /// caller needs to ensure a valid address and valid values for width, height and pitch
     pub unsafe fn new_user(
         addr: crate::arch::mem::VirtAddr,
         width: usize,
@@ -289,13 +283,6 @@ impl RawFrameBuffer {
         bpp: u16,
     ) -> Self {
         let pitch = align_up(width * (bpp / 8) as usize, 64);
-        serial_println!(
-            "pitch: {}, width: {}, height: {}, size: {}",
-            pitch,
-            width,
-            height,
-            pitch * height
-        );
         user_map_region(addr, pitch * height).expect("could not map memory");
         Self {
             addr: addr.as_mut_ptr(),
@@ -306,8 +293,8 @@ impl RawFrameBuffer {
         }
     }
 
-    // SAFETY: will allocate space of at least pitch * height at addr
-    // caller needs to ensure a valid address and valid values for width, height and pitch
+    /// SAFETY: will allocate space of at least pitch * height at addr
+    /// caller needs to ensure a valid address and valid values for width, height and pitch
     pub unsafe fn new_kernel(
         addr: crate::arch::mem::VirtAddr,
         width: usize,
@@ -315,13 +302,6 @@ impl RawFrameBuffer {
         bpp: u16,
     ) -> Self {
         let pitch = align_up(width * (bpp / 8) as usize, 64);
-        serial_println!(
-            "pitch: {}, width: {}, height: {}, size: {}",
-            pitch,
-            width,
-            height,
-            pitch * height
-        );
         kernel_map_region(addr, pitch * height).expect("could not map memory");
         Self {
             addr: addr.as_mut_ptr(),
@@ -393,6 +373,18 @@ impl FrameBuffer for RawFrameBuffer {
 
 impl Drop for RawFrameBuffer {
     fn drop(&mut self) {
-        //TODO: unmap and deallocate Pages of the buffer (currently cannot deallocate anyways)
+        let addr = VirtAddr::from_ptr(self.addr);
+        let size = self.height * self.width;
+        if let Some(task) = tls::task_data().get_current() {
+            unmap_region(addr, size, task.pagedir())
+        } else {
+            unmap_region(addr, size, &mut *PAGETABLE.lock())
+        }
+        .inspect_err(|e| {
+            eprintln!(
+                "Backing memory of raw framebuffer could not be unmapped {}",
+                e
+            )
+        });
     }
 }

@@ -113,13 +113,7 @@ pub fn mmap(len: usize, addr: *mut u8, flags: PageTableFlags) -> SysCallRes<*mut
     let base_addr = VirtAddr::from_ptr(addr).align_up(Size4KiB::SIZE);
     let current = tls::task_data().get_current().ok_or(SysRetCode::Fail)?;
 
-    map_region(
-        base_addr,
-        len,
-        flags,
-        &mut *current.pagedir().ok_or(SysRetCode::Fail)?.lock().table,
-    )
-    .map_err(|_| SysRetCode::Fail)?;
+    map_region(base_addr, len, flags, current.pagedir()).map_err(|_| SysRetCode::Fail)?;
     Ok(base_addr.as_mut_ptr())
 }
 
@@ -131,12 +125,7 @@ pub fn munmap(addr: *mut u8, len: usize) -> SysCallRes<()> {
     let base = VirtAddr::from_ptr(addr).align_up(Size4KiB::SIZE);
     let current = tls::task_data().get_current().ok_or(SysRetCode::Fail)?;
 
-    unmap_region(
-        base,
-        len,
-        &mut *current.pagedir().ok_or(SysRetCode::Fail)?.lock().table,
-    )
-    .map_err(|_| SysRetCode::Fail)
+    unmap_region(base, len, current.pagedir()).map_err(|_| SysRetCode::Fail)
 }
 
 pub fn clone() -> SysCallRes<bool> {
