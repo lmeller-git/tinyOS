@@ -56,6 +56,8 @@ pub fn kernel_map_region(start: VirtAddr, len: usize) -> Result<(), String> {
     map_region(start, len, flags, &mut *PAGETABLE.lock())
 }
 
+/// maps a region from start..start + len into the provided address space.
+/// Thus len should be the len in BYTES.
 pub fn map_region<M: Mapper<Size4KiB>>(
     start: VirtAddr,
     len: usize,

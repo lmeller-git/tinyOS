@@ -15,11 +15,21 @@ use spin::Mutex;
 use crate::{
     arch::{
         current_page_tbl,
-        mem::{FrameAllocator, OffsetPageTable, PageTable, PhysFrame, VirtAddr},
+        mem::{
+            FrameAllocator,
+            OffsetPageTable,
+            PageSize,
+            PageTable,
+            PhysFrame,
+            Size4KiB,
+            VirtAddr,
+        },
     },
     bootinfo,
     kernel::mem::heap::map_heap,
 };
+
+pub const HIGHER_HALF_START: u64 = 256 * Size4KiB::SIZE;
 
 // reads current p4 rom cpu (CR3) and returns pointer
 unsafe fn active_level_4_table() -> &'static mut PageTable {

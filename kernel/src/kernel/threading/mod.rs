@@ -10,10 +10,11 @@ use thiserror::Error;
 use trampoline::{TaskExitInfo, closure_trampoline};
 
 use crate::{
+    arch::interrupt::gdt::get_kernel_selectors,
     args,
     drivers::wait_manager,
     kernel::{
-        abi::syscalls::funcs::{sys_exit, sys_yield},
+        abi::syscalls::{funcs::exit, utils::__sys_yield},
         threading::{
             task::TaskRepr,
             wait::{
@@ -68,7 +69,10 @@ pub fn yield_now() {
     //TODO
     use crate::arch::interrupt;
     if interrupt::are_enabled() {
-        sys_yield();
+        let (cs, ss) = get_kernel_selectors();
+        unsafe {
+            __sys_yield(cs.0 as u64, ss.0 as u64);
+        }
     } else {
         hint::spin_loop();
     }
@@ -245,7 +249,7 @@ where
         TaskExitInfo::new_with_default_trampoline(move |v: usize| {
             raw.val.write().replace(v);
             raw.finished.store(true, Ordering::Release);
-            sys_exit(0)
+            exit(0)
         }),
     );
 
