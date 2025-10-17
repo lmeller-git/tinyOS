@@ -89,9 +89,10 @@ pub trait FrameBuffer {
     fn pixel_offset(&self, x: usize, y: usize) -> usize;
 }
 
+#[macro_export]
 macro_rules! impl_write_for_fb {
-    ($name:ty) => {
-        impl Write for $name {
+    (@impl [$($impl_generics:tt)*] $name:ty) => {
+        impl<$($impl_generics)*>  $crate::kernel::io::Write for $name {
             fn write(&self, buf: &[u8], offset: usize) -> $crate::kernel::io::IOResult<usize> {
                 let fb = self.addr();
                 if buf.len() >= (self.pitch() * self.height() - offset) {
@@ -110,6 +111,77 @@ macro_rules! impl_write_for_fb {
             }
         }
     };
+
+    ($name:ty) => {
+        impl_write_for_fb!(@impl [] $name);
+    };
+
+    ($name:ty where [$($generics:tt)*]) => {
+        impl_write_for_fb!(@impl [$($generics)*] $name);
+    }}
+
+#[macro_export]
+macro_rules! impl_fb_for_hasfb {
+    (@impl [$($impl_generics:tt)*] $name:ty) => {
+        impl<$($impl_generics)*> $crate::drivers::graphics::framebuffers::FrameBuffer for $name {
+            fn addr(&self) -> *mut u8 {
+                self.get_framebuffer().addr()
+            }
+
+            fn bpp(&self) -> u16 {
+                self.get_framebuffer().bpp()
+            }
+
+            fn pitch(&self) -> usize {
+                self.get_framebuffer().pitch()
+            }
+
+            fn set_pixel(
+                &self,
+                value: &$crate::drivers::graphics::colors::RGBColor,
+                x: usize,
+                y: usize,
+            ) {
+                self.get_framebuffer().set_pixel(value, x, y);
+            }
+
+            fn clear_pixel(&self, x: usize, y: usize) {
+                self.get_framebuffer().clear_pixel(x, y)
+            }
+
+            fn clear_all(&self) {
+                self.get_framebuffer().clear_all();
+            }
+
+            fn fill(&self, value: $crate::drivers::graphics::colors::RGBColor) {
+                self.get_framebuffer().fill(value);
+            }
+
+            fn flush(&self) {
+                self.get_framebuffer().flush();
+            }
+
+            fn width(&self) -> usize {
+                self.get_framebuffer().width()
+            }
+
+            fn height(&self) -> usize {
+                self.get_framebuffer().height()
+            }
+
+            fn pixel_offset(&self, x: usize, y: usize) -> usize {
+                self.get_framebuffer().pixel_offset(x, y)
+            }
+        }
+    };
+
+    ($name:ty) => {
+        impl_fb_for_hasfb!(@impl [] $name);
+    };
+
+    ($name:ty where [$($generics:tt)*]) => {
+        impl_fb_for_hasfb!(@impl [$($generics)*] $name);
+    }
 }
 
 impl_write_for_fb!(LimineFrameBuffer<'_>);
