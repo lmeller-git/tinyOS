@@ -1,33 +1,12 @@
-use alloc::{boxed::Box, format, sync::Arc};
-use core::{fmt::Debug, marker::PhantomData};
+use alloc::format;
 
-use conquer_once::spin::OnceCell;
-use embedded_graphics::prelude::DrawTarget;
-
-use super::*;
-use crate::{
-    arch::mem::VirtAddr,
-    create_device_file,
-    drivers::graphics::{
+use crate::kernel::{
+    fs::{OpenOptions, Path, open},
+    graphics::{
         GLOBAL_FRAMEBUFFER,
-        colors::{ColorCode, RGBColor},
-        framebuffers::{
-            BoundingBox,
-            FrameBuffer,
-            GlobalFrameBuffer,
-            HasFrameBuffer,
-            RawFrameBuffer,
-            get_config,
-        },
+        framebuffers::{FrameBuffer, get_config},
     },
-    kernel::{
-        fd::{FileRepr, IOCapable},
-        fs::{OpenOptions, Path, open},
-        io::{IOError, Read, Write},
-    },
-    register_device_file,
-    serial_println,
-    sync::locks::Mutex,
+    io::Write,
 };
 
 pub(super) fn init() {

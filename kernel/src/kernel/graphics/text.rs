@@ -4,8 +4,10 @@ use embedded_graphics::{
     text::{Baseline, renderer::TextRenderer},
 };
 
-use super::colors::{ColorCode, RGBColor};
-use crate::services::graphics::GraphicsError;
+use super::{
+    GraphicsError,
+    colors::{ColorCode, RGBColor},
+};
 
 pub fn draw_str<T: DrawTarget<Color = RGBColor, Error = GraphicsError>>(
     s: &str,

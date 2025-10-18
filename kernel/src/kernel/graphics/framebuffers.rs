@@ -1,11 +1,10 @@
 use conquer_once::spin::OnceCell;
 use embedded_graphics::primitives::Rectangle;
 
-use super::colors::RGBColor;
+use super::{GLOBAL_FRAMEBUFFER, colors::RGBColor};
 use crate::{
     arch::mem::VirtAddr,
     bootinfo,
-    drivers::graphics::GLOBAL_FRAMEBUFFER,
     eprintln,
     kernel::{
         fs::FSErrorKind,
@@ -123,7 +122,7 @@ macro_rules! impl_write_for_fb {
 #[macro_export]
 macro_rules! impl_fb_for_hasfb {
     (@impl [$($impl_generics:tt)*] $name:ty) => {
-        impl<$($impl_generics)*> $crate::drivers::graphics::framebuffers::FrameBuffer for $name {
+        impl<$($impl_generics)*> $crate::kernel::graphics::framebuffers::FrameBuffer for $name {
             fn addr(&self) -> *mut u8 {
                 self.get_framebuffer().addr()
             }
@@ -138,7 +137,7 @@ macro_rules! impl_fb_for_hasfb {
 
             fn set_pixel(
                 &self,
-                value: &$crate::drivers::graphics::colors::RGBColor,
+                value: &$crate::kernel::graphics::colors::RGBColor,
                 x: usize,
                 y: usize,
             ) {
@@ -153,7 +152,7 @@ macro_rules! impl_fb_for_hasfb {
                 self.get_framebuffer().clear_all();
             }
 
-            fn fill(&self, value: $crate::drivers::graphics::colors::RGBColor) {
+            fn fill(&self, value: $crate::kernel::graphics::colors::RGBColor) {
                 self.get_framebuffer().fill(value);
             }
 

@@ -16,11 +16,11 @@ use os_macros::kernel_test;
 use thiserror::Error;
 
 use crate::{
-    drivers::graphics::{
+    kernel::graphics::{
+        GraphicsError,
         colors::{ColorCode, RGBColor},
         text::CharRenderer,
     },
-    services::graphics::GraphicsError,
     sync::locks::Mutex,
 };
 
