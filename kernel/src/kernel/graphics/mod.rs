@@ -1,24 +1,26 @@
-use alloc::vec::Vec;
 use core::fmt::Debug;
 
-use embedded_graphics::{
-    mono_font::MonoTextStyle,
-    prelude::{DrawTarget, OriginDimensions},
-    primitives::{self, StyledDrawable},
-    text::renderer::TextRenderer,
-};
+use embedded_graphics::prelude::{DrawTarget, OriginDimensions};
+use framebuffers::GlobalFrameBuffer;
+use lazy_static::lazy_static;
 use thiserror::Error;
 
 use crate::{
-    drivers::graphics::{
-        colors::{ColorCode, RGBColor},
-        framebuffers::{BoundingBox, FrameBuffer, HasFrameBuffer},
-    },
     impl_fb_for_hasfb,
     impl_write_for_fb,
+    kernel::graphics::{
+        colors::RGBColor,
+        framebuffers::{BoundingBox, FrameBuffer, HasFrameBuffer},
+    },
 };
 
+pub mod colors;
+pub mod framebuffers;
 pub mod text;
+
+lazy_static! {
+    pub static ref GLOBAL_FRAMEBUFFER: GlobalFrameBuffer = GlobalFrameBuffer::new_static();
+}
 
 pub trait BlitTarget {
     unsafe fn copy_row(&self, from: *const u32, len: usize, x: usize, y: usize);

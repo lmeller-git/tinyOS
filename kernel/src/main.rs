@@ -11,10 +11,8 @@
 extern crate alloc;
 extern crate tiny_os;
 
-use alloc::sync::Arc;
 use core::time::Duration;
 
-use embedded_graphics::{prelude::Dimensions, primitives::PrimitiveStyle};
 use os_macros::with_default_args;
 use tiny_os::{
     arch::{
@@ -24,20 +22,14 @@ use tiny_os::{
     },
     bootinfo,
     cross_println,
-    drivers::{
-        graphics::{colors::ColorCode, framebuffers::BoundingBox},
-        start_drivers,
-        wait_manager,
-    },
+    drivers::{start_drivers, wait_manager},
     eprintln,
     kernel::{
         self,
-        fd::{File, FileRepr},
         init,
         threading::{
             self,
             schedule::{Scheduler, add_named_ktask, current_task, get_scheduler},
-            task::TaskRepr,
             tls,
             wait::{QueuTypeCondition, QueueType, condition::WaitCondition},
         },

@@ -7,3 +7,4 @@ pub mod init;
 pub mod io;
 pub mod mem;
 pub mod threading;
+pub mod graphics;
