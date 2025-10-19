@@ -54,3 +54,41 @@ pub trait Write {
         Ok(())
     }
 }
+
+#[macro_export]
+macro_rules! impl_empty_read {
+    (@impl [$($impl_generics:tt)*] $name:ty) => {
+        impl<$($impl_generics)*> $crate::kernel::io::Read for $name {
+            fn read(&self, _buf: &mut [u8], _offset: usize) -> $crate::kernel::io::IOResult<usize> {
+                Ok(0)
+            }
+        }
+    };
+
+    ($name:ty) => {
+        impl_empty_read!(@impl [] $name);
+    };
+
+    ($name:ty where [$($generics:tt)*]) => {
+        impl_empty_read!(@impl [$($generics)*] $name);
+    }
+}
+
+#[macro_export]
+macro_rules! impl_empty_write {
+    (@impl [$($impl_generics:tt)*] $name:ty) => {
+        impl<$($impl_generics)*> $crate::kernel::io::Write for $name {
+            fn write(&self, _buf: &[u8], _offset: usize) -> $crate::kernel::io::IOResult<usize> {
+                Ok(0)
+            }
+        }
+    };
+
+    ($name:ty) => {
+        impl_empty_write!(@impl [] $name);
+    };
+
+    ($name:ty where [$($generics:tt)*]) => {
+        impl_empty_write!(@impl [$($generics)*] $name);
+    }
+}

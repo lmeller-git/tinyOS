@@ -4,7 +4,15 @@ use conquer_once::spin::OnceCell;
 use crossbeam::queue::SegQueue;
 
 use super::TTYSink;
-use crate::{arch, create_device_file, kernel::devices::tty::TTYSource, term::_print};
+use crate::{
+    arch,
+    create_device_file,
+    impl_empty_read,
+    impl_file_for_wr,
+    impl_write_for_tty,
+    kernel::{devices::tty::TTYSource, fs::NodeType},
+    term::_print,
+};
 
 pub static SERIALBACKEND: OnceCell<Arc<SerialBackend>> = OnceCell::uninit();
 pub static FBBACKEND: OnceCell<Arc<FbBackend>> = OnceCell::uninit();
@@ -16,8 +24,8 @@ pub fn init_tty_sinks() {
     _ = SERIALBACKEND.try_init_once(SerialBackend::new);
     _ = FBBACKEND.try_init_once(FbBackend::new);
 
-    let r = create_device_file!(SERIALBACKEND.get().unwrap().clone(), SERIAL_FILE);
-    let r = create_device_file!(FBBACKEND.get().unwrap().clone(), FBBACKEND_FILE);
+    _ = create_device_file!(SERIALBACKEND.get().unwrap().clone(), SERIAL_FILE);
+    _ = create_device_file!(FBBACKEND.get().unwrap().clone(), FBBACKEND_FILE);
 }
 
 // the read_locks are only necessary if multiple instances of these Backends are alive at once, as ChunkedArrayQueue is mpsc. Currently this is not the case.
@@ -48,11 +56,9 @@ impl TTYSink for SerialBackend {
     }
 }
 
-impl TTYSource for SerialBackend {
-    fn read(&self) -> Option<u8> {
-        None
-    }
-}
+impl_write_for_tty!(SerialBackend);
+impl_empty_read!(SerialBackend);
+impl_file_for_wr!(SerialBackend: NodeType::File);
 
 #[derive(Debug)]
 pub struct FbBackend {
@@ -81,35 +87,6 @@ impl TTYSink for FbBackend {
     }
 }
 
-impl TTYSource for FbBackend {
-    fn read(&self) -> Option<u8> {
-        None
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct TTYReceiver<T: TTYSink + TTYSource> {
-    backend: Arc<T>,
-}
-
-impl<T: TTYSink + TTYSource> TTYReceiver<T> {
-    pub fn new(backend: Arc<T>) -> Self {
-        Self { backend }
-    }
-}
-
-impl<T: TTYSink + TTYSource> TTYSink for TTYReceiver<T> {
-    fn write(&self, bytes: &[u8]) {
-        self.backend.write(bytes);
-    }
-
-    fn flush(&self) {
-        self.backend.flush();
-    }
-}
-
-impl<T: TTYSource + TTYSink> TTYSource for TTYReceiver<T> {
-    fn read(&self) -> Option<u8> {
-        self.backend.read()
-    }
-}
+impl_write_for_tty!(FbBackend);
+impl_empty_read!(FbBackend);
+impl_file_for_wr!(FbBackend: NodeType::File);

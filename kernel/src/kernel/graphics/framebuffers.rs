@@ -6,16 +6,17 @@ use crate::{
     arch::mem::VirtAddr,
     bootinfo,
     eprintln,
+    impl_dgb,
+    impl_empty_read,
+    impl_file_for_wr,
     kernel::{
-        fs::FSErrorKind,
-        io::{IOError, Write},
+        fs::NodeType,
         mem::{
             align_up,
             paging::{PAGETABLE, kernel_map_region, unmap_region, user_map_region},
         },
         threading::{task::TaskRepr, tls},
     },
-    serial_println,
 };
 
 static FB_CONFIG: OnceCell<FramBufferConfig> = OnceCell::uninit();
@@ -117,7 +118,8 @@ macro_rules! impl_write_for_fb {
 
     ($name:ty where [$($generics:tt)*]) => {
         impl_write_for_fb!(@impl [$($generics)*] $name);
-    }}
+    }
+}
 
 #[macro_export]
 macro_rules! impl_fb_for_hasfb {
@@ -186,6 +188,30 @@ macro_rules! impl_fb_for_hasfb {
 impl_write_for_fb!(LimineFrameBuffer<'_>);
 impl_write_for_fb!(GlobalFrameBuffer);
 impl_write_for_fb!(RawFrameBuffer);
+
+impl_empty_read!(LimineFrameBuffer<'_>);
+impl_empty_read!(GlobalFrameBuffer);
+impl_empty_read!(RawFrameBuffer);
+
+impl_dgb!(LimineFrameBuffer<'_> => "LimineFrameBuffer");
+impl_dgb!(GlobalFrameBuffer => "GlobalFrameBuffer");
+impl_dgb!(RawFrameBuffer => "RawFrameBuffer");
+
+impl_file_for_wr!(LimineFrameBuffer<'_>: NodeType::File);
+impl_file_for_wr!(GlobalFrameBuffer: NodeType::File);
+impl_file_for_wr!(RawFrameBuffer: NodeType::File);
+
+// #SAFETY
+// The following assume:
+// - all framebuffers are write only
+// - visual consistency is managed by the abstraction above
+// The framebuffer is essentially just a memory region, which anyone may write to
+
+unsafe impl Sync for LimineFrameBuffer<'_> {}
+unsafe impl Send for LimineFrameBuffer<'_> {}
+
+unsafe impl Sync for RawFrameBuffer {}
+unsafe impl Send for RawFrameBuffer {}
 
 pub trait HasFrameBuffer<B: FrameBuffer> {
     fn get_framebuffer(&self) -> &B;
