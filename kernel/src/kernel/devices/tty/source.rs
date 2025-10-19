@@ -5,7 +5,10 @@ use conquer_once::spin::OnceCell;
 use super::TTYSource;
 use crate::{
     drivers::keyboard::get_current_next,
-    kernel::devices::tty::TTYSink,
+    impl_empty_write,
+    impl_file_for_wr,
+    impl_read_for_tty,
+    kernel::{devices::tty::TTYSink, fs::NodeType},
     register_device_file,
 };
 
@@ -34,35 +37,6 @@ impl TTYSource for KeyboardBackend {
     }
 }
 
-impl TTYSink for KeyboardBackend {
-    fn write(&self, bytes: &[u8]) {}
-
-    fn flush(&self) {}
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct TTYInput<T: TTYSource + TTYSink> {
-    backend: Arc<T>,
-}
-
-impl<T: TTYSource + TTYSink> TTYInput<T> {
-    pub fn new(backend: Arc<T>) -> Self {
-        Self { backend }
-    }
-}
-
-impl<T: TTYSource + TTYSink> TTYSource for TTYInput<T> {
-    fn read(&self) -> Option<u8> {
-        self.backend.read()
-    }
-}
-
-impl<T: TTYSink + TTYSource> TTYSink for TTYInput<T> {
-    fn write(&self, bytes: &[u8]) {
-        self.backend.write(bytes);
-    }
-
-    fn flush(&self) {
-        self.backend.flush();
-    }
-}
+impl_read_for_tty!(KeyboardBackend);
+impl_empty_write!(KeyboardBackend);
+impl_file_for_wr!(KeyboardBackend: NodeType::File);

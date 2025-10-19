@@ -32,6 +32,27 @@ pub trait FileRepr: Debug + IOCapable + Send + Sync {
     fn node_type(&self) -> NodeType;
 }
 
+#[macro_export]
+macro_rules!  impl_file_for_wr {
+    (@impl [$($impl_generics:tt)*] $name:ty: $node:expr) => {
+        impl<$($impl_generics)*> $crate::kernel::fd::FileRepr for $name {
+            fn node_type(&self) -> NodeType {
+                $node
+            }
+        }
+
+        impl<$($impl_generics)*> $crate::kernel::fd::IOCapable for $name {}
+    };
+
+    ($name:ty: $node:expr) => {
+        impl_file_for_wr!(@impl [] $name: $node);
+    };
+
+    ($name:ty where [$($generics:tt)*]: $node:expr) => {
+        impl_file_for_wr!(@impl [$($generics)*] $name: $node);
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct FStat {
     pub t_create: u64,

@@ -2,13 +2,17 @@ use alloc::sync::Arc;
 use core::fmt::Debug;
 
 use hashbrown::HashMap;
-use sink::{FBBACKEND, SERIALBACKEND, TTYReceiver};
-use source::{KEYBOARDBACKEND, TTYInput};
 
-use crate::kernel::{
-    devices::Null,
-    fd::{FileRepr, IOCapable},
-    io::{IOError, IOResult, Read, Write},
+use crate::{
+    impl_empty_read,
+    impl_empty_write,
+    impl_file_for_wr,
+    kernel::{
+        devices::Null,
+        fd::{FileRepr, IOCapable},
+        fs::NodeType,
+        io::{IOError, IOResult, Read, Write},
+    },
 };
 
 pub mod io;
@@ -41,29 +45,43 @@ pub trait TTYSource: Debug + Send + Sync {
     }
 }
 
-impl<T: TTYSink + TTYSource> FileRepr for T {
-    fn fstat(&self) -> crate::kernel::fd::FStat {
-        crate::kernel::fd::FStat::new()
-    }
+#[macro_export]
+macro_rules! impl_write_for_tty {
+    (@impl [$($impl_generics:tt)*] $name:ty) => {
+        impl<$($impl_generics)*> $crate::kernel::io::Write for $name {
+            fn write(&self, buf: &[u8], offset: usize) -> $crate::kernel::io::IOResult<usize> {
+                $crate::kernel::devices::tty::TTYSink::write(self, buf);
+                Ok(buf.len())}
 
-    fn node_type(&self) -> crate::kernel::fs::NodeType {
-        crate::kernel::fs::NodeType::File
-    }
+        }
+    };
+
+    ($name:ty) => {
+        impl_write_for_tty!(@impl [] $name);
+    };
+
+    ($name:ty where [$($generics:tt)*]) => {
+        impl_write_for_tty!(@impl [$($generics)*] $name);
+    };
 }
 
-impl<T: TTYSink + TTYSource> IOCapable for T {}
+#[macro_export]
+macro_rules! impl_read_for_tty {
+    (@impl [$($impl_generics:tt)*] $name:ty) => {
+        impl<$($impl_generics)*> $crate::kernel::io::Read for $name {
+            fn read(&self, buf: &mut [u8], offset: usize) -> $crate::kernel::io::IOResult<usize> {
+                $crate::kernel::devices::tty::TTYSource::read_buf(self, buf, offset)
+            }
+        }
+    };
 
-impl<T: TTYSink + TTYSource> Read for T {
-    fn read(&self, buf: &mut [u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
-        TTYSource::read_buf(self, buf, offset)
-    }
-}
+    ($name:ty) => {
+        impl_read_for_tty!(@impl [] $name);
+    };
 
-impl<T: TTYSink + TTYSource> Write for T {
-    fn write(&self, buf: &[u8], offset: usize) -> IOResult<usize> {
-        TTYSink::write(self, buf);
-        Ok(buf.len())
-    }
+    ($name:ty where [$($generics:tt)*]) => {
+        impl_read_for_tty!(@impl [$($generics)*] $name);
+    };
 }
 
 impl TTYSink for Null {
@@ -77,6 +95,10 @@ impl TTYSource for Null {
         None
     }
 }
+
+impl_empty_read!(Null);
+impl_empty_write!(Null);
+impl_file_for_wr!(Null: NodeType::Void);
 
 #[macro_export]
 macro_rules! print {
