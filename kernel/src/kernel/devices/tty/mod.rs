@@ -103,7 +103,7 @@ impl_file_for_wr!(Null: NodeType::Void);
 #[macro_export]
 macro_rules! print {
     () => {};
-    ($($arg:tt)*) => { $crate::kernel::devices::tty::io::__write_stdout(format_args!("[KINFO] {}", format_args!($($arg)*))) };
+    ($($arg:tt)*) => { $crate::kernel::devices::tty::io::__write_stdout(format_args!("{}", format_args!($($arg)*))) };
 }
 
 #[macro_export]
