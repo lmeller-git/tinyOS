@@ -103,7 +103,7 @@ impl_file_for_wr!(Null: NodeType::Void);
 #[macro_export]
 macro_rules! print {
     () => {};
-    ($($arg:tt)*) => { $crate::kernel::devices::tty::io::__write_stdout(format_args!($($arg)*)) };
+    ($($arg:tt)*) => { $crate::kernel::devices::tty::io::__write_stdout(format_args!("[KINFO] {}", format_args!($($arg)*))) };
 }
 
 #[macro_export]
@@ -124,7 +124,7 @@ macro_rules! dbg {
 macro_rules! eprint {
     () => {};
     ($($arg:tt)*) => {
-        $crate::kernel::devices::tty::io::__write_stderr(format_args!($($arg)*))
+        $crate::kernel::devices::tty::io::__write_stderr(format_args!("\x1b[31m[KERR]\x1b[0m {}", format_args!($($arg)*)))
     };
 }
 
@@ -151,7 +151,7 @@ macro_rules! serial_println {
 macro_rules! serial_print {
     () => {};
     ($($arg:tt)*) => {
-        $crate::kernel::devices::tty::io::__serial_stub(format_args!($($arg)*))
+        $crate::kernel::devices::tty::io::__serial_stub(format_args!("\x1b[34m[KINFO]\x1b[0m {}", format_args!($($arg)*)))
     };
 }
 #[macro_export]

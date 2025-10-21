@@ -1,8 +1,11 @@
+use core::{str, sync::atomic::Ordering};
+
 use crate::{
     arch::{
         interrupt::gdt::get_kernel_selectors,
         mem::{PageSize, PageTableFlags, Size4KiB, VirtAddr},
     },
+    eprintln,
     kernel::{
         abi::syscalls::{
             SysCallRes,
@@ -11,7 +14,10 @@ use crate::{
         },
         fd::FileDescriptor,
         fs::{self, OpenOptions, Path},
-        mem::paging::{map_region, unmap_region},
+        mem::{
+            align_up,
+            paging::{map_region, unmap_region},
+        },
         threading::{
             self,
             task::TaskRepr,
@@ -19,6 +25,7 @@ use crate::{
             wait::{QueueType, WaitEvent, post_event},
         },
     },
+    serial_println,
 };
 
 // all lengths denote the number of ELEMENTS, not the number of bytes.
@@ -27,8 +34,7 @@ pub fn open(path: *const u8, len: usize, flags: OpenOptions) -> SysCallRes<FileD
     if !valid_ptr(path, len) {
         return Err(SysRetCode::Fail);
     }
-    let p = unsafe { &*core::ptr::slice_from_raw_parts(path, len) };
-    let p = str::from_utf8(p).map_err(|_| SysRetCode::Fail)?;
+    let p = unsafe { str::from_raw_parts(path, len) };
     let p = Path::new(p);
     Ok(tls::task_data()
         .get_current()
@@ -109,11 +115,39 @@ pub fn kill(pid: u64, signal: i64) -> SysCallRes<()> {
 }
 
 pub fn mmap(len: usize, addr: *mut u8, flags: PageTableFlags) -> SysCallRes<*mut u8> {
-    let addr = if !valid_ptr(addr, len) { todo!() } else { addr };
-    let base_addr = VirtAddr::from_ptr(addr).align_up(Size4KiB::SIZE);
+    // TODO add a more sophisticated approach for managing address spaces
     let current = tls::task_data().get_current().ok_or(SysRetCode::Fail)?;
+    let addr = if !valid_ptr(addr, len) {
+        current
+            .next_addr()
+            .fetch_update(Ordering::Release, Ordering::Acquire, |addr_| {
+                // we need to store addr_.align_up() + len, as this is what will get mapped
+                Some(align_up(addr_, Size4KiB::SIZE as usize) + len)
+            })
+            .unwrap() as *mut u8
+    } else {
+        addr
+    };
 
-    map_region(base_addr, len, flags, current.pagedir()).map_err(|_| SysRetCode::Fail)?;
+    let base_addr = VirtAddr::from_ptr(addr).align_up(Size4KiB::SIZE);
+
+    if map_region(
+        base_addr,
+        len,
+        flags | PageTableFlags::PRESENT,
+        current.pagedir(),
+    )
+    .is_err()
+    {
+        // try to free space in task mmmap space again
+        current.next_addr().compare_exchange(
+            addr as usize,
+            align_up(addr as usize, Size4KiB::SIZE as usize) + len,
+            Ordering::AcqRel,
+            Ordering::Relaxed,
+        );
+        return Err(SysRetCode::Fail);
+    }
     Ok(base_addr.as_mut_ptr())
 }
 

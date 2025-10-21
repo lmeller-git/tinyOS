@@ -1,14 +1,14 @@
 use core::arch::global_asm;
 
-use crate::kernel::{mem::paging::HIGHER_HALF_START, threading::schedule::context_switch_local};
+use crate::kernel::{mem::paging::get_hhdm_addr, threading::schedule::context_switch_local};
 
 /// returns true if the buffer is entirely in user space.
 /// len is assumed to be the numebr of ELEMENTS T.
 pub fn valid_ptr<T>(ptr: *const T, len: usize) -> bool {
     let base = ptr.addr();
     !ptr.is_null()
-        && base < HIGHER_HALF_START as usize
-        && base + (len * size_of::<T>()) < HIGHER_HALF_START as usize
+        && base < get_hhdm_addr() as usize
+        && base + (len * size_of::<T>()) < get_hhdm_addr() as usize
 }
 
 global_asm!(

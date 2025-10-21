@@ -33,6 +33,8 @@ use crate::{
     sync::locks::{Mutex, RwLock},
 };
 
+pub const USER_MMAP_START: usize = 0x0000_4000_0000;
+
 pub trait TaskRepr: Debug {
     fn pid(&self) -> TaskID;
     fn krsp(&self) -> VirtAddr;
@@ -50,6 +52,7 @@ pub trait TaskRepr: Debug {
     fn add_fd(&self, descriptor: FileDescriptor, f: File) -> Option<Arc<File>>;
     fn remove_fd(&self, descriptor: FileDescriptor) -> Option<Arc<File>>;
     fn add_next_file(&self, f: File) -> FileDescriptor;
+    fn next_addr(&self) -> &AtomicUsize;
 }
 
 #[repr(u8)]
@@ -88,6 +91,7 @@ pub struct TaskMetadata {
     pub fd_table: RwLock<FDMap>,
     pub state_data: Mutex<TaskStateData>,
     pub next_fd: AtomicU32,
+    pub next_free_addr: AtomicUsize,
     _private: PhantomData<()>,
 }
 
@@ -125,6 +129,7 @@ impl TaskMetadata {
             parent: None,
             state_data: TaskStateData::default().into(),
             next_fd: AtomicU32::new(0),
+            next_free_addr: AtomicUsize::new(0),
             _private: PhantomData,
         }
     }
@@ -210,6 +215,10 @@ impl TaskRepr for Task {
         let next_fd = self.metadata.next_fd.fetch_add(1, Ordering::AcqRel);
         self.add_fd(next_fd, f);
         next_fd
+    }
+
+    fn next_addr(&self) -> &AtomicUsize {
+        &self.metadata.next_free_addr
     }
 }
 
@@ -521,6 +530,10 @@ impl TaskBuilder<Task, Init<'_>> {
             .store(kstack.as_u64(), Ordering::Relaxed);
         self.inner.core.kernel_stack_top = kstack;
         self.inner.core.privilege = PrivilegeLevel::User;
+        self.inner
+            .metadata
+            .next_free_addr
+            .store(USER_MMAP_START, Ordering::Relaxed);
 
         if let Some(data) = self._marker.elf_data {
             let bytes = elf::ElfBytes::minimal_parse(data)

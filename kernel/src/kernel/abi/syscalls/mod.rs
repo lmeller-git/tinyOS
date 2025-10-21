@@ -51,6 +51,7 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
     let dispatch = args.num();
     if dispatch > MAX_SYSCALL {
         args.ret(SysRetCode::Fail as i64);
+        return;
     }
     let dispatch = unsafe { core::mem::transmute(dispatch) };
 
@@ -58,7 +59,7 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
         SysCallDispatch::Open => open(
             args.first() as usize as *const u8,
             args.second() as usize,
-            OpenOptions::from_bits(args.third() as u32).unwrap_or(OpenOptions::default()),
+            OpenOptions::from_bits_truncate(args.third() as u32),
         )
         .map(|r| r as i64),
         SysCallDispatch::Close => close(args.first() as u32).map(|_| 0),
@@ -72,7 +73,7 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
         SysCallDispatch::Write => write(
             args.first() as u32,
             args.second() as usize as *const u8,
-            args.fourth() as usize,
+            args.third() as usize,
         )
         .map(|r| r as i64),
         SysCallDispatch::Yield => yield_now().map(|_| 0),
@@ -81,7 +82,7 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
         SysCallDispatch::Mmap => mmap(
             args.first() as usize,
             args.second() as usize as *mut u8,
-            PageTableFlags::from_bits(args.third()).unwrap_or(PageTableFlags::empty()),
+            PageTableFlags::from_bits_truncate(args.third()), // .unwrap_or(PageTableFlags::empty()),
         )
         .map(|r| r as usize as i64),
         SysCallDispatch::Munmap => {

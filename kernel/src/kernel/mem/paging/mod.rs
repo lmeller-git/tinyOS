@@ -7,6 +7,7 @@ mod table;
 pub use alloc::{GlobalFrameAllocator, get_frame_alloc, init_frame_alloc};
 use core::{fmt::Debug, mem::ManuallyDrop};
 
+use conquer_once::spin::OnceCell;
 use lazy_static::lazy_static;
 pub use map::{kernel_map_region, map_region, unmap_region, user_map_region};
 
@@ -16,21 +17,29 @@ use crate::{
         current_page_tbl,
         mem::{
             FrameAllocator,
+            FrameDeallocator,
             Mapper,
             OffsetPageTable,
+            Page,
             PageSize,
             PageTable,
             PhysFrame,
             Size4KiB,
             VirtAddr,
+            mapper::CleanUp,
         },
     },
     bootinfo,
     kernel::mem::heap::map_heap,
+    serial_println,
     sync::locks::Mutex,
 };
 
-pub const HIGHER_HALF_START: u64 = 256 * Size4KiB::SIZE;
+pub const HIGHER_HALF_START: OnceCell<u64> = OnceCell::uninit();
+
+pub fn get_hhdm_addr() -> u64 {
+    *HIGHER_HALF_START.get_or_init(|| bootinfo::get_phys_offset())
+}
 
 // reads current p4 rom cpu (CR3) and returns pointer
 unsafe fn active_level_4_table() -> &'static mut PageTable {
@@ -72,7 +81,11 @@ pub fn create_new_pagedir<'a, 'b>() -> Result<TaskPageTable<'b>, &'a str> {
     let current_tbl: &PageTable = unsafe { &*(current_tbl_ptr.as_mut_ptr()) };
 
     //copy higher half
-    for i in 256..512 {
+    let hhdm = get_hhdm_addr() as usize;
+    // extract lvl 4 pagetable offset
+    let start_index = (hhdm >> 39) & 0x1ff;
+
+    for i in start_index..512 {
         new_table[i] = current_tbl[i].clone();
     }
 
@@ -94,9 +107,36 @@ impl Debug for TaskPageTable<'_> {
     }
 }
 
+impl TaskPageTable<'_> {
+    /// SAFETY
+    /// This method must be called from a different address space.
+    /// The caller must ensure that no pointers into this address space remain at the point of calling this.
+    /// This method may block.
+    pub unsafe fn cleanup(mut self) {
+        // TODO: ensure that NO ptrs into the dropped address space exist at this point
+
+        // only unmap lower half
+        let hhdm = get_hhdm_addr();
+
+        let mut table = unsafe { ManuallyDrop::take(&mut self.table) };
+        unsafe {
+            table.clean_up_addr_range(
+                Page::range_inclusive(
+                    Page::containing_address(VirtAddr::zero()),
+                    Page::containing_address(VirtAddr::new(hhdm - 1)),
+                ),
+                &mut *get_frame_alloc().lock(),
+            );
+        }
+        unsafe {
+            get_frame_alloc().lock().deallocate_frame(self.root);
+        }
+    }
+}
+
 impl Drop for TaskPageTable<'_> {
     fn drop(&mut self) {
-        // TODO
+        // TODO ensure this is cleaned up by now
     }
 }
 
@@ -115,6 +155,17 @@ impl APageTable<'static> {
 impl<'a> APageTable<'a> {
     pub fn owned(table: Mutex<TaskPageTable<'a>>) -> Self {
         Self::Owned(table)
+    }
+
+    /// SAFETY
+    /// This method must be called from a different address space.
+    /// The caller must ensure that no pointers into this address space remain at the point of calling this.
+    /// This method may block.
+    pub unsafe fn cleanup(mut self) {
+        match self {
+            Self::Global(_) => {}
+            Self::Owned(mut table) => unsafe { table.into_inner().cleanup() },
+        }
     }
 }
 

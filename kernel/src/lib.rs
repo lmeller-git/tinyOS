@@ -3,6 +3,7 @@
 #![feature(lazy_type_alias)]
 #![feature(unsafe_cell_access)]
 #![feature(stmt_expr_attributes)]
+#![feature(str_from_raw_parts)]
 #![allow(
     unreachable_code,
     unused_doc_comments,

@@ -58,6 +58,7 @@ pub fn map_region<M: Mapper<Size4KiB>>(
     flags: PageTableFlags,
     pagetable: &mut M,
 ) -> Result<(), String> {
+    assert!(flags.contains(PageTableFlags::PRESENT));
     let end_addr = (start + len as u64).align_up(Size4KiB::SIZE);
     let start = Page::containing_address(start);
     let end = Page::containing_address(end_addr);

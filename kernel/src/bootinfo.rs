@@ -52,6 +52,7 @@ pub fn usable_mmap_entries() -> impl Iterator<Item = UsableMRegion> {
         })
 }
 
+/// returns the result of hhdm request, ie the virtual address, at which the kernel mapping starts
 pub fn get_phys_offset() -> u64 {
     HHDM_REQUEST
         .get_response()
