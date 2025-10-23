@@ -36,11 +36,9 @@ pub trait TTYSource: Debug + Send + Sync {
             *buf.get_mut(0).ok_or(IOError::simple(
                 crate::kernel::fs::FSErrorKind::UnexpectedEOF,
             ))? = r;
-            Ok(0)
+            Ok(1)
         } else {
-            Err(IOError::simple(
-                crate::kernel::fs::FSErrorKind::UnexpectedEOF,
-            ))
+            Ok(0)
         }
     }
 }

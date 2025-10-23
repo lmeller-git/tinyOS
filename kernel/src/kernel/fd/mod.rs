@@ -12,7 +12,7 @@ use crate::{
     arch::x86::current_time,
     eprintln,
     kernel::{
-        fs::{FSError, FSErrorKind, NodeType, OpenOptions, PathBuf},
+        fs::{FSError, FSErrorKind, NodeType, OpenOptions, Path, PathBuf},
         io::{IOResult, Read, Write},
     },
 };
@@ -186,6 +186,7 @@ pub struct File {
     repr: MaybeOwned<dyn FileRepr>,
     cursor: FCursor,
     perms: FPerms,
+    path: Option<PathBuf>,
 }
 
 impl File {
@@ -194,6 +195,7 @@ impl File {
             repr: repr.into(),
             cursor: FCursor::default(),
             perms: FPerms::empty(),
+            path: None,
         }
     }
 
@@ -207,6 +209,11 @@ impl File {
         FPerms: From<T>,
     {
         self.perms |= perms.into();
+        self
+    }
+
+    pub fn with_path(mut self, path: PathBuf) -> Self {
+        self.path.replace(path);
         self
     }
 
@@ -234,6 +241,10 @@ impl File {
         self.perms.contains(FPerms::READ) || self.may_write()
     }
 
+    pub fn get_path(&self) -> Option<&Path> {
+        self.path.as_ref().map(|p| &**p)
+    }
+
     pub fn read_all_as_str(&self) -> IOResult<String> {
         let mut buf = String::new();
         self.read_to_string(&mut buf, 0)?;
@@ -245,6 +256,7 @@ impl File {
             repr: self.repr.try_clone()?,
             cursor: FCursor::default(),
             perms: self.perms.clone(),
+            path: self.path.clone(),
         })
     }
 }

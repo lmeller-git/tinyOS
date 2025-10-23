@@ -8,11 +8,14 @@ use nblfq::HeaplessQueue;
 
 use crate::{
     arch::interrupt,
-    kernel::threading::{
-        self,
-        task::TaskID,
-        tls,
-        wait::{condition::WaitCondition, queues::WaitQueue},
+    kernel::{
+        fs::PathBuf,
+        threading::{
+            self,
+            task::TaskID,
+            tls,
+            wait::{condition::WaitCondition, queues::WaitQueue},
+        },
     },
     sync::locks::RwLock,
 };
@@ -143,6 +146,7 @@ pub enum QueueType {
     Timer,
     KeyBoard,
     Thread(TaskID),
+    File(PathBuf),
 }
 
 #[derive(Debug, PartialEq, Eq)]

@@ -12,6 +12,7 @@ use crate::{
     arch::{context::SysCallCtx, x86::interrupt::pic::end_interrupt},
     kernel::{
         abi::syscalls::syscall_handler,
+        fs::Path,
         threading::{
             self,
             schedule::context_switch_local,
@@ -179,13 +180,13 @@ pub(super) extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: In
     let mut port = Port::<u8>::new(0x60);
     let scancode: u8 = unsafe { port.read() };
     _ = crate::drivers::keyboard::put_scancode(scancode);
-    if post_event(WaitEvent {
-        event_type: QueueType::KeyBoard,
-        data: 0,
-    })
-    .is_none()
+    if post_event(WaitEvent::new(QueueType::KeyBoard)).is_none()
+        || post_event(WaitEvent::new(QueueType::File(
+            Path::new("/proc/kernel/io/keyoard").into(),
+        )))
+        .is_none()
     {
-        serial_println!("could not push timer event");
+        serial_println!("could not push keyboard event");
     }
     end_interrupt();
 }

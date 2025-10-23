@@ -1,10 +1,13 @@
-use core::{str, sync::atomic::Ordering};
+use alloc::{boxed::Box, vec};
+use core::{str, sync::atomic::Ordering, time::Duration};
 
 use crate::{
     arch::{
         interrupt::gdt::get_kernel_selectors,
         mem::{PageSize, PageTableFlags, Size4KiB, VirtAddr},
+        x86::current_time,
     },
+    drivers::wait_manager::{add_queue, remove_queue, wait_self},
     eprintln,
     kernel::{
         abi::syscalls::{
@@ -22,7 +25,15 @@ use crate::{
             self,
             task::TaskRepr,
             tls,
-            wait::{QueueType, WaitEvent, post_event},
+            wait::{
+                QueuTypeCondition,
+                QueueHandle,
+                QueueType,
+                WaitEvent,
+                condition::WaitCondition,
+                post_event,
+                queues::{GenericWaitQueue, WaitQueue},
+            },
         },
     },
     serial_println,
@@ -59,14 +70,51 @@ pub fn read(fd: FileDescriptor, buf: *mut u8, len: usize, timeout: u64) -> SysCa
     if !valid_ptr(buf, len) {
         return Err(SysRetCode::Fail);
     }
+    let current_task = tls::task_data().get_current().ok_or(SysRetCode::Fail)?;
     let b = unsafe { &mut *core::ptr::slice_from_raw_parts_mut(buf, len) };
-    let n = tls::task_data()
-        .get_current()
-        .map(|t| t.fd(fd).map(|f| f.read_continuous(b).ok()))
-        .flatten()
+    let n = current_task
+        .fd(fd)
+        .map(|f| f.read_continuous(b).ok())
         .flatten()
         .ok_or(SysRetCode::Fail)?;
-    Ok(n as isize)
+    if n > 0 || timeout == 0 {
+        return Ok(n as isize);
+    }
+
+    // fast path failed, we will now try to wait until timeout
+    // OR until the watched file is updated, if the path is known
+    let until = Duration::from_millis(timeout) + current_time();
+    let mut conditions = vec![QueuTypeCondition::with_cond(
+        QueueType::Timer,
+        WaitCondition::Time(until),
+    )];
+
+    if let Some(path) = current_task.fd(fd).ok_or(SysRetCode::Fail)?.get_path() {
+        conditions.push(QueuTypeCondition::new(QueueType::File(path.into())));
+        add_queue(
+            QueueHandle::from_owned(Box::new(GenericWaitQueue::new()) as Box<dyn WaitQueue>),
+            QueueType::File(path.into()),
+        );
+    }
+
+    loop {
+        let n = current_task
+            .fd(fd)
+            .map(|f| f.read_continuous(b).ok())
+            .flatten()
+            .ok_or(SysRetCode::Fail)?;
+
+        if n == 0 && until > current_time() {
+            wait_self(&conditions).unwrap();
+        } else {
+            // TODO we do not want to do this for EVERY queue. Some files (like keyboard) may be queried very often.
+            // These should persist
+            if let Some(path) = current_task.fd(fd).ok_or(SysRetCode::Fail)?.get_path() {
+                remove_queue(&QueueType::File(path.into()));
+            }
+            return Ok(n as isize);
+        }
+    }
 }
 
 pub fn write(fd: FileDescriptor, buf: *const u8, len: usize) -> SysCallRes<isize> {

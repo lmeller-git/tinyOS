@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, format, string::String, sync::Arc};
 use core::{
     cell::UnsafeCell,
-    fmt::{Debug, LowerHex},
+    fmt::{Debug, Display, LowerHex},
     marker::PhantomData,
     pin::Pin,
     sync::atomic::{AtomicU8, AtomicU32, AtomicU64, AtomicUsize, Ordering},
@@ -679,6 +679,12 @@ impl From<AtomicU64> for TaskID {
 impl From<&AtomicU64> for TaskID {
     fn from(value: &AtomicU64) -> Self {
         value.load(Ordering::Acquire).into()
+    }
+}
+
+impl Display for TaskID {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        writeln!(f, "TaskID {{ {} }}", self.inner)
     }
 }
 

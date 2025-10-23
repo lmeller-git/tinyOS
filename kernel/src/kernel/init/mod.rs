@@ -56,6 +56,7 @@ pub fn default_task() -> KernelRes<()> {
 
 fn load_init_bins() {
     let binaries: Vec<(String, &'static [u8])> = include_bins::get_binaries();
+
     let mut bin_path: PathBuf = Path::new(INCLUDED_BINS).into();
 
     for (name, bin) in binaries.into_iter() {

@@ -5,6 +5,7 @@ use conquer_once::spin::OnceCell;
 
 use crate::{
     arch::x86::current_time,
+    eprintln,
     kernel::threading::{task::TaskID, tls, wait::condition::WaitCondition},
     serial_println,
     sync::locks::Mutex,
@@ -93,11 +94,9 @@ impl WaitQueue for TimeWaitQueue {
             }) = w
             && *t <= current_time()
         {
-            serial_println!(
-                "waking blocked task with condition: {t:?} | current time: {:?}",
-                current_time()
-            );
-            tls::task_data().wake(id).unwrap();
+            if tls::task_data().wake(id).is_none() {
+                eprintln!("could not wake up task with id {}", id);
+            }
             q.pop();
         }
     }
@@ -130,8 +129,9 @@ impl WaitQueue for KeyBoardQueue {
 
     fn signal(&self) {
         for node in self.q.lock().drain(..) {
-            serial_println!("waking blocked task");
-            tls::task_data().wake(&node.id).unwrap();
+            if tls::task_data().wake(&node.id).is_none() {
+                eprintln!("could not wake up task with id {}", node.id);
+            }
         }
     }
 }
@@ -161,7 +161,9 @@ impl WaitQueue for GenericWaitQueue {
 
     fn signal(&self) {
         for node in self.q.lock().drain(..) {
-            tls::task_data().wake(&node.id).unwrap();
+            if tls::task_data().wake(&node.id).is_none() {
+                eprintln!("could not wake up task with id {}", node.id);
+            }
         }
     }
 }

@@ -7,7 +7,6 @@ use render::BasicTermRender;
 
 use crate::{
     kernel::{
-        devices::tty::io::read_all,
         graphics::{self, GLOBAL_FRAMEBUFFER, framebuffers::GlobalFrameBuffer},
         threading,
     },

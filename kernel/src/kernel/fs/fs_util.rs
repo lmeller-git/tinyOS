@@ -30,6 +30,7 @@ pub fn unmount(path: &Path) -> FSResult<()> {
 
 pub fn open(path: &Path, options: OpenOptions) -> FSResult<File> {
     fs().open(path, options)
+        .map(|file| file.with_path(path.into()))
 }
 
 pub fn close(path: &Path, file: File) -> FSResult<()> {
