@@ -42,6 +42,7 @@ pub fn default_task() -> KernelRes<()> {
         {
             let task = TaskBuilder::from_bytes(&bin_data[..n_read])?
                 .with_default_files()
+                .with_name(name.into())
                 .as_usr()?
                 .build();
 

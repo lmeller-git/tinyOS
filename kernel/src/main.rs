@@ -30,6 +30,7 @@ use tiny_os::{
         threading::{
             self,
             schedule::{Scheduler, add_named_ktask, current_task, get_scheduler},
+            task::TaskRepr,
             tls,
             wait::{QueuTypeCondition, QueueType, condition::WaitCondition},
         },
@@ -106,10 +107,18 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
 
     serial_println!("panic: {:#?}", info);
 
-    eprintln!(
-        "unrecoverable error in task {:?}\nKilling this task...",
-        tls::task_data().current_pid()
-    );
+    if let Some(task) = tls::task_data().get_current() {
+        eprintln!(
+            "unrecoverable error in task {:?} with name {:?}\nKilling this task...",
+            tls::task_data().current_pid(),
+            task.name()
+        );
+    } else {
+        eprintln!(
+            "unrecoverable error in task {:?}\nKilling this task...",
+            tls::task_data().current_pid(),
+        );
+    }
 
     if let Ok(current) = current_task() {
         tls::task_data().kill(&tls::task_data().current_pid(), 1);

@@ -55,6 +55,7 @@ pub fn close(fd: FileDescriptor) -> SysCallRes<()> {
 
 pub fn read(fd: FileDescriptor, buf: *mut u8, len: usize, timeout: u64) -> SysCallRes<isize> {
     // TODO add wait event till timeout/ read event (may want to put that in userspace though)
+    // this also requires waiting for updates to file states, whih is not currently implemented
     if !valid_ptr(buf, len) {
         return Err(SysRetCode::Fail);
     }
