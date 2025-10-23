@@ -20,9 +20,9 @@ pub fn apply(
     data: &[u8],
     table: &mut TaskPageTable,
 ) -> Result<(), ElfError> {
+    serial_println!("writing elf data into memory...");
     let headers = bytes.segments().ok_or(ElfError::Unknown)?;
     for header in headers.iter() {
-        serial_println!("getting addr");
         let addr = VirtAddr::new(header.p_vaddr);
         let mapper = PageMapper::init(&addr, header.p_memsz);
         let mut global_table = PAGETABLE.lock();
@@ -36,7 +36,6 @@ pub fn apply(
             &addr,
             &data[header.p_offset as usize..header.p_offset as usize + header.p_filesz as usize],
         );
-        serial_println!("copied");
 
         if header.p_memsz > header.p_filesz {
             zero_mem(
@@ -44,14 +43,12 @@ pub fn apply(
                 (header.p_memsz - header.p_filesz) as usize,
             );
         }
-        serial_println!("zeroed");
         mapper.unmap(&mut global_table);
 
         // unsafe {
         //     interrupt::enable();
         // }
     }
-    serial_println!("done");
     Ok(())
 }
 
