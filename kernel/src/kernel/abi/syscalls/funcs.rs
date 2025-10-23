@@ -12,11 +12,11 @@ use crate::{
             SysRetCode,
             utils::{__sys_yield, valid_ptr},
         },
-        fd::FileDescriptor,
+        fd::{FileDescriptor, FileRepr},
         fs::{self, OpenOptions, Path},
         mem::{
             align_up,
-            paging::{map_region, unmap_region},
+            paging::{map_region, map_region_into, unmap_region},
         },
         threading::{
             self,
@@ -30,6 +30,8 @@ use crate::{
 
 // all lengths denote the number of ELEMENTS, not the number of bytes.
 
+// TODO we should likely check if the corresponding file is already open in the task. If this is true, we should hand out the corresponding fd.
+// However this necessitates that we also store the Path either in File or in FDMap.
 pub fn open(path: *const u8, len: usize, flags: OpenOptions) -> SysCallRes<FileDescriptor> {
     if !valid_ptr(path, len) {
         return Err(SysRetCode::Fail);
@@ -89,6 +91,19 @@ pub fn seek(fd: FileDescriptor, offset: usize) -> SysCallRes<()> {
     Ok(())
 }
 
+pub fn dup(old_fd: FileDescriptor, new_fd: i32) -> SysCallRes<FileDescriptor> {
+    let current = tls::task_data().get_current().ok_or(SysRetCode::Fail)?;
+    let next_fd = if new_fd >= 0 {
+        new_fd as u32
+    } else {
+        current.next_fd()
+    };
+
+    let old = current.fd(old_fd).ok_or(SysRetCode::Fail)?;
+    current.add_fd(next_fd, old);
+    Ok(next_fd)
+}
+
 pub fn yield_now() -> SysCallRes<()> {
     let (cs, ss) = get_kernel_selectors();
     unsafe {
@@ -114,7 +129,7 @@ pub fn kill(pid: u64, signal: i64) -> SysCallRes<()> {
         .ok_or(SysRetCode::Fail)
 }
 
-pub fn mmap(len: usize, addr: *mut u8, flags: PageTableFlags) -> SysCallRes<*mut u8> {
+pub fn mmap(len: usize, addr: *mut u8, flags: PageTableFlags, fd: i32) -> SysCallRes<*mut u8> {
     // TODO add a more sophisticated approach for managing address spaces
     let current = tls::task_data().get_current().ok_or(SysRetCode::Fail)?;
     let addr = if !valid_ptr(addr, len) {
@@ -131,27 +146,68 @@ pub fn mmap(len: usize, addr: *mut u8, flags: PageTableFlags) -> SysCallRes<*mut
 
     let base_addr = VirtAddr::from_ptr(addr).align_up(Size4KiB::SIZE);
 
-    if map_region(
-        base_addr,
-        len,
-        flags | PageTableFlags::PRESENT,
-        current.pagedir(),
-    )
-    .is_err()
-    {
-        // try to free space in task mmmap space again
-        current.next_addr().compare_exchange(
-            addr as usize,
-            align_up(addr as usize, Size4KiB::SIZE as usize) + len,
-            Ordering::AcqRel,
-            Ordering::Relaxed,
+    if fd >= 0 {
+        // map file stored at fd into memory.
+        // as the file is opened already, the mapping already exists in this address space.
+        // we must copy it to the specified user accesible address
+        let (from, true_len) = current
+            .fd(fd as FileDescriptor)
+            .ok_or(SysRetCode::Fail)?
+            .as_raw_parts();
+
+        serial_println!(
+            "trying to map file to addr {:#x}, from {:#x}",
+            base_addr,
+            from as usize
         );
-        return Err(SysRetCode::Fail);
+        match map_region_into(
+            base_addr,
+            len.min(true_len),
+            flags,
+            current.pagedir(),
+            VirtAddr::from_ptr(from),
+            current.pagedir(),
+        ) {
+            Err(e) => {
+                eprintln!("failed to map file: {}", e);
+                current.next_addr().compare_exchange(
+                    addr as usize,
+                    align_up(addr as usize, Size4KiB::SIZE as usize) + len,
+                    Ordering::AcqRel,
+                    Ordering::Relaxed,
+                );
+                return Err(SysRetCode::Fail);
+            }
+            Ok(v) => {
+                serial_println!("the addr is: {:#x}", v);
+                return Ok(v.as_mut_ptr());
+            }
+        }
+    } else {
+        // map new (anonymous) region initialized with 0
+        if map_region(
+            base_addr,
+            len,
+            flags | PageTableFlags::PRESENT,
+            current.pagedir(),
+        )
+        .is_err()
+        {
+            // try to free space in task mmmap space again
+            current.next_addr().compare_exchange(
+                addr as usize,
+                align_up(addr as usize, Size4KiB::SIZE as usize) + len,
+                Ordering::AcqRel,
+                Ordering::Relaxed,
+            );
+            return Err(SysRetCode::Fail);
+        }
     }
     Ok(base_addr.as_mut_ptr())
 }
 
 pub fn munmap(addr: *mut u8, len: usize) -> SysCallRes<()> {
+    // TODO this should free the underlying memory iff it was anonmyously mapped, ie iff it is not shared elsewhere
     if !valid_ptr(addr, len) {
         return Err(SysRetCode::Fail);
     }

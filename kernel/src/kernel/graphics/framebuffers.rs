@@ -100,6 +100,7 @@ macro_rules! impl_write_for_fb {
                         $crate::kernel::fs::FSErrorKind::UnexpectedEOF,
                     ));
                 }
+                $crate::serial_println!("writing to fb at offset {}", offset);
                 unsafe {
                     core::ptr::copy_nonoverlapping(
                         buf.as_ptr(),
@@ -185,6 +186,36 @@ macro_rules! impl_fb_for_hasfb {
     }
 }
 
+#[macro_export]
+macro_rules!  impl_file_for_fb {
+    (@impl [$($impl_generics:tt)*] $name:ty: $node:expr) => {
+        impl<$($impl_generics)*> $crate::kernel::fd::FileRepr for $name {
+            fn node_type(&self) -> NodeType {
+                $node
+            }
+
+            fn as_raw_parts(&self) -> (*mut u8, usize) {
+                $crate::serial_println!("called as_raw_parts on fb");
+                (
+                    $crate::kernel::graphics::FrameBuffer::addr(self),
+                    $crate::kernel::graphics::FrameBuffer::height(self) *
+                    $crate::kernel::graphics::FrameBuffer::pitch(self)
+                )
+            }
+        }
+
+        impl<$($impl_generics)*> $crate::kernel::fd::IOCapable for $name {}
+    };
+
+    ($name:ty: $node:expr) => {
+        impl_file_for_fb!(@impl [] $name: $node);
+    };
+
+    ($name:ty where [$($generics:tt)*]: $node:expr) => {
+        impl_file_for_fb!(@impl [$($generics)*] $name: $node);
+    }
+}
+
 impl_write_for_fb!(LimineFrameBuffer<'_>);
 impl_write_for_fb!(GlobalFrameBuffer);
 impl_write_for_fb!(RawFrameBuffer);
@@ -197,9 +228,13 @@ impl_dgb!(LimineFrameBuffer<'_> => "LimineFrameBuffer");
 impl_dgb!(GlobalFrameBuffer => "GlobalFrameBuffer");
 impl_dgb!(RawFrameBuffer => "RawFrameBuffer");
 
-impl_file_for_wr!(LimineFrameBuffer<'_>: NodeType::File);
-impl_file_for_wr!(GlobalFrameBuffer: NodeType::File);
-impl_file_for_wr!(RawFrameBuffer: NodeType::File);
+// impl_file_for_wr!(LimineFrameBuffer<'_>: NodeType::File);
+// impl_file_for_wr!(GlobalFrameBuffer: NodeType::File);
+// impl_file_for_wr!(RawFrameBuffer: NodeType::File);
+
+impl_file_for_fb!(LimineFrameBuffer<'_>: NodeType::File);
+impl_file_for_fb!(GlobalFrameBuffer: NodeType::File);
+impl_file_for_fb!(RawFrameBuffer: NodeType::File);
 
 // #SAFETY
 // The following assume:

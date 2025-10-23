@@ -67,11 +67,6 @@ unsafe extern "C" fn kmain() -> ! {
 
 #[with_default_args]
 extern "C" fn idle() -> usize {
-    // _ = tls::task_data().get_current().unwrap().add_fd(
-    //     4,
-    //     File::new(KERNEL_GFX_MANAGER.get().unwrap().clone() as Arc<dyn FileRepr>),
-    // );
-
     start_drivers();
     threading::finalize();
     serial_println!("threads finalized");

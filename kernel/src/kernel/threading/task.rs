@@ -49,9 +49,10 @@ pub trait TaskRepr: Debug {
     fn exit_info(&self) -> &TaskExitInfo;
     fn kstack_top(&self) -> &VirtAddr;
     fn fd(&self, descriptor: FileDescriptor) -> Option<Arc<File>>;
-    fn add_fd(&self, descriptor: FileDescriptor, f: File) -> Option<Arc<File>>;
+    fn add_fd(&self, descriptor: FileDescriptor, f: impl Into<Arc<File>>) -> Option<Arc<File>>;
     fn remove_fd(&self, descriptor: FileDescriptor) -> Option<Arc<File>>;
-    fn add_next_file(&self, f: File) -> FileDescriptor;
+    fn add_next_file(&self, f: impl Into<Arc<File>>) -> FileDescriptor;
+    fn next_fd(&self) -> FileDescriptor;
     fn next_addr(&self) -> &AtomicUsize;
 }
 
@@ -90,7 +91,6 @@ pub struct TaskMetadata {
     pub parent: Option<TaskID>,
     pub fd_table: RwLock<FDMap>,
     pub state_data: Mutex<TaskStateData>,
-    pub next_fd: AtomicU32,
     pub next_free_addr: AtomicUsize,
     _private: PhantomData<()>,
 }
@@ -128,7 +128,6 @@ impl TaskMetadata {
             name: None,
             parent: None,
             state_data: TaskStateData::default().into(),
-            next_fd: AtomicU32::new(0),
             next_free_addr: AtomicUsize::new(0),
             _private: PhantomData,
         }
@@ -191,30 +190,27 @@ impl TaskRepr for Task {
     }
 
     /// inserts a K, V pair into fd table. If K was present, old V is returned in Some
-    fn add_fd(&self, descriptor: FileDescriptor, f: File) -> Option<Arc<File>> {
-        self.metadata
-            .next_fd
-            .fetch_update(Ordering::Release, Ordering::Acquire, |n| {
-                if n <= descriptor {
-                    Some(descriptor + 1)
-                } else {
-                    None
-                }
-            });
-        self.metadata
-            .fd_table
-            .write()
-            .insert(descriptor, Arc::new(f))
+    fn add_fd(&self, descriptor: FileDescriptor, f: impl Into<Arc<File>>) -> Option<Arc<File>> {
+        self.metadata.fd_table.write().insert(descriptor, f.into())
     }
 
     fn remove_fd(&self, descriptor: FileDescriptor) -> Option<Arc<File>> {
         self.metadata.fd_table.write().remove(&(descriptor as u32))
     }
 
-    fn add_next_file(&self, f: File) -> FileDescriptor {
-        let next_fd = self.metadata.next_fd.fetch_add(1, Ordering::AcqRel);
+    fn add_next_file(&self, f: impl Into<Arc<File>>) -> FileDescriptor {
+        let next_fd = self.next_fd();
         self.add_fd(next_fd, f);
         next_fd
+    }
+
+    fn next_fd(&self) -> FileDescriptor {
+        self.metadata
+            .fd_table
+            .read()
+            .last_key_value()
+            .map(|(k, _)| *k + 1)
+            .unwrap_or(0)
     }
 
     fn next_addr(&self) -> &AtomicUsize {

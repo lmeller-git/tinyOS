@@ -9,7 +9,14 @@ use core::{fmt::Debug, mem::ManuallyDrop};
 
 use conquer_once::spin::OnceCell;
 use lazy_static::lazy_static;
-pub use map::{kernel_map_region, map_region, unmap_region, user_map_region};
+pub use map::{
+    kernel_map_region,
+    map_region,
+    map_region_into,
+    unmap_region,
+    unmap_region_from,
+    user_map_region,
+};
 
 //TODO make arch agnostic / abstract arch stuff away
 use crate::{

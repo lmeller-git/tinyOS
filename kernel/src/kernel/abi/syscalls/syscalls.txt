@@ -7,8 +7,9 @@ kill - kills targeted process - (id: u64, signal: i64) -> isize
 yield - yields the current process - () -> ()
 machine_state - changes machine state (shutdown, reboot ,...) - (TODO) -> TODO
 close - frees a filehandle - (fd: u32) -> ()
-mmap - maps memory into the processes virtual space - (len: usize, ptr: *mut u8, flags: u32) -> *mut u8
+mmap - maps memory into the processes virtual spac, if fd is >= 0 the file opened at fd will be mapped into memory, starting at its offset - (len: usize, ptr: *mut u8, flags: u32, fd: i32) -> *mut u8
 munmap - unmaps memory from the processes virtual space - (ptr: *mut u8, len: usize) -> ()
 wait - blocks until some condition(s) hold - (TODO) -> ()
 getpid - returns id of current process - () -> u64
 seek - sets the offset of a file to offset - (fd: u32, offset: usize) -> ()
+dup - returns a new fd, referring to the same file at fd if new_fd is >= 0, new_fd will refer to old_fd - (old_fd: u32, new_fd: i32) -> u32

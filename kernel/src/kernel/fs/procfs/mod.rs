@@ -4,7 +4,7 @@ use alloc::{
     sync::Arc,
     vec,
 };
-use core::{fmt::Display, ops::Deref};
+use core::{fmt::Display, ops::Deref, ptr::null_mut};
 
 use bitflags::Flags;
 use hashbrown::DefaultHashBuilder;
@@ -61,6 +61,13 @@ impl FileRepr for ProcFile {
         match self.node {
             ProcNode::Dir(_) => super::NodeType::Dir,
             ProcNode::File(_) => super::NodeType::File,
+        }
+    }
+
+    fn as_raw_parts(&self) -> (*mut u8, usize) {
+        match &self.node {
+            ProcNode::File(f) => f.as_raw_parts(),
+            ProcNode::Dir(d) => (null_mut(), 0),
         }
     }
 }

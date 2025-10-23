@@ -2,6 +2,7 @@ use alloc::{boxed::Box, collections::btree_map::BTreeMap, string::String, sync::
 use core::{
     fmt::{self, Debug},
     ops::Deref,
+    ptr::null_mut,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
@@ -9,6 +10,7 @@ use bitflags::bitflags;
 
 use crate::{
     arch::x86::current_time,
+    eprintln,
     kernel::{
         fs::{FSError, FSErrorKind, NodeType, OpenOptions, PathBuf},
         io::{IOResult, Read, Write},
@@ -27,6 +29,13 @@ pub trait IOCapable: Read + Write {}
 pub trait FileRepr: Debug + IOCapable + Send + Sync {
     fn fstat(&self) -> FStat {
         FStat::new()
+    }
+
+    fn as_raw_parts(&self) -> (*mut u8, usize) {
+        eprintln!(
+            "called default FileRepr::as_raw_parts implementation. This is not what you want."
+        );
+        (null_mut(), 0)
     }
 
     fn node_type(&self) -> NodeType;
@@ -247,6 +256,12 @@ impl FileRepr for File {
 
     fn node_type(&self) -> NodeType {
         self.repr.node_type()
+    }
+
+    fn as_raw_parts(&self) -> (*mut u8, usize) {
+        let (ptr, len) = self.repr.as_raw_parts();
+        let offset = self.cursor.get().min(len);
+        (unsafe { ptr.offset(offset as isize) }, len - offset)
     }
 }
 
