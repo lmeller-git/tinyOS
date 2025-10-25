@@ -9,6 +9,8 @@ override OUTPUT := kernel
 # Convenience macro to reliably declare user overridable variables.
 override USER_VARIABLE = $(if $(filter $(origin $(1)),default undefined),$(eval override $(1) := $(2)))
 
+CARGO_CMD ?= build
+
 # Target architecture to build for. Default to x86_64.
 $(call USER_VARIABLE,KARCH,x86_64)
 $(call USER_VARIABLE,CARGO_FLAGS,)
@@ -34,7 +36,7 @@ endif
 # Default target.
 .PHONY: all
 all:
-	RUSTFLAGS="-C relocation-model=static" cargo build --target $(RUST_TARGET) --profile $(RUST_PROFILE) $(CARGO_FLAGS) --target-dir $(CARGO_TARGET_DIR)
+	RUSTFLAGS="-C relocation-model=static" cargo $(CARGO_CMD) --target $(RUST_TARGET) --profile $(RUST_PROFILE) $(CARGO_FLAGS) --target-dir $(CARGO_TARGET_DIR)
 	cp $(CARGO_TARGET_DIR)/$(RUST_TARGET)/$(RUST_PROFILE_SUBDIR)/$$(cd $(CARGO_TARGET_DIR)/$(RUST_TARGET)/$(RUST_PROFILE_SUBDIR) && find -maxdepth 1 -perm -111 -type f) $(KERNEL_BIN)
 
 # Remove object files and the final executable.

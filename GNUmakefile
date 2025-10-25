@@ -39,6 +39,26 @@ debug-test:
 .PHONY: run-hdd
 run-hdd: run-hdd-$(KARCH)
 
+.PHONY: clean
+clean:
+	$(MAKE) -C kernel clean
+	rm -rf iso_root $(IMAGE_NAME).iso $(IMAGE_NAME).hdd
+
+.PHONY: distclean
+distclean: clean
+	$(MAKE) -C kernel distclean
+	rm -rf limine ovmf
+
+.PHONY: test
+test:
+	$(MAKE) run-$(KARCH) IMAGE_NAME=tiny_os-test-$(KARCH) CARGO_TARGET_DIR=$(CARGO_TARGET_DIR)/test KERNEL_BIN=kernel CARGO_FLAGS="$(CARGO_FLAGS) --features test_run" QEMUFLAGS="$(QEMUFLAGS) -display none"
+
+.PHONY: check
+check:
+	$(MAKE) run-$(KARCH) IMAGE_NAME=tiny_os-test-$(KARCH) CARGO_CMD=check CARGO_TARGET_DIR=$(CARGO_TARGET_DIR) KERNEL_BIN=kernel CARGO_FLAGS="$(CARGO_FLAGS)" QEMUFLAGS="$(QEMUFLAGS) -display none"
+
+# KERNEL_BIN needs to be kernel, as limine needs to know how its called in limine.conf
+
 .PHONY: run-x86_64
 run-x86_64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).iso
 	$(QEMU_WRAPPER) qemu-system-$(KARCH) \
@@ -256,17 +276,3 @@ ifeq ($(KARCH),loongarch64)
 	mcopy -i $(IMAGE_NAME).hdd@@1M limine/BOOTLOONGARCH64.EFI ::/EFI/BOOT
 endif
 
-.PHONY: clean
-clean:
-	$(MAKE) -C kernel clean
-	rm -rf iso_root $(IMAGE_NAME).iso $(IMAGE_NAME).hdd
-
-.PHONY: distclean
-distclean: clean
-	$(MAKE) -C kernel distclean
-	rm -rf limine ovmf
-
-.PHONY: test
-test:
-	$(MAKE) run-$(KARCH) IMAGE_NAME=tiny_os-test-$(KARCH) CARGO_TARGET_DIR=target/test KERNEL_BIN=kernel CARGO_FLAGS="$(CARGO_FLAGS) --features test_run" QEMUFLAGS="$(QEMUFLAGS) -display none"
-# KERNEL_BIN needs to be kernel, as limine needs to know how its called in limine.conf
