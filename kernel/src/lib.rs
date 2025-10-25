@@ -138,7 +138,7 @@ extern "C" fn kernel_test_runner() -> ProcessReturn {
             // TODO add OpenOptions to macro
             Ok(builder
                 .with_args(args!())
-                .with_default_files()
+                .with_default_files(true)
                 .override_files(files.into_iter()))
         }) else {
             println!("\x1b[31m[ERR]\x1b[0m");
