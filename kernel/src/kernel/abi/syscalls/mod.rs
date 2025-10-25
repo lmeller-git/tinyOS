@@ -15,6 +15,7 @@ use crate::{
             open,
             read,
             seek,
+            spawn,
             wait,
             write,
             yield_now,
@@ -46,11 +47,12 @@ enum SysCallDispatch {
     GetPid = 12,
     Seek = 13,
     Dup = 14,
+    Spawn = 15,
 }
 
 // all syscalls return their first return value in rax (x86_64) and their error value in rdx (x86_64)
 
-const MAX_SYSCALL: u64 = 14;
+const MAX_SYSCALL: u64 = 15;
 
 pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
     let dispatch = args.num();
@@ -100,11 +102,14 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
             munmap(args.first() as usize as *mut u8, args.second() as usize).map(|_| 0)
         }
         SysCallDispatch::Clone => clone().map(|r| r as i64),
-        SysCallDispatch::Wait => wait().map(|_| 0),
+        SysCallDispatch::Wait => wait(args.first()).map(|_| 0),
         SysCallDispatch::Machine => machine().map(|_| 0),
         SysCallDispatch::GetPid => get_pid().map(|r| r as i64),
         SysCallDispatch::Seek => seek(args.first() as u32, args.second() as usize).map(|_| 0),
         SysCallDispatch::Dup => dup(args.first() as u32, args.second() as i32).map(|r| r as i64),
+        SysCallDispatch::Spawn => {
+            spawn(args.first() as *const u8, args.second() as usize).map(|_| 0)
+        }
     };
 
     // in case of err we return the error value in ret2 and do not touch ret1

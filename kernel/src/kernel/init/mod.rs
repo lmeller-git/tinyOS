@@ -41,7 +41,7 @@ pub fn default_task() -> KernelRes<()> {
                 .inspect_err(|e| eprintln!("binary {} could not be read.\n{}", name, e))
         {
             let task = TaskBuilder::from_bytes(&bin_data[..n_read])?
-                .with_default_files()
+                .with_default_files(true)
                 .with_name(name.into())
                 .as_usr()?
                 .build();

@@ -181,9 +181,9 @@ pub(super) extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: In
     let scancode: u8 = unsafe { port.read() };
     _ = crate::drivers::keyboard::put_scancode(scancode);
     if post_event(WaitEvent::new(QueueType::KeyBoard)).is_none()
-        || post_event(WaitEvent::new(QueueType::File(
-            Path::new("/proc/kernel/io/keyoard").into(),
-        )))
+        || post_event(WaitEvent::new(QueueType::file(Path::new(
+            "/proc/kernel/io/keyoard",
+        ))))
         .is_none()
     {
         serial_println!("could not push keyboard event");

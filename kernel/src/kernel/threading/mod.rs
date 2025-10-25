@@ -189,7 +189,7 @@ pub fn spawn_fn(
     args: Args,
 ) -> Result<JoinHandle<ProcessReturn>, ThreadingError> {
     spawn_fn_with_init(func, |builder| {
-        Ok(builder.with_args(args).with_default_files())
+        Ok(builder.with_args(args).with_default_files(true))
     })
 }
 
@@ -198,7 +198,7 @@ where
     F: FnOnce() -> R + 'static + Send,
     R: Send + Sync + 'static,
 {
-    spawn_with_init(func, |builder| Ok(builder.with_default_files()))
+    spawn_with_init(func, |builder| Ok(builder.with_default_files(true)))
 }
 
 pub fn spawn_with_init<'a, F, R, I>(func: F, init: I) -> Result<JoinHandle<R>, ThreadingError>

@@ -23,7 +23,8 @@ use crate::{
         },
         threading::{
             self,
-            task::TaskRepr,
+            schedule,
+            task::{TaskBuilder, TaskRepr},
             tls,
             wait::{
                 QueuTypeCondition,
@@ -65,8 +66,6 @@ pub fn close(fd: FileDescriptor) -> SysCallRes<()> {
 }
 
 pub fn read(fd: FileDescriptor, buf: *mut u8, len: usize, timeout: u64) -> SysCallRes<isize> {
-    // TODO add wait event till timeout/ read event (may want to put that in userspace though)
-    // this also requires waiting for updates to file states, whih is not currently implemented
     if !valid_ptr(buf, len) {
         return Err(SysRetCode::Fail);
     }
@@ -90,10 +89,10 @@ pub fn read(fd: FileDescriptor, buf: *mut u8, len: usize, timeout: u64) -> SysCa
     )];
 
     if let Some(path) = current_task.fd(fd).ok_or(SysRetCode::Fail)?.get_path() {
-        conditions.push(QueuTypeCondition::new(QueueType::File(path.into())));
+        conditions.push(QueuTypeCondition::new(QueueType::file(path)));
         add_queue(
             QueueHandle::from_owned(Box::new(GenericWaitQueue::new()) as Box<dyn WaitQueue>),
-            QueueType::File(path.into()),
+            QueueType::file(path),
         );
     }
 
@@ -109,9 +108,9 @@ pub fn read(fd: FileDescriptor, buf: *mut u8, len: usize, timeout: u64) -> SysCa
         } else {
             // TODO we do not want to do this for EVERY queue. Some files (like keyboard) may be queried very often.
             // These should persist
-            if let Some(path) = current_task.fd(fd).ok_or(SysRetCode::Fail)?.get_path() {
-                remove_queue(&QueueType::File(path.into()));
-            }
+            // if let Some(path) = current_task.fd(fd).ok_or(SysRetCode::Fail)?.get_path() {
+            //     remove_queue(&QueueType::file(path));
+            // }
             return Ok(n as isize);
         }
     }
@@ -278,8 +277,30 @@ pub fn clone() -> SysCallRes<bool> {
     Err(SysRetCode::Fail)
 }
 
-pub fn wait() -> SysCallRes<()> {
-    todo!()
+// TODO handle args
+/// spawns a new thread in a new address space.
+pub fn spawn(elf_data: *const u8, len: usize) -> SysCallRes<()> {
+    if !valid_ptr(elf_data, len) {
+        return Err(SysRetCode::Fail);
+    }
+    let bytes = unsafe { &*core::ptr::slice_from_raw_parts(elf_data, len) };
+    let task = TaskBuilder::from_bytes(bytes)
+        .map_err(|_| SysRetCode::Fail)?
+        .with_default_files(false)
+        .as_usr()
+        .map_err(|_| SysRetCode::Fail)?
+        .build();
+    schedule::add_built_task(task);
+
+    Ok(())
+}
+
+pub fn wait(duration: u64) -> SysCallRes<()> {
+    let conditions = &[QueuTypeCondition::with_cond(
+        QueueType::Timer,
+        WaitCondition::Time(Duration::from_millis(duration) + current_time()),
+    )];
+    wait_self(conditions).ok_or(SysRetCode::Fail)
 }
 
 pub fn machine() -> SysCallRes<()> {

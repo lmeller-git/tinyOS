@@ -1,5 +1,10 @@
 use alloc::boxed::Box;
-use core::{fmt::Debug, ops::Deref, ptr::NonNull};
+use core::{
+    fmt::Debug,
+    hash::{BuildHasher, BuildHasherDefault, Hash, Hasher},
+    ops::Deref,
+    ptr::NonNull,
+};
 
 use atomic_pool::pool;
 use conquer_once::spin::OnceCell;
@@ -9,7 +14,7 @@ use nblfq::HeaplessQueue;
 use crate::{
     arch::interrupt,
     kernel::{
-        fs::PathBuf,
+        fs::{Path, PathBuf},
         threading::{
             self,
             task::TaskID,
@@ -146,7 +151,15 @@ pub enum QueueType {
     Timer,
     KeyBoard,
     Thread(TaskID),
-    File(PathBuf),
+    File(u64),
+}
+
+impl QueueType {
+    pub fn file(path: &Path) -> Self {
+        let mut hasher = hashbrown::DefaultHashBuilder::default().build_hasher();
+        path.hash(&mut hasher);
+        Self::File(hasher.finish())
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

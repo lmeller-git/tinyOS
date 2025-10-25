@@ -271,6 +271,12 @@ impl<'a> Iterator for Ancestors<'a> {
     }
 }
 
+impl Default for &Path {
+    fn default() -> &'static Path {
+        Path::new("")
+    }
+}
+
 #[cfg(feature = "test_run")]
 mod tests {
     use os_macros::kernel_test;

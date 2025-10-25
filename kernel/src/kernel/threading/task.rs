@@ -407,8 +407,8 @@ impl<S> TaskBuilder<Task, S> {
     }
 
     /// adds open files of current into the new process, if current is accessible, else uses defaults for stdin, stderr and stdout
-    pub fn with_default_files(self) -> TaskBuilder<Task, S> {
-        if let Some(current) = tls::task_data().get_current() {
+    pub fn with_default_files(self, clone_these: bool) -> TaskBuilder<Task, S> {
+        if clone_these && let Some(current) = tls::task_data().get_current() {
             self.override_files(
                 current
                     .metadata
