@@ -8,10 +8,10 @@ pub const HEAP_SIZE: usize = 2000 * 1024; // 2 MiB (for initramfs binaries, ...)
 pub fn init() {
     let page_range = {
         let heap_start = VirtAddr::new(HEAP_START as u64);
-        let heap_end = heap_start + HEAP_SIZE as u64 - 1u64;
+        let heap_end = heap_start + HEAP_SIZE as u64;
         let heap_start_page = Page::containing_address(heap_start);
         let heap_end_page = Page::containing_address(heap_end);
-        Page::range_inclusive(heap_start_page, heap_end_page)
+        Page::range(heap_start_page, heap_end_page)
     };
     for page in page_range {
         let mut allocator = paging::get_frame_alloc().lock();

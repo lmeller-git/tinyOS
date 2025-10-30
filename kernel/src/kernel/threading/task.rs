@@ -33,7 +33,7 @@ use crate::{
     sync::locks::{Mutex, RwLock},
 };
 
-pub const USER_MMAP_START: usize = 0x0000_4000_0000;
+pub const USER_MMAP_START: usize = 0x9000_000_0000;
 
 pub trait TaskRepr: Debug {
     fn pid(&self) -> TaskID;

@@ -41,7 +41,7 @@ impl PageTableMapper {
 
 // TODO all following functions should try to clean up after themselves in case of an error.
 
-pub fn user_map_region(start: VirtAddr, len: usize) -> Result<(), String> {
+pub fn user_map_region(start: VirtAddr, len: usize) -> Result<(), &'static str> {
     let flags = PageTableFlags::PRESENT
         | PageTableFlags::USER_ACCESSIBLE
         | PageTableFlags::WRITABLE
@@ -54,7 +54,7 @@ pub fn user_map_region(start: VirtAddr, len: usize) -> Result<(), String> {
     )
 }
 
-pub fn kernel_map_region(start: VirtAddr, len: usize) -> Result<(), String> {
+pub fn kernel_map_region(start: VirtAddr, len: usize) -> Result<(), &'static str> {
     let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE;
     map_region(start, len, flags, &mut *PAGETABLE.lock())
 }
@@ -66,22 +66,24 @@ pub fn map_region<M: Mapper<Size4KiB>>(
     len: usize,
     flags: PageTableFlags,
     pagetable: &mut M,
-) -> Result<(), String> {
+) -> Result<(), &'static str> {
     assert!(flags.contains(PageTableFlags::PRESENT));
     let end_addr = (start + len as u64).align_up(Size4KiB::SIZE);
     let start = Page::containing_address(start);
     let end = Page::containing_address(end_addr);
     let mut alloc = get_frame_alloc().lock();
-    for page in Page::range_inclusive(start, end) {
+    let range = Page::range(start.clone(), end.clone());
+    let n = range.count();
+
+    for page in Page::range(start, end) {
         if pagetable.translate_page(page).is_ok() {
-            eprintln!("a memory region was already mapped, but we tried to map it again.");
-            continue;
+            return Err("a memory region was already mapped, but we tried to map it again.");
         }
         let frame = alloc
             .allocate_frame()
-            .ok_or::<String>("could not allocate frame".into())?;
+            .ok_or::<&str>("could not allocate frame")?;
         unsafe { pagetable.map_to(page, frame, flags, &mut *alloc) }
-            .map_err(|e| format!("{:?}", e))?
+            .map_err(|_e| "map failed during map_to")?
             .flush();
     }
     Ok(())
@@ -118,7 +120,7 @@ pub fn map_region_into<M: Mapper<Size4KiB>, M2: Mapper<Size4KiB>>(
     pagetable: &mut M,
     from: VirtAddr,
     from_addr_space: &mut M2,
-) -> Result<VirtAddr, String> {
+) -> Result<VirtAddr, &'static str> {
     assert!(flags.contains(PageTableFlags::PRESENT));
     let end_addr = (start + len as u64);
     let start_page = Page::containing_address(start);
@@ -138,17 +140,22 @@ pub fn map_region_into<M: Mapper<Size4KiB>, M2: Mapper<Size4KiB>>(
         from_end_addr
     );
 
-    for (from_page, to_page) in Page::range(from_start, from_end).zip(Page::range(start_page, end))
-    {
+    let (mut from_iter, mut to_iter) = (
+        Page::range(from_start, from_end),
+        Page::range(start_page, end),
+    );
+
+    // for (from_page, to_page) in Page::range(from_start, from_end).zip(Page::range(start_page, end))
+    while let (Some(from_page), Some(to_page)) = (from_iter.next(), to_iter.next()) {
         if pagetable.translate_page(to_page).is_ok() {
-            // eprintln!("a memory region was already mapped, but we tried to map it again.");
-            continue;
+            eprintln!("a memory region was already mapped, but we tried to map it again.");
+            return Err("a memory region was already mapped, but we tried to map it again.");
         }
 
         match from_addr_space.translate_page(from_page) {
             Ok(frame) => {
                 unsafe { pagetable.map_to(to_page, frame, flags, &mut *get_frame_alloc().lock()) }
-                    .map_err(|e| format!("failed to map page: {:?}", e))?
+                    .map_err(|_| "failed to map a page")?
                     .flush();
                 mapped_so_far += Size4KiB::SIZE;
             }
@@ -159,7 +166,7 @@ pub fn map_region_into<M: Mapper<Size4KiB>, M2: Mapper<Size4KiB>>(
                         eprintln!(
                             "Huge Page below identity mapped memory, currently cannot handle this. Aborting..."
                         );
-                        return Err("Huge Page below identity mapped memory".into());
+                        return Err("Huge Page below identity mapped memory");
                     }
                     // the address is in the higher half and thus identity mapped.
                     // We can retrieve the actual addresses using physical_offset.
@@ -169,11 +176,9 @@ pub fn map_region_into<M: Mapper<Size4KiB>, M2: Mapper<Size4KiB>>(
                     let phys_frame_start_addr = start_addr.as_u64() - get_phys_offset();
                     let phys_frame_end_addr = start_addr.as_u64() - get_phys_offset()
                         + Size2MiB::SIZE.min(len as u64 - mapped_so_far);
+                    let n_pages = Size2MiB::SIZE.min(len as u64 - mapped_so_far) / Size4KiB::SIZE;
 
-                    serial_println!(
-                        "mapping {} pages",
-                        Size2MiB::SIZE.min(len as u64 - mapped_so_far) / Size4KiB::SIZE
-                    );
+                    serial_println!("mapping {} pages", n_pages);
 
                     for (i, frame) in PhysFrame::range(
                         PhysFrame::containing_address(PhysAddr::new(phys_frame_start_addr)),
@@ -186,28 +191,27 @@ pub fn map_region_into<M: Mapper<Size4KiB>, M2: Mapper<Size4KiB>>(
                         unsafe {
                             pagetable.map_to(page, frame, flags, &mut *get_frame_alloc().lock())
                         }
-                        .map_err(|e| {
-                            format!("failed to map page during huge page mapping: {:?}", e)
-                        })?
+                        .map_err(|_| "failed to map page during huge page mapping")?
                         .flush();
                     }
                     mapped_so_far += Size2MiB::SIZE.min(len as u64 - mapped_so_far);
+                    // first page already consumed
+                    for _ in 1..n_pages as usize {
+                        to_iter.next();
+                        from_iter.next();
+                    }
                 }
-                e => {
+                _e => {
                     serial_println!(
                         "err at pages to: {:#x}, from: {:#?}",
                         to_page.start_address(),
                         from_page.start_address()
                     );
-                    return Err(format!(
-                        "a page was not found in the donor address space: {:?}",
-                        e
-                    ));
+                    return Err("a page was not found in the donor address space");
                 }
             },
         }
     }
-    serial_println!("done");
     Ok(mapped_addr)
 }
 

@@ -37,6 +37,8 @@ use crate::{
             },
         },
     },
+    println,
+    serial_print,
     serial_println,
 };
 
@@ -181,6 +183,7 @@ pub fn mmap(len: usize, addr: *mut u8, flags: PageTableFlags, fd: i32) -> SysCal
     // TODO add a more sophisticated approach for managing address spaces
     let current = tls::task_data().get_current().ok_or(SysRetCode::Fail)?;
     let addr = if !valid_ptr(addr, len) {
+        serial_println!("assigning new mmap ptr");
         current
             .next_addr()
             .fetch_update(Ordering::Release, Ordering::Acquire, |addr_| {
@@ -193,6 +196,7 @@ pub fn mmap(len: usize, addr: *mut u8, flags: PageTableFlags, fd: i32) -> SysCal
     };
 
     let base_addr = VirtAddr::from_ptr(addr).align_up(Size4KiB::SIZE);
+    serial_println!("mmap at addr {:#x}", base_addr.as_u64());
 
     if fd >= 0 {
         // map file stored at fd into memory.
@@ -232,15 +236,19 @@ pub fn mmap(len: usize, addr: *mut u8, flags: PageTableFlags, fd: i32) -> SysCal
             }
         }
     } else {
+        serial_println!(
+            "called anonymous mmap at addr {:#x} with len {}",
+            base_addr.as_u64(),
+            len
+        );
         // map new (anonymous) region initialized with 0
-        if map_region(
+        if let Err(e) = map_region(
             base_addr,
             len,
             flags | PageTableFlags::PRESENT,
             current.pagedir(),
-        )
-        .is_err()
-        {
+        ) {
+            serial_println!("got an err during mmmap: {:?}", e);
             // try to free space in task mmmap space again
             current.next_addr().compare_exchange(
                 addr as usize,
@@ -309,4 +317,13 @@ pub fn machine() -> SysCallRes<()> {
 
 pub fn get_pid() -> SysCallRes<u64> {
     Ok(tls::task_data().current_pid().get_inner())
+}
+
+pub fn serial(buf: *const u8, len: usize) -> SysCallRes<()> {
+    if !valid_ptr(buf, len) {
+        return Err(SysRetCode::Fail);
+    }
+    let str = unsafe { str::from_raw_parts(buf, len) };
+    serial_print!("{}", str);
+    Ok(())
 }

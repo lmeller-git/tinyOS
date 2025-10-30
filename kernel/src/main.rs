@@ -96,7 +96,7 @@ extern "C" fn idle() -> usize {
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     if !interrupt::are_enabled() {
-        serial_println!("panicked wiht disabled interrupts. Trying to recover...");
+        serial_println!("paniced witt disabled interrupts. Trying to recover...");
         unsafe {
             interrupt::enable();
         }
@@ -105,7 +105,7 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     #[cfg(feature = "test_run")]
     tiny_os::test_panic_handler(info);
 
-    serial_println!("panic: {:#?}", info);
+    eprintln!("panic: {:#?}", info);
 
     if let Some(task) = tls::task_data().get_current() {
         eprintln!(

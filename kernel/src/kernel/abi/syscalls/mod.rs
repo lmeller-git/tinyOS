@@ -15,6 +15,7 @@ use crate::{
             open,
             read,
             seek,
+            serial,
             spawn,
             wait,
             write,
@@ -22,6 +23,7 @@ use crate::{
         },
         fs::OpenOptions,
     },
+    println,
     serial_println,
 };
 
@@ -48,11 +50,12 @@ enum SysCallDispatch {
     Seek = 13,
     Dup = 14,
     Spawn = 15,
+    Dbg = 16,
 }
 
 // all syscalls return their first return value in rax (x86_64) and their error value in rdx (x86_64)
 
-const MAX_SYSCALL: u64 = 15;
+const MAX_SYSCALL: u64 = 16;
 
 pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
     let dispatch = args.num();
@@ -109,6 +112,9 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
         SysCallDispatch::Dup => dup(args.first() as u32, args.second() as i32).map(|r| r as i64),
         SysCallDispatch::Spawn => {
             spawn(args.first() as *const u8, args.second() as usize).map(|_| 0)
+        }
+        SysCallDispatch::Dbg => {
+            serial(args.first() as *const u8, args.second() as usize).map(|_| 0)
         }
     };
 
