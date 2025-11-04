@@ -3,16 +3,21 @@ use crate::{
     eprintln,
     kernel::{
         abi::syscalls::funcs::{
-            clone,
             close,
             dup,
+            execve,
             exit,
+            fork,
             get_pid,
             kill,
             machine,
             mmap,
             munmap,
             open,
+            pthread_cancel,
+            pthread_create,
+            pthread_exit,
+            pthread_join,
             read,
             seek,
             serial,
@@ -43,7 +48,7 @@ enum SysCallDispatch {
     Kill = 6,
     Mmap = 7,
     Munmap = 8,
-    Clone = 9,
+    Fork = 9,
     Wait = 10,
     Machine = 11,
     GetPid = 12,
@@ -51,11 +56,16 @@ enum SysCallDispatch {
     Dup = 14,
     Spawn = 15,
     Dbg = 16,
+    Execve = 17,
+    PThreadCreate = 18,
+    PThreadExit = 19,
+    PThreadCancel = 20,
+    PThreadJoin = 21,
 }
 
 // all syscalls return their first return value in rax (x86_64) and their error value in rdx (x86_64)
 
-const MAX_SYSCALL: u64 = 16;
+const MAX_SYSCALL: u64 = 21;
 
 pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
     let dispatch = args.num();
@@ -104,7 +114,7 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
         SysCallDispatch::Munmap => {
             munmap(args.first() as usize as *mut u8, args.second() as usize).map(|_| 0)
         }
-        SysCallDispatch::Clone => clone().map(|r| r as i64),
+        SysCallDispatch::Fork => fork().map(|r| r as i64),
         SysCallDispatch::Wait => wait(args.first()).map(|_| 0),
         SysCallDispatch::Machine => machine().map(|_| 0),
         SysCallDispatch::GetPid => get_pid().map(|r| r as i64),
@@ -116,6 +126,13 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
         SysCallDispatch::Dbg => {
             serial(args.first() as *const u8, args.second() as usize).map(|_| 0)
         }
+        SysCallDispatch::Execve => {
+            execve(args.first() as *const u8, args.second() as usize).map(|r| r as i64)
+        }
+        SysCallDispatch::PThreadCreate => pthread_create().map(|r| r as i64),
+        SysCallDispatch::PThreadExit => pthread_exit(),
+        SysCallDispatch::PThreadCancel => pthread_cancel(args.first()),
+        SysCallDispatch::PThreadJoin => pthread_join(args.first(), args.second() as i64),
     };
 
     // in case of err we return the error value in ret2 and do not touch ret1

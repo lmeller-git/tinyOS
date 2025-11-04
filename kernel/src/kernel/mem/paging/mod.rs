@@ -174,6 +174,15 @@ impl<'a> APageTable<'a> {
             Self::Owned(mut table) => unsafe { table.into_inner().cleanup() },
         }
     }
+
+    pub fn clone(&self) -> Self {
+        // This should lazily copy the pagedirs, using Cow.
+        // Currently this is not possible, thus we eagerly duplicate all (non-global) mappings
+        match self {
+            Self::Global(g) => Self::Global(g),
+            Self::Owned(o) => todo!(),
+        }
+    }
 }
 
 #[allow(unsafe_op_in_unsafe_fn)]

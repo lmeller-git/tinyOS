@@ -1,7 +1,6 @@
 write - writes bytes to file - (fd: u32, ptr: *const u8, len: usize) -> isize
 read - reads bytes from file - (fd: u32, ptr: *mut u8, len: usize, timeout: u64) -> isize
 open - acquires a filehandle - (path: *const u8, len: usize, flags: u16) -> i32 (convert to u32 for fd)
-clone - clones the current thread into a new thread - (TODO) -> isize
 exit - kills the current process - (status: i64) -> !
 kill - kills targeted process - (id: u64, signal: i64) -> isize
 yield - yields the current process - () -> ()
@@ -13,3 +12,10 @@ wait - blocks until some condition(s) hold - (TODO) -> ()
 getpid - returns id of current process - () -> u64
 seek - sets the offset of a file to offset - (fd: u32, offset: usize) -> ()
 dup - returns a new fd, referring to the same file at fd if new_fd is >= 0, new_fd will refer to old_fd - (old_fd: u32, new_fd: i32) -> u32
+dbg - prints something to kernel serial outptut. This is inteded for debugging. This guarantees to print within the syscall. - (buf: *const u8, len: usize) -> ()
+execve - spawns a new process using the binary at path. Copies open file descriptors - (path: *const u8, len: usize) -> u64
+fork - clones the current thread into a new thread - () -> isize
+pthread_create - creates a new thread in the calling proccess - (TODO) -> u64
+pthread_exit - exits the current thread - () -> !
+pthread_cancel - kills the specified thrad - (id: i64) -> i64
+pthread_join - waits for the specified thread to finish, or until timeout if timeout is non-negative - (id: i64, timeout: i64) -> i64

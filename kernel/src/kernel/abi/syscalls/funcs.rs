@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, vec};
+use alloc::{boxed::Box, vec, vec::Vec};
 use core::{str, sync::atomic::Ordering, time::Duration};
 
 use crate::{
@@ -17,15 +17,17 @@ use crate::{
         },
         fd::{FileDescriptor, FileRepr},
         fs::{self, OpenOptions, Path},
+        io::Read,
         mem::{
             align_up,
             paging::{map_region, map_region_into, unmap_region},
         },
         threading::{
             self,
-            schedule,
+            schedule::{self, add_built_task},
             task::{TaskBuilder, TaskRepr},
             tls,
+            trampoline::TaskExitInfo,
             wait::{
                 QueuTypeCondition,
                 QueueHandle,
@@ -144,7 +146,7 @@ pub fn seek(fd: FileDescriptor, offset: usize) -> SysCallRes<()> {
 pub fn dup(old_fd: FileDescriptor, new_fd: i32) -> SysCallRes<FileDescriptor> {
     let current = tls::task_data().get_current().ok_or(SysRetCode::Fail)?;
     let next_fd = if new_fd >= 0 {
-        new_fd as u32
+        new_fd as FileDescriptor
     } else {
         current.next_fd()
     };
@@ -274,17 +276,6 @@ pub fn munmap(addr: *mut u8, len: usize) -> SysCallRes<()> {
     unmap_region(base, len, current.pagedir()).map_err(|_| SysRetCode::Fail)
 }
 
-pub fn clone() -> SysCallRes<bool> {
-    // procedure:
-    // - copy relevant structures from current task into new task (devices, privilege, ....)
-    // - create a new stack for the new task and copy all contents of the old task into it (including current interrupt frame, saved state)
-    // - modify the interrupt frame, such that the syscall returns true (1) for the new task in RAX. The old task will receive false (0) in RAX.
-    // - add the new task to task data
-    // - sysret
-    let current_task = tls::task_data().get_current().ok_or(SysRetCode::Fail)?;
-    Err(SysRetCode::Fail)
-}
-
 // TODO handle args
 /// spawns a new thread in a new address space.
 pub fn spawn(elf_data: *const u8, len: usize) -> SysCallRes<()> {
@@ -326,4 +317,62 @@ pub fn serial(buf: *const u8, len: usize) -> SysCallRes<()> {
     let str = unsafe { str::from_raw_parts(buf, len) };
     serial_print!("{}", str);
     Ok(())
+}
+
+pub fn fork() -> SysCallRes<bool> {
+    // procedure:
+    // - copy relevant structures from current task into new task (devices, privilege, ....)
+    // - create a new stack for the new task and copy all contents of the old task into it (including current interrupt frame, saved state)
+    // - modify the interrupt frame, such that the syscall returns true (1) for the new task in RAX. The old task will receive false (0) in RAX.
+    // - add the new task to task data
+    // - sysret
+    let current_task = tls::task_data().get_current().ok_or(SysRetCode::Fail)?;
+    Err(SysRetCode::Fail)
+}
+
+pub fn execve(path: *const u8, len: usize) -> SysCallRes<u64> {
+    if !valid_ptr(path, len) {
+        return Err(SysRetCode::Fail);
+    }
+    let path = unsafe { str::from_raw_parts(path, len) };
+
+    let bin = fs::open(Path::new(path), OpenOptions::READ).map_err(|_| SysRetCode::Fail)?;
+    let mut buf = Vec::new();
+    let bytes = bin.read_to_end(&mut buf, 0).map_err(|_| SysRetCode::Fail)?;
+    let current = tls::task_data().get_current().ok_or(SysRetCode::Fail)?;
+    let mut new = TaskBuilder::from_bytes(&buf[..bytes])
+        .map_err(|_| SysRetCode::Fail)?
+        .override_files(
+            current
+                .metadata
+                .fd_table
+                .read()
+                .iter()
+                .map(|(k, f)| (*k, f.clone())),
+        )
+        .with_exit_info(TaskExitInfo::new_with_default_trampoline(
+            move |v: usize| exit(v as i64),
+        ));
+
+    let new = new.as_usr().map_err(|_| SysRetCode::Fail)?.build();
+    let id = new.pid().get_inner();
+    add_built_task(new);
+    Ok(id)
+}
+
+// TODO implement this at some point
+pub fn pthread_create() -> SysCallRes<u64> {
+    todo!()
+}
+
+pub fn pthread_exit() -> ! {
+    todo!()
+}
+
+pub fn pthread_cancel(id: u64) -> SysCallRes<i64> {
+    todo!()
+}
+
+pub fn pthread_join(id: u64, timeout: i64) -> SysCallRes<i64> {
+    todo!()
 }

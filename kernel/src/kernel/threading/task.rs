@@ -132,6 +132,26 @@ impl TaskMetadata {
             _private: PhantomData,
         }
     }
+
+    fn with_fd_table(mut self, table: FDMap) -> Self {
+        self.fd_table = table.into();
+        self
+    }
+
+    fn with_name(mut self, name: String) -> Self {
+        self.name.replace(name);
+        self
+    }
+
+    fn with_state(mut self, data: TaskStateData) -> Self {
+        self.state_data = data.into();
+        self
+    }
+
+    fn with_next_fre(self, addr: usize) -> Self {
+        self.next_free_addr.store(addr, Ordering::Relaxed);
+        self
+    }
 }
 
 impl TaskRepr for Task {
@@ -489,6 +509,18 @@ impl TaskBuilder<Task, Uninit> {
             _marker: Init::new(bytes),
         })
     }
+
+    pub fn fom_existing<'a>(
+        task: &Task,
+        addr: VirtAddr,
+    ) -> Result<TaskBuilder<Task, Init<'a>>, ThreadingError> {
+        Ok(TaskBuilder::<Task, Init> {
+            inner: Task::new(),
+            entry: addr,
+            data: TaskData::default(),
+            _marker: Init::default(),
+        })
+    }
 }
 
 impl TaskBuilder<Task, Init<'_>> {
@@ -565,6 +597,55 @@ impl TaskBuilder<Task, Init<'_>> {
             data: self.data,
             _marker,
         })
+    }
+
+    pub fn like_existing_usr<'a>(
+        mut self,
+        task: &Task,
+    ) -> Result<TaskBuilder<Task, Ready<ExtendedUsrTaskInfo<'a>>>, ThreadingError> {
+        todo!()
+        // let kstack = allocate_kstack()?;
+        // let mut tbl = task.pagedir().clone();
+
+        // // let usr_end = allocate_userstack(&mut tbl)?;
+
+        // self.inner
+        //     .core
+        //     .krsp
+        //     .store(kstack.as_u64(), Ordering::Relaxed);
+        // self.inner.core.kernel_stack_top = kstack;
+        // self.inner.core.privilege = PrivilegeLevel::User;
+        // self.inner
+        //     .metadata
+        //     .next_free_addr
+        //     .store(task.next_addr().load(Ordering::Relaxed), Ordering::Relaxed);
+
+        // let info = UsrTaskInfo::new(
+        //     self.entry,
+        //     VirtAddr::new(self.inner.core.krsp.load(Ordering::Relaxed)),
+        //     usr_end,
+        //     tbl.root.start_address(),
+        // );
+
+        // let _marker = ExtendedUsrTaskInfo {
+        //     info,
+        //     _phatom: PhantomData,
+        // }
+        // .into();
+
+        // unsafe {
+        //     self.inner
+        //         .core
+        //         .pagedir
+        //         .replace(APageTable::owned(tbl.into()));
+        // }
+
+        // Ok(TaskBuilder {
+        //     inner: self.inner,
+        //     entry: self.entry,
+        //     data: self.data,
+        //     _marker,
+        // })
     }
 }
 
