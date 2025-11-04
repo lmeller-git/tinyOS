@@ -423,3 +423,8 @@ pub fn pthread_cancel(id: u64) -> SysCallRes<i64> {
 pub fn pthread_join(id: u64, timeout: i64) -> SysCallRes<i64> {
     todo!()
 }
+
+pub fn time() -> SysCallRes<u64> {
+    // TODO this should return a u128, but this requires splitting across registers / ptr
+    Ok(current_time().as_millis() as u64)
+}

@@ -24,6 +24,7 @@ pub enum SysCallDispatch {
     PThreadJoin = 21,
     WaitPID = 22,
     EventFD = 23,
+    Time = 24,
 }
 
 #[repr(i64)]

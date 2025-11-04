@@ -20,4 +20,5 @@ pthread_exit - exits the current thread - () -> !
 pthread_cancel - kills the specified thrad - (id: u64) -> i64
 pthread_join - waits for the specified thread to finish, or until timeout if timeout is non-negative - (id: u64, timeout: i64) -> i64
 eventfd - create a fd, which can be used to wait for some event - TODO
-waitpid - wait for a change in the target processes state - (id: u64, timeout: u64) -> TODO
+waitpid - wait for a change in the target processes state - (id: u64, timeout: u64, w_flags: WaitOptions, tw_flags: TaskWaitFlags) -> TaskStateChange
+Time - returns current system time in milliseconds - () -> u64

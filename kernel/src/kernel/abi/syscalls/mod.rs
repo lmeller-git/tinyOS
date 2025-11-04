@@ -28,6 +28,7 @@ use crate::{
         seek,
         serial,
         spawn,
+        time,
         wait,
         wait_pid,
         write,
@@ -116,6 +117,7 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
         )
         .map(|r| r.bits() as i64),
         SysCallDispatch::EventFD => eventfd().map(|r| r as i64),
+        SysCallDispatch::Time => time().map(|r| r as i64),
     };
 
     // in case of err we return the error value in ret2 and do not touch ret1
