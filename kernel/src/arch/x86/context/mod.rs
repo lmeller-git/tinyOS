@@ -14,7 +14,14 @@ use crate::{
         },
     },
     kernel::{
-        mem::paging::{PAGETABLE, TaskPageTable, get_frame_alloc, map_region, unmap_region},
+        mem::paging::{
+            PAGETABLE,
+            TaskPageTable,
+            get_frame_alloc,
+            get_kernel_pagetbl_root,
+            map_region,
+            unmap_region,
+        },
         threading::{
             ThreadingError,
             task::{TaskData, TaskRepr},
@@ -318,7 +325,8 @@ global_asm!(
             push [rdx + 24] // rcx
             push 0 // rbx
             mov rsi, cr3
-            push rsi // cr3 TODO
+            push rsi // cr3 // we should push the root addr saved in Ktaskinfo, but this triggers a triple fault???
+            // push [rdx + 40] // cr3
             push 0 // r15
             push 0
             push 0
@@ -481,18 +489,21 @@ pub struct KTaskInfo {
     cs: u64,
     rflags: u64,
     ss: u64,
+    cr3: PhysAddr,
 }
 
 impl KTaskInfo {
     pub fn new(addr: VirtAddr, kstack: VirtAddr) -> Self {
         let (cs, ss) = get_kernel_selectors();
         let rflags = RFlags::INTERRUPT_FLAG | RFlags::from_bits_truncate(0x2);
+        let tbl = get_kernel_pagetbl_root().start_address();
         Self {
             rip: addr,
             kstack_top: kstack,
             cs: cs.0 as u64,
             rflags: rflags.bits(),
             ss: ss.0 as u64,
+            cr3: tbl,
         }
     }
 }
@@ -594,7 +605,7 @@ pub fn free_kstack(top: VirtAddr) -> Result<(), ThreadingError> {
     Ok(())
 }
 
-pub fn allocate_userstack(tbl: &mut TaskPageTable) -> Result<VirtAddr, ThreadingError> {
+pub fn allocate_userstack<M: Mapper<Size4KiB>>(tbl: &mut M) -> Result<VirtAddr, ThreadingError> {
     // all at the same virt addr
     let flags =
         PageTableFlags::WRITABLE | PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE;
@@ -603,8 +614,7 @@ pub fn allocate_userstack(tbl: &mut TaskPageTable) -> Result<VirtAddr, Threading
     let start = (base + Size4KiB::SIZE).align_up(Size4KiB::SIZE);
     let end = (base + USER_STACK_SIZE as u64).align_up(Size4KiB::SIZE);
     {
-        let mapper = &mut tbl.table;
-        map_region(start, (end - start) as usize - 1, flags, &mut *tbl.table)
+        map_region(start, (end - start) as usize - 1, flags, tbl)
             .map_err(|_| ThreadingError::StackNotBuilt)?;
     }
 
@@ -624,11 +634,11 @@ pub fn copy_ustack_mappings_into<M: Mapper<Size4KiB>, M2: Mapper<Size4KiB>>(
     let end = (base + USER_STACK_SIZE as u64).align_up(Size4KiB::SIZE);
 
     let start_page: Page<Size4KiB> = Page::containing_address(start);
-    let end_page: Page<Size4KiB> = Page::containing_address(end - 1);
+    let end_page: Page<Size4KiB> = Page::containing_address(end);
 
     {
         let mut frame_allocator = get_frame_alloc().lock();
-        for page in Page::range_inclusive(start_page, end_page) {
+        for page in Page::range(start_page, end_page) {
             unsafe {
                 let frame = from.translate_page(page).unwrap();
                 into.map_to(page, frame, flags, &mut *frame_allocator)

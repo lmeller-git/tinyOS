@@ -548,8 +548,9 @@ impl TaskBuilder<Task, Init<'_>> {
         mut self,
     ) -> Result<TaskBuilder<Task, Ready<ExtendedUsrTaskInfo<'a>>>, ThreadingError> {
         let kstack = allocate_kstack()?;
-        let mut tbl =
-            create_new_pagedir::<'a, '_>().map_err(|e| ThreadingError::PageDirNotBuilt)?;
+        let tbl = create_new_pagedir::<'a, '_>().map_err(|e| ThreadingError::PageDirNotBuilt)?;
+        let mut tbl = APageTable::owned(tbl.into());
+
         let usr_end = allocate_userstack(&mut tbl)?;
 
         self.inner
@@ -575,7 +576,7 @@ impl TaskBuilder<Task, Init<'_>> {
             self.entry,
             VirtAddr::new(self.inner.core.krsp.load(Ordering::Relaxed)),
             usr_end,
-            tbl.root.start_address(),
+            tbl.try_get_owned().unwrap().lock().root.start_address(),
         );
 
         let _marker = ExtendedUsrTaskInfo {
@@ -585,10 +586,7 @@ impl TaskBuilder<Task, Init<'_>> {
         .into();
 
         unsafe {
-            self.inner
-                .core
-                .pagedir
-                .replace(APageTable::owned(tbl.into()));
+            self.inner.core.pagedir.replace(tbl);
         }
 
         Ok(TaskBuilder {

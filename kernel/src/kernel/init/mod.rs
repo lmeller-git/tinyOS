@@ -11,6 +11,7 @@ use crate::{
         mem,
         threading::{self, schedule, task::TaskBuilder},
     },
+    serial_println,
 };
 
 pub const KERNEL_DIR: &str = "/kernel";
@@ -61,6 +62,7 @@ fn load_init_bins() {
 
     for (name, bin) in binaries.into_iter() {
         bin_path.push(name.as_str());
+        serial_println!("adding binary to {}", bin_path);
         if let Ok(file) = fs::open(&bin_path, OpenOptions::CREATE_ALL | OpenOptions::WRITE) {
             if let Err(e) = file.write_all(bin, 0) {
                 eprintln!(

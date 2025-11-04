@@ -42,15 +42,21 @@ use crate::{
     sync::locks::Mutex,
 };
 
-pub const HIGHER_HALF_START: OnceCell<u64> = OnceCell::uninit();
+pub static HIGHER_HALF_START: OnceCell<u64> = OnceCell::uninit();
+pub static KERNEL_PAGETABLE_ADDR: OnceCell<PhysFrame<Size4KiB>> = OnceCell::uninit();
 
 pub fn get_hhdm_addr() -> u64 {
     *HIGHER_HALF_START.get_or_init(|| bootinfo::get_phys_offset())
 }
 
+pub fn get_kernel_pagetbl_root() -> &'static PhysFrame<Size4KiB> {
+    KERNEL_PAGETABLE_ADDR.get().unwrap()
+}
+
 // reads current p4 rom cpu (CR3) and returns pointer
 unsafe fn active_level_4_table() -> &'static mut PageTable {
     let (level_4_table_frame, _) = current_page_tbl();
+    let level_4_table_frame = KERNEL_PAGETABLE_ADDR.get_or_init(|| level_4_table_frame);
     let phys = level_4_table_frame.start_address().as_u64();
     let virt = VirtAddr::new(bootinfo::get_phys_offset() + phys);
     let page_table_ptr: *mut PageTable = virt.as_mut_ptr();
@@ -181,6 +187,13 @@ impl<'a> APageTable<'a> {
         match self {
             Self::Global(g) => Self::Global(g),
             Self::Owned(o) => todo!(),
+        }
+    }
+
+    pub fn try_get_owned(&self) -> Option<&Mutex<TaskPageTable<'a>>> {
+        match self {
+            Self::Global(_) => None,
+            Self::Owned(o) => Some(o),
         }
     }
 }

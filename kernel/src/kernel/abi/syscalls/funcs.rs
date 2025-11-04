@@ -335,28 +335,29 @@ pub fn execve(path: *const u8, len: usize) -> SysCallRes<u64> {
         return Err(SysRetCode::Fail);
     }
     let path = unsafe { str::from_raw_parts(path, len) };
+    serial_println!("called execve on {}", path);
 
     let bin = fs::open(Path::new(path), OpenOptions::READ).map_err(|_| SysRetCode::Fail)?;
     let mut buf = Vec::new();
     let bytes = bin.read_to_end(&mut buf, 0).map_err(|_| SysRetCode::Fail)?;
+    serial_println!("the file exists. read {} bytes", bytes);
     let current = tls::task_data().get_current().ok_or(SysRetCode::Fail)?;
     let mut new = TaskBuilder::from_bytes(&buf[..bytes])
         .map_err(|_| SysRetCode::Fail)?
-        .override_files(
-            current
-                .metadata
-                .fd_table
-                .read()
-                .iter()
-                .map(|(k, f)| (*k, f.clone())),
-        )
-        .with_exit_info(TaskExitInfo::new_with_default_trampoline(
-            move |v: usize| exit(v as i64),
-        ));
-
-    let new = new.as_usr().map_err(|_| SysRetCode::Fail)?.build();
+        .with_default_files(false)
+        // .override_files(
+        //     current
+        //         .metadata
+        //         .fd_table
+        //         .read()
+        //         .iter()
+        //         .map(|(k, f)| (*k, f.clone())),
+        // )
+        ;
+    let new = new.as_usr().unwrap().build(); //.map_err(|_| SysRetCode::Fail)?.build();
     let id = new.pid().get_inner();
     add_built_task(new);
+    serial_println!("the task was spawned");
     Ok(id)
 }
 
