@@ -22,6 +22,8 @@ pub enum SysCallDispatch {
     PThreadExit = 19,
     PThreadCancel = 20,
     PThreadJoin = 21,
+    WaitPID = 22,
+    EventFD = 23,
 }
 
 #[repr(i64)]

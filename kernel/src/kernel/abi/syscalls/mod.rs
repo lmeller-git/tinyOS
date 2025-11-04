@@ -1,6 +1,6 @@
 use tinyos_abi::{
     consts::MAX_SYSCALL,
-    flags::{OpenOptions, PageTableFlags},
+    flags::{OpenOptions, PageTableFlags, TaskWaitOptions, WaitOptions},
     types::{SysCallDispatch, SysRetCode},
 };
 
@@ -10,6 +10,7 @@ use crate::{
     kernel::abi::syscalls::funcs::{
         close,
         dup,
+        eventfd,
         execve,
         exit,
         fork,
@@ -28,6 +29,7 @@ use crate::{
         serial,
         spawn,
         wait,
+        wait_pid,
         write,
         yield_now,
     },
@@ -65,7 +67,7 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
             args.first() as u32,
             args.second() as usize as *mut u8,
             args.third() as usize,
-            args.fourth(),
+            args.fourth() as i64,
         )
         .map(|r| r as i64),
         SysCallDispatch::Write => write(
@@ -106,6 +108,14 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
         SysCallDispatch::PThreadExit => pthread_exit(),
         SysCallDispatch::PThreadCancel => pthread_cancel(args.first()),
         SysCallDispatch::PThreadJoin => pthread_join(args.first(), args.second() as i64),
+        SysCallDispatch::WaitPID => wait_pid(
+            args.first(),
+            args.second() as i64,
+            WaitOptions::from_bits_truncate(args.third() as u16),
+            TaskWaitOptions::from_bits_truncate(args.fourth() as u16),
+        )
+        .map(|r| r.bits() as i64),
+        SysCallDispatch::EventFD => eventfd().map(|r| r as i64),
     };
 
     // in case of err we return the error value in ret2 and do not touch ret1

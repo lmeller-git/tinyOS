@@ -7,6 +7,7 @@ use core::{
 use schedule::{GlobalTaskPtr, add_task_ptr__};
 use task::{Arg, Args, TaskBuilder, TaskState};
 use thiserror::Error;
+use tinyos_abi::flags::TaskWaitOptions;
 use trampoline::{TaskExitInfo, closure_trampoline};
 
 use crate::{
@@ -97,7 +98,10 @@ impl<R> JoinHandle<R> {
 
         let wait_conds = &[QueuTypeCondition::with_cond(
             QueueType::Thread(self.task.as_ref().map(|t| t.pid()).unwrap_or_default()),
-            WaitCondition::Thread(self.task.as_ref().map(|t| t.pid()).unwrap_or_default()),
+            WaitCondition::Thread(
+                self.task.as_ref().map(|t| t.pid()).unwrap_or_default(),
+                TaskWaitOptions::W_EXIT,
+            ),
         )];
 
         while !(self.inner.finished() || !self.is_task_alive().is_some_and(|v| v)) {

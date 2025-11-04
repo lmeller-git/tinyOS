@@ -2,7 +2,7 @@ use alloc::{boxed::Box, vec, vec::Vec};
 use core::{str, sync::atomic::Ordering, time::Duration};
 
 use tinyos_abi::{
-    flags::{OpenOptions, PageTableFlags},
+    flags::{OpenOptions, PageTableFlags, TaskStateChange, TaskWaitOptions, WaitOptions},
     types::{FileDescriptor, SysCallRes, SysRetCode},
 };
 
@@ -26,7 +26,7 @@ use crate::{
         threading::{
             self,
             schedule::{self, add_built_task},
-            task::{TaskBuilder, TaskRepr},
+            task::{TaskBuilder, TaskRepr, TaskState},
             tls,
             trampoline::TaskExitInfo,
             wait::{
@@ -70,7 +70,7 @@ pub fn close(fd: FileDescriptor) -> SysCallRes<()> {
     Ok(())
 }
 
-pub fn read(fd: FileDescriptor, buf: *mut u8, len: usize, timeout: u64) -> SysCallRes<isize> {
+pub fn read(fd: FileDescriptor, buf: *mut u8, len: usize, timeout: i64) -> SysCallRes<isize> {
     if !valid_ptr(buf, len) {
         return Err(SysRetCode::Fail);
     }
@@ -87,18 +87,24 @@ pub fn read(fd: FileDescriptor, buf: *mut u8, len: usize, timeout: u64) -> SysCa
 
     // fast path failed, we will now try to wait until timeout
     // OR until the watched file is updated, if the path is known
-    let until = Duration::from_millis(timeout) + current_time();
-    let mut conditions = vec![QueuTypeCondition::with_cond(
-        QueueType::Timer,
-        WaitCondition::Time(until),
-    )];
-
+    let mut conditions = Vec::new();
+    let until = Duration::from_millis(timeout as u64) + current_time();
+    if timeout > 0 {
+        conditions.push(QueuTypeCondition::with_cond(
+            QueueType::Timer,
+            WaitCondition::Time(until),
+        ));
+    }
     if let Some(path) = current_task.fd(fd).ok_or(SysRetCode::Fail)?.get_path() {
         conditions.push(QueuTypeCondition::new(QueueType::file(path)));
         add_queue(
             QueueHandle::from_owned(Box::new(GenericWaitQueue::new()) as Box<dyn WaitQueue>),
             QueueType::file(path),
         );
+    }
+
+    if conditions.is_empty() {
+        return Err(SysRetCode::Fail);
     }
 
     loop {
@@ -303,9 +309,42 @@ pub fn wait(duration: u64) -> SysCallRes<()> {
     wait_self(conditions).ok_or(SysRetCode::Fail)
 }
 
-pub fn wait_pid() {}
+pub fn wait_pid(
+    id: u64,
+    timeout: i64,
+    w_flags: WaitOptions,
+    tw_flags: TaskWaitOptions,
+) -> SysCallRes<TaskStateChange> {
+    let task = tls::task_data().get(&id.into()).ok_or(SysRetCode::Fail)?;
+    if timeout == 0 {
+        return Ok(TaskStateChange::empty());
+    }
+    let mut conditions = Vec::new();
+    if timeout > 0 {
+        let until = Duration::from_millis(timeout as u64) + current_time();
+        conditions.push(QueuTypeCondition::with_cond(
+            QueueType::Timer,
+            WaitCondition::Time(until),
+        ));
+    }
+    conditions.push(QueuTypeCondition::with_cond(
+        QueueType::Thread(id.into()),
+        WaitCondition::Thread(id.into(), tw_flags),
+    ));
 
-pub fn eventfd() {
+    if w_flags.contains(WaitOptions::NOBLOCK) {
+        todo!()
+    }
+    wait_self(&conditions)
+        .ok_or(SysRetCode::Fail)
+        .map(|_| match task.state() {
+            TaskState::Running | TaskState::Ready => TaskStateChange::WAKEUP,
+            TaskState::Blocking | TaskState::Sleeping => TaskStateChange::BLOCK,
+            TaskState::Zombie => TaskStateChange::EXIT,
+        })
+}
+
+pub fn eventfd() -> SysCallRes<FileDescriptor> {
     todo!()
 }
 

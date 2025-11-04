@@ -1,5 +1,7 @@
 use core::time::Duration;
 
+use tinyos_abi::flags::{TaskStateChange, TaskWaitOptions};
+
 use crate::{
     arch::x86::current_time,
     drivers::keyboard::KEYBOARD_BUFFER,
@@ -13,7 +15,7 @@ use crate::{
 pub enum WaitCondition {
     Time(Duration),
     Keyboard,
-    Thread(TaskID),
+    Thread(TaskID, TaskWaitOptions),
     None,
 }
 
@@ -22,9 +24,19 @@ impl WaitCondition {
         match self {
             Self::Time(t) => *t <= current_time(),
             Self::Keyboard => !KEYBOARD_BUFFER.is_empty(),
-            Self::Thread(id) => tls::task_data()
+            Self::Thread(id, config) => tls::task_data()
                 .get(id)
-                .and_then(|t| Some(t.state() == TaskState::Zombie))
+                .and_then(|t| {
+                    Some(
+                        (config.contains(TaskWaitOptions::W_EXIT)
+                            && t.state() == TaskState::Zombie)
+                            || (config.contains(TaskWaitOptions::W_WAKEUP)
+                                && (t.state() == TaskState::Ready
+                                    || t.state() == TaskState::Running))
+                            || (config.contains(TaskWaitOptions::W_BLOCK)
+                                && t.state() == TaskState::Blocking),
+                    )
+                })
                 .is_none_or(|r| r),
             Self::None => true,
         }

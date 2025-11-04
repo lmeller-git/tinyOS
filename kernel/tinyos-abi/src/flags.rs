@@ -71,5 +71,25 @@ impl Default for UnlinkOptions {
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub struct WaitOptions: u16 {}
+    pub struct WaitOptions: u16 {
+        const NOBLOCK = 1 << 0;
+    }
+}
+
+bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct TaskWaitOptions: u16 {
+        const W_EXIT = 1 << 0;
+        const W_WAKEUP = 1 << 1;
+        const W_BLOCK = 1 << 2;
+    }
+}
+
+bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct TaskStateChange: u16 {
+        const WAKEUP = 1 << 0;
+        const BLOCK = 1 << 1;
+        const EXIT = 1 << 2;
+    }
 }
