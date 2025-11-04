@@ -1,32 +1,35 @@
+use tinyos_abi::{
+    consts::MAX_SYSCALL,
+    flags::{OpenOptions, PageTableFlags},
+    types::{SysCallDispatch, SysRetCode},
+};
+
 use crate::{
-    arch::{context::SysCallCtx, mem::PageTableFlags},
+    arch::context::SysCallCtx,
     eprintln,
-    kernel::{
-        abi::syscalls::funcs::{
-            close,
-            dup,
-            execve,
-            exit,
-            fork,
-            get_pid,
-            kill,
-            machine,
-            mmap,
-            munmap,
-            open,
-            pthread_cancel,
-            pthread_create,
-            pthread_exit,
-            pthread_join,
-            read,
-            seek,
-            serial,
-            spawn,
-            wait,
-            write,
-            yield_now,
-        },
-        fs::OpenOptions,
+    kernel::abi::syscalls::funcs::{
+        close,
+        dup,
+        execve,
+        exit,
+        fork,
+        get_pid,
+        kill,
+        machine,
+        mmap,
+        munmap,
+        open,
+        pthread_cancel,
+        pthread_create,
+        pthread_exit,
+        pthread_join,
+        read,
+        seek,
+        serial,
+        spawn,
+        wait,
+        write,
+        yield_now,
     },
     println,
     serial_println,
@@ -35,37 +38,7 @@ use crate::{
 pub mod funcs;
 pub mod utils;
 
-type SysCallRes<T> = Result<T, SysRetCode>;
-
-#[repr(u64)]
-enum SysCallDispatch {
-    Open = 0,
-    Close = 1,
-    Read = 2,
-    Write = 3,
-    Yield = 4,
-    Exit = 5,
-    Kill = 6,
-    Mmap = 7,
-    Munmap = 8,
-    Fork = 9,
-    Wait = 10,
-    Machine = 11,
-    GetPid = 12,
-    Seek = 13,
-    Dup = 14,
-    Spawn = 15,
-    Dbg = 16,
-    Execve = 17,
-    PThreadCreate = 18,
-    PThreadExit = 19,
-    PThreadCancel = 20,
-    PThreadJoin = 21,
-}
-
 // all syscalls return their first return value in rax (x86_64) and their error value in rdx (x86_64)
-
-const MAX_SYSCALL: u64 = 21;
 
 pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
     let dispatch = args.num();
@@ -141,12 +114,4 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
         args.ret(*r);
         args.ret2(SysRetCode::Success as i64);
     });
-}
-
-#[repr(i64)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SysRetCode {
-    Unknown = -2,
-    Success = 0,
-    Fail = -1,
 }

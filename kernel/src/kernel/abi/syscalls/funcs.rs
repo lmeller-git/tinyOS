@@ -1,22 +1,23 @@
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::{str, sync::atomic::Ordering, time::Duration};
 
+use tinyos_abi::{
+    flags::{OpenOptions, PageTableFlags},
+    types::{FileDescriptor, SysCallRes, SysRetCode},
+};
+
 use crate::{
     arch::{
         interrupt::gdt::get_kernel_selectors,
-        mem::{PageSize, PageTableFlags, Size4KiB, VirtAddr},
+        mem::{PageSize, Size4KiB, VirtAddr},
         x86::current_time,
     },
     drivers::wait_manager::{add_queue, remove_queue, wait_self},
     eprintln,
     kernel::{
-        abi::syscalls::{
-            SysCallRes,
-            SysRetCode,
-            utils::{__sys_yield, valid_ptr},
-        },
-        fd::{FileDescriptor, FileRepr},
-        fs::{self, OpenOptions, Path},
+        abi::syscalls::utils::{__sys_yield, valid_ptr},
+        fd::FileRepr,
+        fs::{self, Path},
         io::Read,
         mem::{
             align_up,
@@ -300,6 +301,12 @@ pub fn wait(duration: u64) -> SysCallRes<()> {
         WaitCondition::Time(Duration::from_millis(duration) + current_time()),
     )];
     wait_self(conditions).ok_or(SysRetCode::Fail)
+}
+
+pub fn wait_pid() {}
+
+pub fn eventfd() {
+    todo!()
 }
 
 pub fn machine() -> SysCallRes<()> {

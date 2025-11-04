@@ -7,6 +7,10 @@ use core::{
 };
 
 use bitflags::bitflags;
+pub use tinyos_abi::{
+    consts::{STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO},
+    types::FileDescriptor,
+};
 
 use crate::{
     arch::x86::current_time,
@@ -17,12 +21,7 @@ use crate::{
     },
 };
 
-pub type FileDescriptor = u32;
 pub type FDMap = BTreeMap<FileDescriptor, Arc<File>>;
-
-pub const STDIN_FILENO: FileDescriptor = 0;
-pub const STDOUT_FILENO: FileDescriptor = 1;
-pub const STDERR_FILENO: FileDescriptor = 2;
 
 pub trait IOCapable: Read + Write {}
 

@@ -8,7 +8,8 @@ build = "build.rs"
 members = [
   "macro-tests",
   "macros",
-  "tiny-os-common"
+  "tiny-os-common",
+  "tinyos-abi"
 ]
 
 [features]
@@ -20,6 +21,7 @@ limine = "0.5"
 x86_64 = "0.15.2"
 os_macros = { path = "macros" }
 tiny_os_common = { path = "./tiny-os-common", features = ["test_run"] }
+tinyos_abi = { path = "./tinyos-abi" }
 lazy_static = { version = "1.5.0", features = ["spin_no_std"] }
 thiserror = { version = "2.0.12", default-features = false }
 spin = "0.10.0"
