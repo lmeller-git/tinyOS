@@ -29,8 +29,8 @@ use crate::{
         serial,
         spawn,
         time,
-        wait,
         wait_pid,
+        waittime,
         write,
         yield_now,
     },
@@ -91,7 +91,7 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
             munmap(args.first() as usize as *mut u8, args.second() as usize).map(|_| 0)
         }
         SysCallDispatch::Fork => fork().map(|r| r as i64),
-        SysCallDispatch::Wait => wait(args.first()).map(|_| 0),
+        SysCallDispatch::WaitTime => waittime(args.first()).map(|_| 0),
         SysCallDispatch::Machine => machine().map(|_| 0),
         SysCallDispatch::GetPid => get_pid().map(|r| r as i64),
         SysCallDispatch::Seek => seek(args.first() as u32, args.second() as usize).map(|_| 0),

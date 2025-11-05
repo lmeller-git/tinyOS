@@ -8,7 +8,6 @@ machine_state - changes machine state (shutdown, reboot ,...) - (TODO) -> TODO
 close - frees a filehandle - (fd: u32) -> ()
 mmap - maps memory into the processes virtual spac, if fd is >= 0 the file opened at fd will be mapped into memory, starting at its offset - (len: usize, ptr: *mut u8, flags: u32, fd: i32) -> *mut u8
 munmap - unmaps memory from the processes virtual space - (ptr: *mut u8, len: usize) -> ()
-wait - blocks until some condition(s) hold - (TODO) -> ()
 getpid - returns id of current process - () -> u64
 seek - sets the offset of a file to offset - (fd: u32, offset: usize) -> ()
 dup - returns a new fd, referring to the same file at fd if new_fd is >= 0, new_fd will refer to old_fd - (old_fd: u32, new_fd: i32) -> u32
@@ -21,4 +20,5 @@ pthread_cancel - kills the specified thrad - (id: u64) -> i64
 pthread_join - waits for the specified thread to finish, or until timeout if timeout is non-negative - (id: u64, timeout: i64) -> i64
 eventfd - create a fd, which can be used to wait for some event - TODO
 waitpid - wait for a change in the target processes state - (id: u64, timeout: u64, w_flags: WaitOptions, tw_flags: TaskWaitFlags) -> TaskStateChange
-Time - returns current system time in milliseconds - () -> u64
+waittime - wait for n millis - (timeout: u64)
+time - returns current system time in milliseconds - () -> u64

@@ -172,11 +172,11 @@ pub fn yield_now() -> SysCallRes<()> {
 }
 
 pub fn exit(status: i64) -> ! {
-    // why do we post an event?????
-    // TODO understand this (i believe this is to notify waiting threads of this threads death)
-    post_event(WaitEvent::new(QueueType::Thread(
-        tls::task_data().current_pid(),
-    )));
+    post_event(WaitEvent::with_data(
+        QueueType::Thread(tls::task_data().current_pid()),
+        TaskStateChange::EXIT.bits() as u64,
+    ));
+
     tls::task_data().kill(&tls::task_data().current_pid(), 0);
     threading::yield_now();
     unreachable!("task did not exit properly");
@@ -301,7 +301,7 @@ pub fn spawn(elf_data: *const u8, len: usize) -> SysCallRes<()> {
     Ok(())
 }
 
-pub fn wait(duration: u64) -> SysCallRes<()> {
+pub fn waittime(duration: u64) -> SysCallRes<()> {
     let conditions = &[QueuTypeCondition::with_cond(
         QueueType::Timer,
         WaitCondition::Time(Duration::from_millis(duration) + current_time()),
@@ -335,13 +335,21 @@ pub fn wait_pid(
     if w_flags.contains(WaitOptions::NOBLOCK) {
         todo!()
     }
-    wait_self(&conditions)
+    let q_type = QueueType::Thread(id.into());
+    add_queue(
+        QueueHandle::from_owned(Box::new(GenericWaitQueue::new()) as Box<dyn WaitQueue>),
+        q_type.clone(),
+    );
+
+    let r = wait_self(&conditions)
         .ok_or(SysRetCode::Fail)
         .map(|_| match task.state() {
             TaskState::Running | TaskState::Ready => TaskStateChange::WAKEUP,
             TaskState::Blocking | TaskState::Sleeping => TaskStateChange::BLOCK,
             TaskState::Zombie => TaskStateChange::EXIT,
-        })
+        });
+    remove_queue(&q_type);
+    r
 }
 
 pub fn eventfd() -> SysCallRes<FileDescriptor> {

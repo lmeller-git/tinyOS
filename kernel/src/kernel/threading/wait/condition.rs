@@ -20,6 +20,7 @@ pub enum WaitCondition {
 }
 
 impl WaitCondition {
+    //TODO add msg: T, where msg is the msg passed in WaitEvent
     pub fn is_given(&self) -> bool {
         match self {
             Self::Time(t) => *t <= current_time(),

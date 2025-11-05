@@ -146,7 +146,7 @@ impl Default for WaitObserver<'_> {
 unsafe impl Send for WaitObserver<'_> {}
 unsafe impl Sync for WaitObserver<'_> {}
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum QueueType {
     Timer,
     KeyBoard,

@@ -161,7 +161,7 @@ impl WaitQueue for GenericWaitQueue {
 
     fn signal(&self) {
         for node in self.q.lock().drain(..) {
-            if tls::task_data().wake(&node.id).is_none() {
+            if node.cond.is_given() && tls::task_data().wake(&node.id).is_none() {
                 eprintln!("could not wake up task with id {}", node.id);
             }
         }
