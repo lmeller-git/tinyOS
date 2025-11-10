@@ -380,8 +380,7 @@ pub fn fork() -> SysCallRes<bool> {
     // - modify the interrupt frame, such that the syscall returns true (1) for the new task in RAX. The old task will receive false (0) in RAX.
     // - add the new task to task data
     // - sysret
-    let current_task = tls::task_data().get_current().ok_or(SysRetCode::Fail)?;
-    Err(SysRetCode::Fail)
+    todo!()
 }
 
 pub fn execve(path: *const u8, len: usize) -> SysCallRes<u64> {
@@ -415,15 +414,23 @@ pub fn execve(path: *const u8, len: usize) -> SysCallRes<u64> {
     Ok(id)
 }
 
-// TODO implement this at some point
+// TODO need ptr to starting function
 pub fn pthread_create() -> SysCallRes<u64> {
-    todo!()
+    let task = unsafe { TaskBuilder::from_addr(VirtAddr::zero()) }
+        .map_err(|_| SysRetCode::Fail)?
+        .like_existing_usr(&*tls::task_data().get_current().ok_or(SysRetCode::Fail)?)
+        .map_err(|_| SysRetCode::Fail)?
+        .build();
+    let tid = task.tid().get_inner();
+    add_built_task(task);
+    Ok(tid)
 }
 
 pub fn pthread_exit() -> ! {
-    todo!()
+    exit(0)
 }
 
+// TODO for these we need to group threads per process in tls::task_data
 pub fn pthread_cancel(id: u64) -> SysCallRes<i64> {
     todo!()
 }

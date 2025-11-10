@@ -14,13 +14,16 @@ use crate::{
         },
     },
     kernel::{
-        mem::paging::{
-            PAGETABLE,
-            TaskPageTable,
-            get_frame_alloc,
-            get_kernel_pagetbl_root,
-            map_region,
-            unmap_region,
+        mem::{
+            align_up,
+            paging::{
+                PAGETABLE,
+                TaskPageTable,
+                get_frame_alloc,
+                get_kernel_pagetbl_root,
+                map_region,
+                unmap_region,
+            },
         },
         threading::{
             ThreadingError,
@@ -30,14 +33,12 @@ use crate::{
     },
 };
 
-const KSTACK_AREA_START: VirtAddr = VirtAddr::new(0xffff_f000_c000_0000); // random location
+pub const KSTACK_AREA_START: VirtAddr = VirtAddr::new(0xffff_f000_c000_0000); // random location
+pub const KSTACK_SIZE: usize = 64 * 1024; // 64 KiB //TODO maybe make this dynamic
+pub const MAX_KSTACKS: usize = 512; // random num (this is also max tasks)
 
-const KSTACK_SIZE: usize = 64 * 1024; // 64 KiB //TODO maybe make this dynamic
-
-const MAX_KSTACKS: usize = 512; // random num (this is also max tasks)
-
-const USER_STACK_START: VirtAddr = VirtAddr::new(0x0000_0000_1000_0000); // random location
-const USER_STACK_SIZE: usize = 1024 * 1000; // 1MiB
+pub const USER_STACK_START: VirtAddr = VirtAddr::new(0x0000_0000_1000_0000); // random location
+pub const USER_STACK_SIZE: usize = 1024 * 1000; // 1MiB
 
 lazy_static! {
     static ref KSTACKS_IN_USAGE: Mutex<[bool; MAX_KSTACKS]> = Mutex::new([false; MAX_KSTACKS]);
@@ -605,14 +606,20 @@ pub fn free_kstack(top: VirtAddr) -> Result<(), ThreadingError> {
     Ok(())
 }
 
-pub fn allocate_userstack<M: Mapper<Size4KiB>>(tbl: &mut M) -> Result<VirtAddr, ThreadingError> {
+/// assuming start is aligned
+pub fn allocate_userstack<M: Mapper<Size4KiB>>(
+    tbl: &mut M,
+    start: VirtAddr,
+) -> Result<VirtAddr, ThreadingError> {
+    assert!(start.is_aligned(Size4KiB::SIZE));
     // all at the same virt addr
     let flags =
         PageTableFlags::WRITABLE | PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE;
 
-    let base = USER_STACK_START.align_up(Size4KiB::SIZE);
+    let base = start;
     let start = (base + Size4KiB::SIZE).align_up(Size4KiB::SIZE);
-    let end = (base + USER_STACK_SIZE as u64).align_up(Size4KiB::SIZE);
+    let length = align_up(USER_STACK_SIZE, Size4KiB::SIZE as usize);
+    let end = base + length as u64;
     {
         map_region(start, (end - start) as usize - 1, flags, tbl)
             .map_err(|_| ThreadingError::StackNotBuilt)?;

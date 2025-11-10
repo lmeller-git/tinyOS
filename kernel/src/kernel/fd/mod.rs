@@ -13,7 +13,7 @@ pub use tinyos_abi::{
 };
 
 use crate::{
-    arch::x86::current_time,
+    arch::{self, x86::current_time},
     eprintln,
     kernel::{
         fs::{FSError, FSErrorKind, NodeType, OpenOptions, Path, PathBuf},
@@ -119,11 +119,44 @@ impl<T: ?Sized> MaybeOwned<T> {
         }
     }
 
+    /// this is not atomic
+    pub fn count(&self) -> usize {
+        match self {
+            Self::Owned(_) => 1,
+            Self::Shared(s) => Arc::strong_count(s),
+        }
+    }
+
+    pub fn make_shared(&mut self) {
+        // TODO figure out how to do thsi without unsafe
+        match self {
+            Self::Owned(o) => {
+                // temporarily put a nullptr as Box<T>
+                let inner = unsafe { core::mem::replace(o, core::mem::zeroed()) };
+                *self = Self::Shared(inner.into());
+            }
+            Self::Shared(_) => {}
+        }
+    }
+
     pub fn try_clone(&self) -> Option<Self> {
         match self {
             Self::Owned(_) => None,
             Self::Shared(t) => Some(Self::Shared(t.clone())),
         }
+    }
+
+    pub fn try_mut(&mut self) -> Option<&mut T> {
+        match self {
+            Self::Owned(owned) => Some(owned),
+            Self::Shared(_) => None,
+        }
+    }
+}
+
+impl<T> From<T> for MaybeOwned<T> {
+    fn from(value: T) -> Self {
+        Self::Owned(value.into())
     }
 }
 

@@ -10,8 +10,11 @@ use core::{
 use super::{ProcessEntry, ThreadingError};
 use crate::{
     arch::{
+        self,
         context::{
             KTaskInfo,
+            USER_STACK_SIZE,
+            USER_STACK_START,
             UsrTaskInfo,
             allocate_kstack,
             allocate_userstack,
@@ -21,13 +24,16 @@ use crate::{
             unmap_ustack_mappings,
         },
         interrupt,
-        mem::VirtAddr,
+        mem::{PageSize, Size4KiB, VirtAddr},
     },
     kernel::{
         elf::apply,
-        fd::{FDMap, File, FileDescriptor, STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO},
+        fd::{FDMap, File, FileDescriptor, MaybeOwned, STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO},
         fs::{self, Path},
-        mem::paging::{APageTable, PAGETABLE, TaskPageTable, create_new_pagedir},
+        mem::{
+            align_up,
+            paging::{APageTable, PAGETABLE, TaskPageTable, create_new_pagedir},
+        },
         threading::{tls, trampoline::TaskExitInfo},
     },
     sync::locks::{Mutex, RwLock},
@@ -37,6 +43,7 @@ pub const USER_MMAP_START: usize = 0x9000_000_0000;
 
 pub trait TaskRepr: Debug {
     fn pid(&self) -> TaskID;
+    fn tid(&self) -> TaskID;
     fn krsp(&self) -> VirtAddr;
     fn set_krsp(&self, addr: &VirtAddr);
     fn privilege(&self) -> PrivilegeLevel;
@@ -54,6 +61,9 @@ pub trait TaskRepr: Debug {
     fn add_next_file(&self, f: impl Into<Arc<File>>) -> FileDescriptor;
     fn next_fd(&self) -> FileDescriptor;
     fn next_addr(&self) -> &AtomicUsize;
+    fn ensure_ready(&mut self) -> Result<(), ThreadingError> {
+        Ok(())
+    }
 }
 
 #[repr(u8)]
@@ -65,33 +75,40 @@ pub enum PrivilegeLevel {
     Unset,
 }
 
+// a task represents a single thread in some process (where this thread may be the only one).
+// Core contains data shared across threads in a process
+// metadata contains data owned by each thread
+
 #[derive(Debug)]
 pub struct Task {
     pub metadata: TaskMetadata,
-    pub core: TaskCore,
+    pub core: MaybeOwned<TaskCore>,
     _private: PhantomData<()>,
 }
 
 #[derive(Debug)]
 pub struct TaskCore {
-    pub krsp: AtomicU64,
     pub pagedir: UnsafeCell<APageTable<'static>>,
     pub heap_size: AtomicUsize,
-    pub exit_info: Pin<Box<TaskExitInfo>>,
-    pub state: AtomicU8,
-    pub privilege: PrivilegeLevel,
     pub pid: TaskID,
-    pub kernel_stack_top: VirtAddr,
+    pub fd_table: RwLock<FDMap>,
+    pub next_free_addr: AtomicUsize,
+    pub name: Option<String>,
+    pub parent: Option<TaskID>,
     _private: PhantomData<()>,
 }
 
 #[derive(Debug)]
 pub struct TaskMetadata {
-    pub name: Option<String>,
-    pub parent: Option<TaskID>,
-    pub fd_table: RwLock<FDMap>,
     pub state_data: Mutex<TaskStateData>,
-    pub next_free_addr: AtomicUsize,
+    pub state: AtomicU8,
+    pub exit_info: Pin<Box<TaskExitInfo>>,
+    pub tid: TaskID,
+    pub user_stack_top: Option<VirtAddr>,
+    pub ursp: Option<AtomicU64>,
+    pub krsp: AtomicU64,
+    pub kernel_stack_top: VirtAddr,
+    pub privilege: PrivilegeLevel,
     _private: PhantomData<()>,
 }
 
@@ -99,7 +116,7 @@ impl Task {
     fn new() -> Self {
         Self {
             metadata: TaskMetadata::new(),
-            core: TaskCore::new(),
+            core: TaskCore::new().into(),
             _private: PhantomData,
         }
     }
@@ -108,27 +125,13 @@ impl Task {
 impl TaskCore {
     fn new() -> Self {
         Self {
-            krsp: 0.into(),
+            name: None,
+            parent: tls::task_data().get_current().map(|current| current.pid()),
             pid: get_pid(),
             pagedir: APageTable::global().into(),
             heap_size: 0.into(),
-            exit_info: Box::pin(TaskExitInfo::default()),
-            state: (TaskState::default() as u8).into(),
-            privilege: PrivilegeLevel::default(),
-            kernel_stack_top: VirtAddr::zero(),
-            _private: PhantomData,
-        }
-    }
-}
-
-impl TaskMetadata {
-    fn new() -> Self {
-        Self {
-            fd_table: RwLock::default(),
-            name: None,
-            parent: None,
-            state_data: TaskStateData::default().into(),
             next_free_addr: AtomicUsize::new(0),
+            fd_table: RwLock::default(),
             _private: PhantomData,
         }
     }
@@ -138,9 +141,31 @@ impl TaskMetadata {
         self
     }
 
+    fn with_next_free(self, addr: usize) -> Self {
+        self.next_free_addr.store(addr, Ordering::Relaxed);
+        self
+    }
+
     fn with_name(mut self, name: String) -> Self {
         self.name.replace(name);
         self
+    }
+}
+
+impl TaskMetadata {
+    fn new() -> Self {
+        Self {
+            state_data: TaskStateData::default().into(),
+            exit_info: Box::pin(TaskExitInfo::default()),
+            state: (TaskState::default() as u8).into(),
+            privilege: PrivilegeLevel::default(),
+            tid: 0.into(),
+            krsp: 0.into(),
+            kernel_stack_top: VirtAddr::zero(),
+            user_stack_top: None,
+            ursp: None,
+            _private: PhantomData,
+        }
     }
 
     fn with_state(mut self, data: TaskStateData) -> Self {
@@ -148,9 +173,11 @@ impl TaskMetadata {
         self
     }
 
-    fn with_next_fre(self, addr: usize) -> Self {
-        self.next_free_addr.store(addr, Ordering::Relaxed);
-        self
+    fn next_tid(&self) -> TaskID {
+        // tids start at 0
+        static CURRENT_TID: AtomicU64 = AtomicU64::new(0);
+        let current = CURRENT_TID.fetch_add(1, Ordering::Relaxed);
+        TaskID { inner: current }
     }
 }
 
@@ -160,15 +187,15 @@ impl TaskRepr for Task {
     }
 
     fn krsp(&self) -> VirtAddr {
-        VirtAddr::new(self.core.krsp.load(Ordering::Relaxed))
+        VirtAddr::new(self.metadata.krsp.load(Ordering::Relaxed))
     }
 
     fn set_krsp(&self, addr: &VirtAddr) {
-        self.core.krsp.store(addr.as_u64(), Ordering::Relaxed);
+        self.metadata.krsp.store(addr.as_u64(), Ordering::Relaxed);
     }
 
     fn privilege(&self) -> PrivilegeLevel {
-        self.core.privilege
+        self.metadata.privilege
     }
 
     // SAFTEY: This operation is safe IFF APageTable ownes ONLY locked types / shared refs.
@@ -182,11 +209,11 @@ impl TaskRepr for Task {
     }
 
     fn state(&self) -> TaskState {
-        self.core.state.load(Ordering::Acquire).into()
+        self.metadata.state.load(Ordering::Acquire).into()
     }
 
     fn set_state(&self, state: TaskState) {
-        self.core.state.store(state as u8, Ordering::Release);
+        self.metadata.state.store(state as u8, Ordering::Release);
     }
 
     fn state_data(&self) -> &Mutex<TaskStateData> {
@@ -194,28 +221,28 @@ impl TaskRepr for Task {
     }
 
     fn name(&self) -> Option<&str> {
-        self.metadata.name.as_deref()
+        self.core.name.as_deref()
     }
 
     fn exit_info(&self) -> &TaskExitInfo {
-        self.core.exit_info.as_ref().get_ref()
+        self.metadata.exit_info.as_ref().get_ref()
     }
 
     fn kstack_top(&self) -> &VirtAddr {
-        &self.core.kernel_stack_top
+        &self.metadata.kernel_stack_top
     }
 
     fn fd(&self, descriptor: FileDescriptor) -> Option<Arc<File>> {
-        self.metadata.fd_table.read().get(&descriptor).cloned()
+        self.core.fd_table.read().get(&descriptor).cloned()
     }
 
     /// inserts a K, V pair into fd table. If K was present, old V is returned in Some
     fn add_fd(&self, descriptor: FileDescriptor, f: impl Into<Arc<File>>) -> Option<Arc<File>> {
-        self.metadata.fd_table.write().insert(descriptor, f.into())
+        self.core.fd_table.write().insert(descriptor, f.into())
     }
 
     fn remove_fd(&self, descriptor: FileDescriptor) -> Option<Arc<File>> {
-        self.metadata.fd_table.write().remove(&(descriptor as u32))
+        self.core.fd_table.write().remove(&(descriptor as u32))
     }
 
     fn add_next_file(&self, f: impl Into<Arc<File>>) -> FileDescriptor {
@@ -225,7 +252,7 @@ impl TaskRepr for Task {
     }
 
     fn next_fd(&self) -> FileDescriptor {
-        self.metadata
+        self.core
             .fd_table
             .read()
             .last_key_value()
@@ -234,7 +261,16 @@ impl TaskRepr for Task {
     }
 
     fn next_addr(&self) -> &AtomicUsize {
-        &self.metadata.next_free_addr
+        &self.core.next_free_addr
+    }
+
+    fn ensure_ready(&mut self) -> Result<(), ThreadingError> {
+        self.core.make_shared();
+        Ok(())
+    }
+
+    fn tid(&self) -> TaskID {
+        self.metadata.tid
     }
 }
 
@@ -412,12 +448,12 @@ where
 
 impl<S> TaskBuilder<Task, S> {
     pub fn with_name(mut self, name: String) -> TaskBuilder<Task, S> {
-        self.inner.metadata.name.replace(name);
+        self.inner.core.try_mut().unwrap().name.replace(name);
         self
     }
 
     pub fn with_exit_info(mut self, exit_info: TaskExitInfo) -> TaskBuilder<Task, S> {
-        *self.inner.core.exit_info = exit_info;
+        *self.inner.metadata.exit_info = exit_info;
         self
     }
 
@@ -431,7 +467,7 @@ impl<S> TaskBuilder<Task, S> {
         if clone_these && let Some(current) = tls::task_data().get_current() {
             self.override_files(
                 current
-                    .metadata
+                    .core
                     .fd_table
                     .read()
                     .iter()
@@ -466,7 +502,7 @@ impl<S> TaskBuilder<Task, S> {
         self,
         files: impl Iterator<Item = (FileDescriptor, Arc<File>)>,
     ) -> TaskBuilder<Task, S> {
-        let mut table = self.inner.metadata.fd_table.write();
+        let mut table = self.inner.core.fd_table.write();
         for (fd, f) in files {
             table
                 .entry(fd)
@@ -509,32 +545,20 @@ impl TaskBuilder<Task, Uninit> {
             _marker: Init::new(bytes),
         })
     }
-
-    pub fn fom_existing<'a>(
-        task: &Task,
-        addr: VirtAddr,
-    ) -> Result<TaskBuilder<Task, Init<'a>>, ThreadingError> {
-        Ok(TaskBuilder::<Task, Init> {
-            inner: Task::new(),
-            entry: addr,
-            data: TaskData::default(),
-            _marker: Init::default(),
-        })
-    }
 }
 
 impl TaskBuilder<Task, Init<'_>> {
     pub fn as_kernel(mut self) -> Result<TaskBuilder<Task, Ready<KTaskInfo>>, ThreadingError> {
         let stack_top = allocate_kstack()?;
         self.inner
-            .core
+            .metadata
             .krsp
             .store(stack_top.as_u64(), Ordering::Relaxed);
-        self.inner.core.kernel_stack_top = stack_top;
-        self.inner.core.privilege = PrivilegeLevel::Kernel;
+        self.inner.metadata.kernel_stack_top = stack_top;
+        self.inner.metadata.privilege = PrivilegeLevel::Kernel;
         let info = KTaskInfo::new(
             self.entry,
-            VirtAddr::new(self.inner.core.krsp.load(Ordering::Relaxed)),
+            VirtAddr::new(self.inner.metadata.krsp.load(Ordering::Relaxed)),
         );
         Ok(TaskBuilder {
             inner: self.inner,
@@ -551,16 +575,23 @@ impl TaskBuilder<Task, Init<'_>> {
         let tbl = create_new_pagedir::<'a, '_>().map_err(|e| ThreadingError::PageDirNotBuilt)?;
         let mut tbl = APageTable::owned(tbl.into());
 
-        let usr_end = allocate_userstack(&mut tbl)?;
+        let usr_end = allocate_userstack(&mut tbl, USER_STACK_START.align_up(Size4KiB::SIZE))?;
 
         self.inner
-            .core
+            .metadata
             .krsp
             .store(kstack.as_u64(), Ordering::Relaxed);
-        self.inner.core.kernel_stack_top = kstack;
-        self.inner.core.privilege = PrivilegeLevel::User;
+        self.inner.metadata.kernel_stack_top = kstack;
+
+        self.inner.metadata.user_stack_top.replace(usr_end);
         self.inner
             .metadata
+            .ursp
+            .replace(AtomicU64::new(usr_end.as_u64()));
+
+        self.inner.metadata.privilege = PrivilegeLevel::User;
+        self.inner
+            .core
             .next_free_addr
             .store(USER_MMAP_START, Ordering::Relaxed);
 
@@ -574,7 +605,7 @@ impl TaskBuilder<Task, Init<'_>> {
 
         let info = UsrTaskInfo::new(
             self.entry,
-            VirtAddr::new(self.inner.core.krsp.load(Ordering::Relaxed)),
+            VirtAddr::new(self.inner.metadata.krsp.load(Ordering::Relaxed)),
             usr_end,
             tbl.try_get_owned().unwrap().lock().root.start_address(),
         );
@@ -586,7 +617,7 @@ impl TaskBuilder<Task, Init<'_>> {
         .into();
 
         unsafe {
-            self.inner.core.pagedir.replace(tbl);
+            self.inner.core.try_mut().unwrap().pagedir.replace(tbl);
         }
 
         Ok(TaskBuilder {
@@ -601,54 +632,64 @@ impl TaskBuilder<Task, Init<'_>> {
         mut self,
         task: &Task,
     ) -> Result<TaskBuilder<Task, Ready<ExtendedUsrTaskInfo<'a>>>, ThreadingError> {
-        todo!()
-        // let kstack = allocate_kstack()?;
-        // let mut tbl = task.pagedir().clone();
+        let core = task
+            .core
+            .try_clone()
+            .ok_or(ThreadingError::Unknown("The tasks core is owned".into()))?;
+        self.inner.core = core;
 
-        // // let usr_end = allocate_userstack(&mut tbl)?;
+        let tid = task.metadata.next_tid();
+        self.inner.metadata.tid = tid;
 
-        // self.inner
-        //     .core
-        //     .krsp
-        //     .store(kstack.as_u64(), Ordering::Relaxed);
-        // self.inner.core.kernel_stack_top = kstack;
-        // self.inner.core.privilege = PrivilegeLevel::User;
-        // self.inner
-        //     .metadata
-        //     .next_free_addr
-        //     .store(task.next_addr().load(Ordering::Relaxed), Ordering::Relaxed);
+        let kstack = allocate_kstack()?;
+        let tbl = self.inner.pagedir();
 
-        // let info = UsrTaskInfo::new(
-        //     self.entry,
-        //     VirtAddr::new(self.inner.core.krsp.load(Ordering::Relaxed)),
-        //     usr_end,
-        //     tbl.root.start_address(),
-        // );
+        let usr_end = allocate_userstack(
+            tbl,
+            USER_STACK_START.align_up(Size4KiB::SIZE)
+                + (tid.get_inner() * align_up(USER_STACK_SIZE, Size4KiB::SIZE as usize) as u64),
+        )?;
 
-        // let _marker = ExtendedUsrTaskInfo {
-        //     info,
-        //     _phatom: PhantomData,
-        // }
-        // .into();
+        self.inner.metadata.krsp = AtomicU64::new(kstack.as_u64());
+        self.inner.metadata.kernel_stack_top = kstack;
 
-        // unsafe {
-        //     self.inner
-        //         .core
-        //         .pagedir
-        //         .replace(APageTable::owned(tbl.into()));
-        // }
+        self.inner.metadata.user_stack_top.replace(usr_end);
+        self.inner
+            .metadata
+            .ursp
+            .replace(AtomicU64::new(usr_end.as_u64()));
 
-        // Ok(TaskBuilder {
-        //     inner: self.inner,
-        //     entry: self.entry,
-        //     data: self.data,
-        //     _marker,
-        // })
+        let info = UsrTaskInfo::new(
+            self.entry,
+            kstack,
+            usr_end,
+            tbl.try_get_owned()
+                .ok_or(ThreadingError::Unknown(
+                    "Pagetable not owned taskTable".into(),
+                ))?
+                .lock()
+                .root
+                .start_address(),
+        );
+
+        let _marker = ExtendedUsrTaskInfo {
+            info,
+            _phatom: PhantomData,
+        }
+        .into();
+
+        Ok(TaskBuilder {
+            inner: self.inner,
+            entry: self.entry,
+            data: self.data,
+            _marker,
+        })
     }
 }
 
 impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
-    pub fn build(self) -> T {
+    pub fn build(mut self) -> T {
+        // TODO return result
         unsafe {
             interrupt::disable();
         }
@@ -665,6 +706,11 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
         }
 
         self.inner.set_krsp(&next_top);
+        // transmute core into a shared ptr, in order to
+        // a) make fields immutable
+        // b) allow threads with same core
+        // After this point no exculsive refs to task are possible anyways
+        self.inner.ensure_ready().unwrap();
         self.inner
     }
 }
