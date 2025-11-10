@@ -15,6 +15,7 @@ use crate::{
         exit,
         fork,
         get_pid,
+        get_tid,
         kill,
         machine,
         mmap,
@@ -105,7 +106,9 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
         SysCallDispatch::Execve => {
             execve(args.first() as *const u8, args.second() as usize).map(|r| r as i64)
         }
-        SysCallDispatch::PThreadCreate => pthread_create().map(|r| r as i64),
+        SysCallDispatch::PThreadCreate => {
+            pthread_create(args.first() as *const (), args.second() as *const ()).map(|r| r as i64)
+        }
         SysCallDispatch::PThreadExit => pthread_exit(),
         SysCallDispatch::PThreadCancel => pthread_cancel(args.first()),
         SysCallDispatch::PThreadJoin => pthread_join(args.first(), args.second() as i64),
@@ -118,6 +121,7 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
         .map(|r| r.bits() as i64),
         SysCallDispatch::EventFD => eventfd().map(|r| r as i64),
         SysCallDispatch::Time => time().map(|r| r as i64),
+        SysCallDispatch::GetTid => get_tid().map(|r| r as i64),
     };
 
     // in case of err we return the error value in ret2 and do not touch ret1

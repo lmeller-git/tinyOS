@@ -25,6 +25,7 @@ pub enum SysCallDispatch {
     WaitPID = 22,
     EventFD = 23,
     Time = 24,
+    GetTid = 25,
 }
 
 #[repr(i64)]

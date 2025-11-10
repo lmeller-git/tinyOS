@@ -12,6 +12,7 @@ use crate::{
         mem::{PageSize, Size4KiB, VirtAddr},
         x86::current_time,
     },
+    args,
     drivers::wait_manager::{add_queue, remove_queue, wait_self},
     eprintln,
     kernel::{
@@ -414,12 +415,15 @@ pub fn execve(path: *const u8, len: usize) -> SysCallRes<u64> {
     Ok(id)
 }
 
-// TODO need ptr to starting function
-pub fn pthread_create() -> SysCallRes<u64> {
-    let task = unsafe { TaskBuilder::from_addr(VirtAddr::zero()) }
+pub fn pthread_create(start_rotine: *const (), args: *const ()) -> SysCallRes<u64> {
+    if !valid_ptr(start_rotine, 0) || !valid_ptr(args, 0) {
+        return Err(SysRetCode::Fail);
+    }
+    let task = unsafe { TaskBuilder::from_addr(VirtAddr::from_ptr(start_rotine)) }
         .map_err(|_| SysRetCode::Fail)?
         .like_existing_usr(&*tls::task_data().get_current().ok_or(SysRetCode::Fail)?)
         .map_err(|_| SysRetCode::Fail)?
+        .with_args(args!(args))
         .build();
     let tid = task.tid().get_inner();
     add_built_task(task);
@@ -437,6 +441,13 @@ pub fn pthread_cancel(id: u64) -> SysCallRes<i64> {
 
 pub fn pthread_join(id: u64, timeout: i64) -> SysCallRes<i64> {
     todo!()
+}
+
+pub fn get_tid() -> SysCallRes<u64> {
+    tls::task_data()
+        .get_current()
+        .map(|t| t.tid().get_inner())
+        .ok_or(SysRetCode::Fail)
 }
 
 pub fn time() -> SysCallRes<u64> {
