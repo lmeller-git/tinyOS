@@ -44,7 +44,7 @@ impl Scheduler for LazyRoundRobin {
             queue.clear();
             for (id, task) in table.iter() {
                 if task.state() == TaskState::Ready || task.state() == TaskState::Running {
-                    queue.push_back(task.pid());
+                    queue.push_back(task.tid());
                 }
             }
         })

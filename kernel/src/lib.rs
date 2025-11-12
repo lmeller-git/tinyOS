@@ -151,7 +151,7 @@ extern "C" fn kernel_test_runner() -> ProcessReturn {
             if now - start_time >= MAX_TEST_TIME {
                 arch::interrupt::without_interrupts(|| {
                     print!("\x1b[31m[TASK TIMEOUT] \x1b[0m");
-                    tls::task_data().kill(&handle.get_task().unwrap().pid(), 1);
+                    tls::task_data().kill(&handle.get_task().unwrap().tid(), 1);
                 })
             } else {
                 threading::yield_now();

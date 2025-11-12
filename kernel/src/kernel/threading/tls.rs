@@ -1,39 +1,94 @@
-use alloc::collections::{btree_map::BTreeMap, vec_deque::VecDeque};
+use alloc::{
+    collections::{btree_map::BTreeMap, vec_deque::VecDeque},
+    vec::Vec,
+};
 use core::{
     fmt::Debug,
     sync::atomic::{AtomicU64, Ordering},
 };
 
 use conquer_once::spin::OnceCell;
+use hashbrown::HashMap;
 
 use crate::{
     kernel::threading::{
         schedule::{GlobalTaskPtr, Scheduler},
-        task::{ExitInfo, TaskID, TaskRepr, TaskState, TaskStateData},
+        task::{ExitInfo, ProcessGroupID, ProcessID, TaskID, TaskRepr, TaskState, TaskStateData},
     },
     sync::locks::{Mutex, RwLock},
 };
 
 static GLOBAL_TASK_MANAGER: OnceCell<TaskManager> = OnceCell::uninit();
 
+// TODO:
+// we want process groupes -> process -> threads
+// a single session is assumed, thus we do not provide session api
+// one process group is foreground and connected to the controlling tty
+// the ID of a thread is ProcessGroupID - ProcessID - ThreadID
+// all threads are cleaned up once a process exits
+// all members of a process group are sent HUP + CONT if it becomes orphaned (ie it leader exits)
+// TODO this also requires an implementation of signals + signal hooks
+// TODO we also need some form of a controlling tty
+// --> could store in a HashMap of Hash(PGID, PID, TID), with current being the hash
+// Either:
+// store only Hash + (intrusive?) tree of processes and walk on query
+// or:
+// store Hashmap and build process data on the fly if queried / store in additional tree
+
+#[derive(Default, Debug)]
+struct ProcessGroup {
+    members: BTreeMap<ProcessID, Process>,
+    leader: Option<ProcessID>,
+}
+
+impl ProcessGroup {
+    fn new(id: ProcessID, leader: Process) -> Self {
+        let mut members = BTreeMap::new();
+        members.insert(id, leader);
+        Self {
+            members,
+            leader: Some(id),
+        }
+    }
+
+    fn add(&mut self, id: ProcessID, process: Process) -> Option<Process> {
+        self.members.insert(id, process)
+    }
+}
+
+#[derive(Default, Debug)]
+struct Process {
+    threads: BTreeMap<TaskID, GlobalTaskPtr>,
+}
+
+impl Process {
+    fn new(leader: GlobalTaskPtr) -> Self {
+        let mut threads = BTreeMap::new();
+        threads.insert(leader.tid(), leader);
+        Self { threads }
+    }
+}
+
 #[derive(Debug)]
 pub struct TaskManager {
-    tasks: RwLock<BTreeMap<TaskID, GlobalTaskPtr>>,
-    current_running: AtomicU64, // TaskID
+    current_running: AtomicU64, // TaskID of the curently active thread
+    lut: RwLock<HashMap<TaskID, GlobalTaskPtr>>, // LUT for thread id --> thread
+    tree: RwLock<BTreeMap<ProcessGroupID, ProcessGroup>>,
     zombies: Mutex<VecDeque<TaskID>>,
 }
 
 impl TaskManager {
     fn new() -> Self {
         Self {
-            tasks: RwLock::new(BTreeMap::new()),
             current_running: TaskID::default().get_inner().into(),
-            zombies: Mutex::new(VecDeque::new()),
+            lut: RwLock::default(),
+            tree: RwLock::default(),
+            zombies: Mutex::default(),
         }
     }
 
     pub fn get(&self, task: &TaskID) -> Option<GlobalTaskPtr> {
-        self.tasks.read().get(task).cloned()
+        self.lut.read().get(task).cloned()
     }
 
     pub fn get_current(&self) -> Option<GlobalTaskPtr> {
@@ -41,7 +96,7 @@ impl TaskManager {
     }
 
     pub fn try_get(&self, task: &TaskID) -> Option<GlobalTaskPtr> {
-        self.tasks.try_read()?.get(task).cloned()
+        self.lut.try_read()?.get(task).cloned()
     }
 
     pub fn try_get_current(&self) -> Option<GlobalTaskPtr> {
@@ -59,16 +114,20 @@ impl TaskManager {
 
     pub fn add(&self, task: GlobalTaskPtr) -> Option<GlobalTaskPtr> {
         let pid = task.pid();
-        self.tasks.write().insert(pid, task)
-    }
+        _ = self
+            .tree
+            .write()
+            .entry(task.pgrid())
+            .and_modify(|entry| {
+                _ = entry.add(pid, Process::new(task.clone()));
+            })
+            .or_insert(ProcessGroup::new(pid, Process::new(task.clone())));
 
-    pub fn try_add(&self, task: GlobalTaskPtr) -> Option<GlobalTaskPtr> {
-        let pid = task.pid();
-        self.tasks.try_write()?.insert(pid, task)
+        self.lut.write().insert(task.tid(), task)
     }
 
     pub fn cleanup(&self) {
-        let tasks = self.tasks.read();
+        let tasks = self.lut.read();
         for (id, task) in tasks.iter() {
             if task.state() == TaskState::Zombie {
                 self.zombies.lock().push_back(*id);
@@ -78,7 +137,7 @@ impl TaskManager {
         drop(tasks);
         // cleanup zombies and remove them from self.tasks
         while let Some(zombie) = self.zombies.lock().pop_front() {
-            let Some(task) = self.tasks.write().remove(&zombie) else {
+            let Some(task) = self.lut.write().remove(&zombie) else {
                 continue;
             };
             cleanup_task(task);
@@ -88,24 +147,14 @@ impl TaskManager {
     pub fn update(&self, task: &GlobalTaskPtr) {
         match task.state() {
             TaskState::Zombie => {
-                self.zombies.lock().push_back(task.pid());
+                self.zombies.lock().push_back(task.tid());
             }
             _ => _ = self.add(task.clone()),
         }
     }
 
-    pub fn try_update(&self, task: &GlobalTaskPtr) -> Option<()> {
-        match task.state() {
-            TaskState::Zombie => {
-                self.zombies.try_lock()?.push_back(task.pid());
-            }
-            _ => _ = self.try_add(task.clone())?,
-        }
-        Some(())
-    }
-
-    pub fn get_table(&self) -> &RwLock<BTreeMap<TaskID, GlobalTaskPtr>> {
-        &self.tasks
+    pub fn get_table(&self) -> &RwLock<HashMap<TaskID, GlobalTaskPtr>> {
+        &self.lut
     }
 
     pub fn kill(&self, id: &TaskID, signal: i32) -> Option<()> {

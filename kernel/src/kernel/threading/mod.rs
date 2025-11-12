@@ -92,14 +92,14 @@ impl<R> JoinHandle<R> {
         {
             wait_manager::add_queue(
                 QueueHandle::from_owned(Box::new(GenericWaitQueue::new())),
-                QueueType::Thread(t.pid()),
+                QueueType::Thread(t.tid()),
             );
         }
 
         let wait_conds = &[QueuTypeCondition::with_cond(
-            QueueType::Thread(self.task.as_ref().map(|t| t.pid()).unwrap_or_default()),
+            QueueType::Thread(self.task.as_ref().map(|t| t.tid()).unwrap_or_default()),
             WaitCondition::Thread(
-                self.task.as_ref().map(|t| t.pid()).unwrap_or_default(),
+                self.task.as_ref().map(|t| t.tid()).unwrap_or_default(),
                 TaskWaitOptions::W_EXIT,
             ),
         )];
@@ -110,7 +110,7 @@ impl<R> JoinHandle<R> {
         }
 
         if let Some(t) = &self.task {
-            wait_manager::remove_queue(&QueueType::Thread(t.pid()));
+            wait_manager::remove_queue(&QueueType::Thread(t.tid()));
         }
 
         let r = self.inner.get_return().map_err(|e| {

@@ -389,34 +389,22 @@ pub fn execve(path: *const u8, len: usize) -> SysCallRes<u64> {
         return Err(SysRetCode::Fail);
     }
     let path = unsafe { str::from_raw_parts(path, len) };
-    serial_println!("called execve on {}", path);
 
     let bin = fs::open(Path::new(path), OpenOptions::READ).map_err(|_| SysRetCode::Fail)?;
     let mut buf = Vec::new();
     let bytes = bin.read_to_end(&mut buf, 0).map_err(|_| SysRetCode::Fail)?;
-    serial_println!("the file exists. read {} bytes", bytes);
     let current = tls::task_data().get_current().ok_or(SysRetCode::Fail)?;
     let mut new = TaskBuilder::from_bytes(&buf[..bytes])
         .map_err(|_| SysRetCode::Fail)?
-        .with_default_files(false)
-        // .override_files(
-        //     current
-        //         .metadata
-        //         .fd_table
-        //         .read()
-        //         .iter()
-        //         .map(|(k, f)| (*k, f.clone())),
-        // )
-        ;
-    let new = new.as_usr().unwrap().build(); //.map_err(|_| SysRetCode::Fail)?.build();
-    let id = new.pid().get_inner();
+        .with_default_files(true);
+    let new = new.as_usr().map_err(|_| SysRetCode::Fail)?.build();
+    let id = new.tid().get_inner();
     add_built_task(new);
-    serial_println!("the task was spawned");
     Ok(id)
 }
 
 pub fn pthread_create(start_rotine: *const (), args: *const ()) -> SysCallRes<u64> {
-    if !valid_ptr(start_rotine, 0) || !valid_ptr(args, 0) {
+    if !valid_ptr(start_rotine, 0) {
         return Err(SysRetCode::Fail);
     }
     let task = unsafe { TaskBuilder::from_addr(VirtAddr::from_ptr(start_rotine)) }
@@ -441,6 +429,41 @@ pub fn pthread_cancel(id: u64) -> SysCallRes<i64> {
 
 pub fn pthread_join(id: u64, timeout: i64) -> SysCallRes<i64> {
     todo!()
+    // let task = tls::task_data().get(&id.into()).ok_or(SysRetCode::Fail)?;
+    //     if timeout == 0 {
+    //         return Ok(TaskStateChange::empty());
+    //     }
+    //     let mut conditions = Vec::new();
+    //     if timeout > 0 {
+    //         let until = Duration::from_millis(timeout as u64) + current_time();
+    //         conditions.push(QueuTypeCondition::with_cond(
+    //             QueueType::Timer,
+    //             WaitCondition::Time(until),
+    //         ));
+    //     }
+    //     conditions.push(QueuTypeCondition::with_cond(
+    //         QueueType::Thread(id.into()),
+    //         WaitCondition::Thread(id.into(), tw_flags),
+    //     ));
+
+    //     if w_flags.contains(WaitOptions::NOBLOCK) {
+    //         todo!()
+    //     }
+    //     let q_type = QueueType::Thread(id.into());
+    //     add_queue(
+    //         QueueHandle::from_owned(Box::new(GenericWaitQueue::new()) as Box<dyn WaitQueue>),
+    //         q_type.clone(),
+    //     );
+
+    //     let r = wait_self(&conditions)
+    //         .ok_or(SysRetCode::Fail)
+    //         .map(|_| match task.state() {
+    //             TaskState::Running | TaskState::Ready => TaskStateChange::WAKEUP,
+    //             TaskState::Blocking | TaskState::Sleeping => TaskStateChange::BLOCK,
+    //             TaskState::Zombie => TaskStateChange::EXIT,
+    //         });
+    //     remove_queue(&q_type);
+    //     r
 }
 
 pub fn get_tid() -> SysCallRes<u64> {

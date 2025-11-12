@@ -119,7 +119,7 @@ pub unsafe extern "C" fn context_switch_local(rsp: u64) {
 }
 
 pub fn add_task_ptr__(ptr: GlobalTaskPtr) {
-    get_scheduler().add_task(ptr.pid());
+    get_scheduler().add_task(ptr.tid());
     tls::task_data().add(ptr);
 }
 

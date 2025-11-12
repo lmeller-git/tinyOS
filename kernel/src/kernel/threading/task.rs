@@ -42,8 +42,9 @@ use crate::{
 pub const USER_MMAP_START: usize = 0x9000_000_0000;
 
 pub trait TaskRepr: Debug {
-    fn pid(&self) -> TaskID;
     fn tid(&self) -> TaskID;
+    fn pgrid(&self) -> ProcessGroupID;
+    fn pid(&self) -> ProcessID;
     fn krsp(&self) -> VirtAddr;
     fn set_krsp(&self, addr: &VirtAddr);
     fn privilege(&self) -> PrivilegeLevel;
@@ -78,19 +79,20 @@ pub enum PrivilegeLevel {
 // a task represents a single thread in some process (where this thread may be the only one).
 // Core contains data shared across threads in a process
 // metadata contains data owned by each thread
+// TaskID > 0 is globally unique and refers to a specific thread, which existed at some point
 
 #[derive(Debug)]
 pub struct Task {
     pub metadata: TaskMetadata,
     pub core: MaybeOwned<TaskCore>,
-    _private: PhantomData<()>,
 }
 
 #[derive(Debug)]
 pub struct TaskCore {
     pub pagedir: UnsafeCell<APageTable<'static>>,
     pub heap_size: AtomicUsize,
-    pub pid: TaskID,
+    pub pid: ProcessID,
+    pub pgrid: ProcessGroupID,
     pub fd_table: RwLock<FDMap>,
     pub next_free_addr: AtomicUsize,
     pub name: Option<String>,
@@ -117,7 +119,6 @@ impl Task {
         Self {
             metadata: TaskMetadata::new(),
             core: TaskCore::new().into(),
-            _private: PhantomData,
         }
     }
 }
@@ -126,8 +127,9 @@ impl TaskCore {
     fn new() -> Self {
         Self {
             name: None,
-            parent: tls::task_data().get_current().map(|current| current.pid()),
-            pid: get_pid(),
+            parent: tls::task_data().get_current().map(|current| current.tid()),
+            pid: ProcessID::default(),
+            pgrid: ProcessGroupID::default(),
             pagedir: APageTable::global().into(),
             heap_size: 0.into(),
             next_free_addr: AtomicUsize::new(0),
@@ -159,7 +161,7 @@ impl TaskMetadata {
             exit_info: Box::pin(TaskExitInfo::default()),
             state: (TaskState::default() as u8).into(),
             privilege: PrivilegeLevel::default(),
-            tid: 0.into(),
+            tid: get_pid(),
             krsp: 0.into(),
             kernel_stack_top: VirtAddr::zero(),
             user_stack_top: None,
@@ -182,8 +184,12 @@ impl TaskMetadata {
 }
 
 impl TaskRepr for Task {
-    fn pid(&self) -> TaskID {
-        self.core.pid
+    fn tid(&self) -> TaskID {
+        self.metadata.tid
+    }
+
+    fn pgrid(&self) -> ProcessGroupID {
+        self.core.pgrid
     }
 
     fn krsp(&self) -> VirtAddr {
@@ -269,8 +275,8 @@ impl TaskRepr for Task {
         Ok(())
     }
 
-    fn tid(&self) -> TaskID {
-        self.metadata.tid
+    fn pid(&self) -> ProcessID {
+        self.core.pid
     }
 }
 
@@ -812,6 +818,12 @@ impl Display for TaskID {
         writeln!(f, "TaskID {{ {} }}", self.inner)
     }
 }
+
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Default)]
+pub struct ProcessID(u64);
+
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Default)]
+pub struct ProcessGroupID(u64);
 
 pub fn get_pid() -> TaskID {
     // PIDs start at 1 since locks use 0 as default value for "held by thread x"
