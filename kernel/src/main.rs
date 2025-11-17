@@ -88,7 +88,7 @@ extern "C" fn idle() -> usize {
             QueueType::Timer,
             WaitCondition::Time(Duration::from_secs(5) + current_time()),
         )];
-        wait_manager::add_wait(&tls::task_data().current_pid(), conditions);
+        wait_manager::add_wait(&tls::task_data().current_tid(), conditions);
         threading::yield_now();
     }
 }
@@ -110,18 +110,18 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     if let Some(task) = tls::task_data().get_current() {
         eprintln!(
             "unrecoverable error in task {:?} with name {:?}\nKilling this task...",
-            tls::task_data().current_pid(),
+            tls::task_data().current_tid(),
             task.name()
         );
     } else {
         eprintln!(
             "unrecoverable error in task {:?}\nKilling this task...",
-            tls::task_data().current_pid(),
+            tls::task_data().current_tid(),
         );
     }
 
     if let Ok(current) = current_task() {
-        tls::task_data().kill(&tls::task_data().current_pid(), 1);
+        tls::task_data().kill(&tls::task_data().current_tid(), 1);
     }
 
     loop {

@@ -5,7 +5,7 @@ use crate::{
     arch::interrupt,
     kernel::threading::{
         schedule::Scheduler,
-        task::{TaskID, TaskRepr, TaskState},
+        task::{ThreadID, TaskRepr, TaskState},
         tls,
     },
     serial_println,
@@ -14,7 +14,7 @@ use crate::{
 
 #[derive(Debug)]
 pub struct LazyRoundRobin {
-    queue: sync::locks::GenericMutex<VecDeque<TaskID>, NoBlock>,
+    queue: sync::locks::GenericMutex<VecDeque<ThreadID>, NoBlock>,
 }
 
 impl LazyRoundRobin {
@@ -50,7 +50,7 @@ impl Scheduler for LazyRoundRobin {
         })
     }
 
-    fn switch(&self) -> Option<TaskID> {
+    fn switch(&self) -> Option<ThreadID> {
         let mut queue = self.queue.try_lock()?;
         while let Some(id) = queue.pop_front() {
             let Some(task) = tls::task_data().try_get(&id) else {
@@ -67,7 +67,7 @@ impl Scheduler for LazyRoundRobin {
         None
     }
 
-    fn add_task(&self, id: TaskID) {
+    fn add_task(&self, id: ThreadID) {
         self.queue.lock().push_back(id);
     }
 }

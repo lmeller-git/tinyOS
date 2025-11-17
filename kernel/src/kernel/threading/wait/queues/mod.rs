@@ -6,7 +6,7 @@ use conquer_once::spin::OnceCell;
 use crate::{
     arch::x86::current_time,
     eprintln,
-    kernel::threading::{task::TaskID, tls, wait::condition::WaitCondition},
+    kernel::threading::{task::ThreadID, tls, wait::condition::WaitCondition},
     serial_println,
     sync::locks::Mutex,
 };
@@ -15,17 +15,17 @@ pub static TIMERQUEUE: OnceCell<TimeWaitQueue> = OnceCell::uninit();
 pub static KEYBOARDQUEUE: OnceCell<KeyBoardQueue> = OnceCell::uninit();
 
 pub(crate) trait WaitQueue {
-    fn enqueue(&self, id: &TaskID, condition: WaitCondition) -> Option<()>;
+    fn enqueue(&self, id: &ThreadID, condition: WaitCondition) -> Option<()>;
     fn signal(&self);
 }
 
 pub struct WaitNode {
-    id: TaskID,
+    id: ThreadID,
     cond: WaitCondition,
 }
 
 impl WaitNode {
-    pub fn new(id: TaskID, cond: WaitCondition) -> Self {
+    pub fn new(id: ThreadID, cond: WaitCondition) -> Self {
         Self { id, cond }
     }
 }
@@ -74,7 +74,7 @@ impl TimeWaitQueue {
 }
 
 impl WaitQueue for TimeWaitQueue {
-    fn enqueue(&self, id: &TaskID, condition: WaitCondition) -> Option<()> {
+    fn enqueue(&self, id: &ThreadID, condition: WaitCondition) -> Option<()> {
         // TODO also allow None conoditions
         let WaitCondition::Time(_) = condition else {
             return None;
@@ -121,7 +121,7 @@ impl KeyBoardQueue {
 }
 
 impl WaitQueue for KeyBoardQueue {
-    fn enqueue(&self, id: &TaskID, condition: WaitCondition) -> Option<()> {
+    fn enqueue(&self, id: &ThreadID, condition: WaitCondition) -> Option<()> {
         let node = WaitNode::new(*id, condition);
         self.q.lock().push_back(node);
         Some(())
@@ -153,7 +153,7 @@ impl GenericWaitQueue {
 }
 
 impl WaitQueue for GenericWaitQueue {
-    fn enqueue(&self, id: &TaskID, condition: WaitCondition) -> Option<()> {
+    fn enqueue(&self, id: &ThreadID, condition: WaitCondition) -> Option<()> {
         let node = WaitNode::new(*id, condition);
         self.q.lock().push_back(node);
         Some(())

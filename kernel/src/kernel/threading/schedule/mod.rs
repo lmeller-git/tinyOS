@@ -5,7 +5,7 @@ use conquer_once::spin::OnceCell;
 use super::{
     ProcessEntry,
     ThreadingError,
-    task::{TaskBuilder, TaskID, TaskRepr},
+    task::{TaskBuilder, TaskRepr, ThreadID},
 };
 use crate::{
     arch::{
@@ -25,8 +25,8 @@ mod round_robin;
 pub trait Scheduler {
     fn new() -> Self;
     fn reschedule(&self);
-    fn switch(&self) -> Option<TaskID>;
-    fn add_task(&self, id: TaskID);
+    fn switch(&self) -> Option<ThreadID>;
+    fn add_task(&self, id: ThreadID);
 }
 
 pub enum ScheduleOrder {}
@@ -50,7 +50,7 @@ where
 }
 
 pub fn current_pid() -> u64 {
-    tls::task_data().current_pid().get_inner()
+    tls::task_data().current_tid().get_inner()
 }
 
 pub fn with_current_task<F, R>(f: F) -> Option<R>
@@ -84,7 +84,7 @@ pub unsafe extern "C" fn context_switch_local(rsp: u64) {
     let current = if let Some(current) = task_data.try_get_current() {
         current.set_krsp(&VirtAddr::new(rsp));
         current
-    } else if task_data.current_pid() == TaskID::default() {
+    } else if task_data.current_tid() == ThreadID::default() {
         let Some(current) = task_data.get(&1.into()) else {
             serial_println!("{:#?}", task_data);
             panic!("could not load initial task");

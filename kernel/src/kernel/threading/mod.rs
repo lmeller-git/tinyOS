@@ -105,7 +105,7 @@ impl<R> JoinHandle<R> {
         )];
 
         while !(self.inner.finished() || !self.is_task_alive().is_some_and(|v| v)) {
-            wait_manager::add_wait(&tls::task_data().current_pid(), wait_conds);
+            wait_manager::add_wait(&tls::task_data().current_tid(), wait_conds);
             yield_now();
         }
 

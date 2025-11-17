@@ -191,7 +191,7 @@ extern "C" fn kernel_test_runner() -> ProcessReturn {
 pub fn test_panic_handler(info: &PanicInfo) -> ! {
     eprintln!("\ntest {}", info);
 
-    tls::task_data().kill(&tls::task_data().current_pid(), 1);
+    tls::task_data().kill(&tls::task_data().current_tid(), 1);
     loop {
         threading::yield_now();
     }

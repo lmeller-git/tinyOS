@@ -17,7 +17,7 @@ use crate::{
         fs::{Path, PathBuf},
         threading::{
             self,
-            task::TaskID,
+            task::ThreadID,
             tls,
             wait::{condition::WaitCondition, queues::WaitQueue},
         },
@@ -109,7 +109,7 @@ impl<'a> WaitObserver<'a> {
         }
     }
 
-    pub fn enqueue(&self, id: &TaskID, queue_data: &[QueuTypeCondition]) {
+    pub fn enqueue(&self, id: &ThreadID, queue_data: &[QueuTypeCondition]) {
         let map = self.queues.read();
         // TODO proper atomic multi enqueue
         for q in queue_data {
@@ -150,7 +150,7 @@ unsafe impl Sync for WaitObserver<'_> {}
 pub enum QueueType {
     Timer,
     KeyBoard,
-    Thread(TaskID),
+    Thread(ThreadID),
     File(u64),
 }
 

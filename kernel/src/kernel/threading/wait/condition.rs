@@ -6,7 +6,7 @@ use crate::{
     arch::x86::current_time,
     drivers::keyboard::KEYBOARD_BUFFER,
     kernel::threading::{
-        task::{TaskID, TaskRepr, TaskState},
+        task::{TaskRepr, TaskState, ThreadID},
         tls,
     },
 };
@@ -15,7 +15,7 @@ use crate::{
 pub enum WaitCondition {
     Time(Duration),
     Keyboard,
-    Thread(TaskID, TaskWaitOptions),
+    Thread(ThreadID, TaskWaitOptions),
     None,
 }
 

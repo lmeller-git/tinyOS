@@ -3,7 +3,7 @@ use thiserror::Error;
 
 use crate::{
     arch::{self},
-    kernel::threading::{self, task::TaskID, tls},
+    kernel::threading::{self, task::ThreadID, tls},
 };
 
 mod primitive;
@@ -86,7 +86,7 @@ impl StatelessWaitStrategy for YieldWaiter {
 }
 
 pub struct BlockingWaiter {
-    queue: SegQueue<TaskID>,
+    queue: SegQueue<ThreadID>,
 }
 
 impl WaitStrategy for BlockingWaiter {
@@ -99,8 +99,8 @@ impl WaitStrategy for BlockingWaiter {
         //     serial_println!("tried to block on a sleep-waiter in a no-interrupt context. This is likely a deadlock");
         // }
 
-        self.queue.push(tls::task_data().current_pid());
-        tls::task_data().block(&tls::task_data().current_pid());
+        self.queue.push(tls::task_data().current_tid());
+        tls::task_data().block(&tls::task_data().current_tid());
         threading::yield_now();
     }
 
@@ -117,7 +117,7 @@ impl StatelessWaitStrategy for NoBlock {
     fn wait() {
         panic!(
             "Task {:?} tried to block on a NoBlock lock. This is a Bug.",
-            tls::task_data().current_pid()
+            tls::task_data().current_tid()
         );
     }
 }

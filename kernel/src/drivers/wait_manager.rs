@@ -3,7 +3,7 @@ use conquer_once::spin::OnceCell;
 use crate::{
     kernel::threading::{
         self,
-        task::TaskID,
+        task::ThreadID,
         tls,
         wait::{
             QueuTypeCondition,
@@ -18,7 +18,7 @@ use crate::{
 
 static WAIT_MANAGER: OnceCell<RwLock<WaitObserver>> = OnceCell::uninit();
 
-pub fn add_wait(id: &TaskID, queue_data: &[QueuTypeCondition]) -> Option<()> {
+pub fn add_wait(id: &ThreadID, queue_data: &[QueuTypeCondition]) -> Option<()> {
     Some(WAIT_MANAGER.get()?.read().enqueue(id, queue_data))
 }
 
@@ -34,7 +34,7 @@ pub fn wait_self(queue_data: &[QueuTypeCondition]) -> Option<()> {
     let r = WAIT_MANAGER
         .get()?
         .read()
-        .enqueue(&tls::task_data().current_pid(), queue_data);
+        .enqueue(&tls::task_data().current_tid(), queue_data);
     threading::yield_now();
     Some(r)
 }

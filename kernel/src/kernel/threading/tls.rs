@@ -1,5 +1,6 @@
 use alloc::{
     collections::{btree_map::BTreeMap, vec_deque::VecDeque},
+    sync::Arc,
     vec::Vec,
 };
 use core::{
@@ -13,7 +14,7 @@ use hashbrown::HashMap;
 use crate::{
     kernel::threading::{
         schedule::{GlobalTaskPtr, Scheduler},
-        task::{ExitInfo, ProcessGroupID, ProcessID, TaskID, TaskRepr, TaskState, TaskStateData},
+        task::{ExitInfo, ProcessGroupID, ProcessID, TaskRepr, TaskState, TaskStateData, ThreadID},
     },
     sync::locks::{Mutex, RwLock},
 };
@@ -35,34 +36,46 @@ static GLOBAL_TASK_MANAGER: OnceCell<TaskManager> = OnceCell::uninit();
 // or:
 // store Hashmap and build process data on the fly if queried / store in additional tree
 
+// TODO may want to add ids to Process, ProcessGroup
+
 #[derive(Default, Debug)]
-struct ProcessGroup {
-    members: BTreeMap<ProcessID, Process>,
+pub struct ProcessGroup {
+    members: BTreeMap<ProcessID, Arc<RwLock<Process>>>,
     leader: Option<ProcessID>,
 }
 
 impl ProcessGroup {
-    fn new(id: ProcessID, leader: Process) -> Self {
+    pub fn new(id: ProcessID, leader: Process) -> Self {
         let mut members = BTreeMap::new();
-        members.insert(id, leader);
+        members.insert(id, RwLock::new(leader).into());
         Self {
             members,
             leader: Some(id),
         }
     }
 
-    fn add(&mut self, id: ProcessID, process: Process) -> Option<Process> {
-        self.members.insert(id, process)
+    pub fn add(&mut self, id: ProcessID, process: Process) -> Option<Arc<RwLock<Process>>> {
+        self.members.insert(id, RwLock::new(process).into())
+    }
+
+    pub fn next_pid(&self) -> ProcessID {
+        static CURRENT_PID: AtomicU64 = AtomicU64::new(0);
+        let current = CURRENT_PID.fetch_add(1, Ordering::Relaxed);
+        ProcessID(current)
+    }
+
+    pub fn current_process(&self) -> Option<Arc<RwLock<Process>>> {
+        self.members.get(&task_data().get_current()?.pid()).cloned()
     }
 }
 
 #[derive(Default, Debug)]
-struct Process {
-    threads: BTreeMap<TaskID, GlobalTaskPtr>,
+pub struct Process {
+    threads: BTreeMap<ThreadID, GlobalTaskPtr>,
 }
 
 impl Process {
-    fn new(leader: GlobalTaskPtr) -> Self {
+    pub fn new(leader: GlobalTaskPtr) -> Self {
         let mut threads = BTreeMap::new();
         threads.insert(leader.tid(), leader);
         Self { threads }
@@ -72,42 +85,46 @@ impl Process {
 #[derive(Debug)]
 pub struct TaskManager {
     current_running: AtomicU64, // TaskID of the curently active thread
-    lut: RwLock<HashMap<TaskID, GlobalTaskPtr>>, // LUT for thread id --> thread
-    tree: RwLock<BTreeMap<ProcessGroupID, ProcessGroup>>,
-    zombies: Mutex<VecDeque<TaskID>>,
+    lut: RwLock<HashMap<ThreadID, GlobalTaskPtr>>, // LUT for thread id --> thread
+    tree: RwLock<BTreeMap<ProcessGroupID, Arc<RwLock<ProcessGroup>>>>,
+    zombies: Mutex<VecDeque<ThreadID>>,
 }
 
 impl TaskManager {
     fn new() -> Self {
         Self {
-            current_running: TaskID::default().get_inner().into(),
+            current_running: ThreadID::default().get_inner().into(),
             lut: RwLock::default(),
             tree: RwLock::default(),
             zombies: Mutex::default(),
         }
     }
 
-    pub fn get(&self, task: &TaskID) -> Option<GlobalTaskPtr> {
+    pub fn get(&self, task: &ThreadID) -> Option<GlobalTaskPtr> {
         self.lut.read().get(task).cloned()
     }
 
     pub fn get_current(&self) -> Option<GlobalTaskPtr> {
-        self.get(&self.current_pid())
+        self.get(&self.current_tid())
     }
 
-    pub fn try_get(&self, task: &TaskID) -> Option<GlobalTaskPtr> {
+    pub fn try_get(&self, task: &ThreadID) -> Option<GlobalTaskPtr> {
         self.lut.try_read()?.get(task).cloned()
     }
 
     pub fn try_get_current(&self) -> Option<GlobalTaskPtr> {
-        self.try_get(&self.current_pid())
+        self.try_get(&self.current_tid())
     }
 
-    pub fn current_pid(&self) -> TaskID {
+    pub fn current_pgr(&self) -> Option<Arc<RwLock<ProcessGroup>>> {
+        self.tree.read().get(&self.get_current()?.pgrid()).cloned()
+    }
+
+    pub fn current_tid(&self) -> ThreadID {
         (&self.current_running).into()
     }
 
-    pub fn update_current(&self, task: TaskID) {
+    pub fn update_current(&self, task: ThreadID) {
         self.current_running
             .store(task.get_inner(), Ordering::Release);
     }
@@ -119,9 +136,9 @@ impl TaskManager {
             .write()
             .entry(task.pgrid())
             .and_modify(|entry| {
-                _ = entry.add(pid, Process::new(task.clone()));
+                _ = entry.write().add(pid, Process::new(task.clone()));
             })
-            .or_insert(ProcessGroup::new(pid, Process::new(task.clone())));
+            .or_insert(RwLock::new(ProcessGroup::new(pid, Process::new(task.clone()))).into());
 
         self.lut.write().insert(task.tid(), task)
     }
@@ -153,11 +170,11 @@ impl TaskManager {
         }
     }
 
-    pub fn get_table(&self) -> &RwLock<HashMap<TaskID, GlobalTaskPtr>> {
+    pub fn get_table(&self) -> &RwLock<HashMap<ThreadID, GlobalTaskPtr>> {
         &self.lut
     }
 
-    pub fn kill(&self, id: &TaskID, signal: i32) -> Option<()> {
+    pub fn kill(&self, id: &ThreadID, signal: i32) -> Option<()> {
         let task = self.get(id)?;
         task.set_state(TaskState::Zombie);
         *task.state_data().lock() = TaskStateData::Exit(ExitInfo {
@@ -168,7 +185,7 @@ impl TaskManager {
         Some(())
     }
 
-    pub fn block(&self, id: &TaskID) -> Option<()> {
+    pub fn block(&self, id: &ThreadID) -> Option<()> {
         let task = self.get(id)?;
         if task.state() != TaskState::Zombie && task.state() != TaskState::Sleeping {
             task.set_state(TaskState::Blocking);
@@ -178,7 +195,7 @@ impl TaskManager {
         }
     }
 
-    pub fn try_block(&self, id: &TaskID) -> Option<()> {
+    pub fn try_block(&self, id: &ThreadID) -> Option<()> {
         let task = self.try_get(id)?;
         if task.state() != TaskState::Zombie && task.state() != TaskState::Sleeping {
             task.set_state(TaskState::Blocking);
@@ -188,7 +205,7 @@ impl TaskManager {
         }
     }
 
-    pub fn try_wake(&self, id: &TaskID) -> Option<()> {
+    pub fn try_wake(&self, id: &ThreadID) -> Option<()> {
         let task = self.try_get(id)?;
         if task.state() == TaskState::Blocking || task.state() == TaskState::Sleeping {
             task.set_state(TaskState::Ready);
@@ -196,12 +213,18 @@ impl TaskManager {
         Some(())
     }
 
-    pub fn wake(&self, id: &TaskID) -> Option<()> {
+    pub fn wake(&self, id: &ThreadID) -> Option<()> {
         let task = self.get(id)?;
         if task.state() == TaskState::Blocking || task.state() == TaskState::Sleeping {
             task.set_state(TaskState::Ready);
         }
         Some(())
+    }
+
+    pub fn next_pgrid(&self) -> ProcessGroupID {
+        static CURRENT_PGRID: AtomicU64 = AtomicU64::new(0);
+        let current = CURRENT_PGRID.fetch_add(1, Ordering::Relaxed);
+        ProcessGroupID(current)
     }
 }
 

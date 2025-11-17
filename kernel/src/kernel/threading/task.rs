@@ -42,7 +42,8 @@ use crate::{
 pub const USER_MMAP_START: usize = 0x9000_000_0000;
 
 pub trait TaskRepr: Debug {
-    fn tid(&self) -> TaskID;
+    fn tidx(&self) -> usize;
+    fn tid(&self) -> ThreadID;
     fn pgrid(&self) -> ProcessGroupID;
     fn pid(&self) -> ProcessID;
     fn krsp(&self) -> VirtAddr;
@@ -96,7 +97,7 @@ pub struct TaskCore {
     pub fd_table: RwLock<FDMap>,
     pub next_free_addr: AtomicUsize,
     pub name: Option<String>,
-    pub parent: Option<TaskID>,
+    pub parent: Option<ThreadID>,
     _private: PhantomData<()>,
 }
 
@@ -105,7 +106,8 @@ pub struct TaskMetadata {
     pub state_data: Mutex<TaskStateData>,
     pub state: AtomicU8,
     pub exit_info: Pin<Box<TaskExitInfo>>,
-    pub tid: TaskID,
+    pub tid: ThreadID,
+    pub tidx: AtomicUsize,
     pub user_stack_top: Option<VirtAddr>,
     pub ursp: Option<AtomicU64>,
     pub krsp: AtomicU64,
@@ -125,11 +127,19 @@ impl Task {
 
 impl TaskCore {
     fn new() -> Self {
+        let (pgrid, pid) = if let Some(current) = tls::task_data().get_current()
+            && let Some(group) = tls::task_data().current_pgr()
+        {
+            (current.pgrid(), group.read().next_pid())
+        } else {
+            (0.into(), 0.into())
+        };
+
         Self {
             name: None,
             parent: tls::task_data().get_current().map(|current| current.tid()),
-            pid: ProcessID::default(),
-            pgrid: ProcessGroupID::default(),
+            pid,   // copied from parent if thread
+            pgrid, // copied from parent if exists or thread
             pagedir: APageTable::global().into(),
             heap_size: 0.into(),
             next_free_addr: AtomicUsize::new(0),
@@ -161,7 +171,8 @@ impl TaskMetadata {
             exit_info: Box::pin(TaskExitInfo::default()),
             state: (TaskState::default() as u8).into(),
             privilege: PrivilegeLevel::default(),
-            tid: get_pid(),
+            tid: get_tid(),
+            tidx: 0.into(),
             krsp: 0.into(),
             kernel_stack_top: VirtAddr::zero(),
             user_stack_top: None,
@@ -174,18 +185,15 @@ impl TaskMetadata {
         self.state_data = data.into();
         self
     }
-
-    fn next_tid(&self) -> TaskID {
-        // tids start at 0
-        static CURRENT_TID: AtomicU64 = AtomicU64::new(0);
-        let current = CURRENT_TID.fetch_add(1, Ordering::Relaxed);
-        TaskID { inner: current }
-    }
 }
 
 impl TaskRepr for Task {
-    fn tid(&self) -> TaskID {
+    fn tid(&self) -> ThreadID {
         self.metadata.tid
+    }
+
+    fn tidx(&self) -> usize {
+        self.metadata.tidx.load(Ordering::Relaxed)
     }
 
     fn pgrid(&self) -> ProcessGroupID {
@@ -642,10 +650,10 @@ impl TaskBuilder<Task, Init<'_>> {
             .core
             .try_clone()
             .ok_or(ThreadingError::Unknown("The tasks core is owned".into()))?;
-        self.inner.core = core;
+        let next_idx = task.metadata.tidx.fetch_add(1, Ordering::Release);
 
-        let tid = task.metadata.next_tid();
-        self.inner.metadata.tid = tid;
+        self.inner.core = core;
+        self.inner.metadata.tidx.store(next_idx, Ordering::Relaxed);
 
         let kstack = allocate_kstack()?;
         let tbl = self.inner.pagedir();
@@ -653,7 +661,7 @@ impl TaskBuilder<Task, Init<'_>> {
         let usr_end = allocate_userstack(
             tbl,
             USER_STACK_START.align_up(Size4KiB::SIZE)
-                + (tid.get_inner() * align_up(USER_STACK_SIZE, Size4KiB::SIZE as usize) as u64),
+                + (next_idx * align_up(USER_STACK_SIZE, Size4KiB::SIZE as usize)) as u64,
         )?;
 
         self.inner.metadata.krsp = AtomicU64::new(kstack.as_u64());
@@ -695,7 +703,6 @@ impl TaskBuilder<Task, Init<'_>> {
 
 impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
     pub fn build(mut self) -> T {
-        // TODO return result
         unsafe {
             interrupt::disable();
         }
@@ -781,13 +788,13 @@ pub struct ExitInfo {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Copy, PartialOrd, Ord, Default)]
 #[repr(transparent)]
-pub struct TaskID {
+pub struct ThreadID {
     inner: u64,
 }
 
-impl TaskID {
+impl ThreadID {
     pub fn new() -> Self {
-        get_pid()
+        get_tid()
     }
 
     pub fn get_inner(&self) -> u64 {
@@ -795,41 +802,53 @@ impl TaskID {
     }
 }
 
-impl From<u64> for TaskID {
+impl From<u64> for ThreadID {
     fn from(value: u64) -> Self {
         Self { inner: value }
     }
 }
 
-impl From<AtomicU64> for TaskID {
+impl From<AtomicU64> for ThreadID {
     fn from(value: AtomicU64) -> Self {
         value.load(Ordering::Acquire).into()
     }
 }
 
-impl From<&AtomicU64> for TaskID {
+impl From<&AtomicU64> for ThreadID {
     fn from(value: &AtomicU64) -> Self {
         value.load(Ordering::Acquire).into()
     }
 }
 
-impl Display for TaskID {
+impl Display for ThreadID {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         writeln!(f, "TaskID {{ {} }}", self.inner)
     }
 }
 
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Default)]
-pub struct ProcessID(u64);
+pub struct ProcessID(pub u64);
+
+impl From<u64> for ProcessID {
+    fn from(value: u64) -> Self {
+        Self(value)
+    }
+}
 
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Default)]
-pub struct ProcessGroupID(u64);
+pub struct ProcessGroupID(pub u64);
 
-pub fn get_pid() -> TaskID {
+impl From<u64> for ProcessGroupID {
+    fn from(value: u64) -> Self {
+        Self(value)
+    }
+}
+
+pub fn get_tid() -> ThreadID {
     // PIDs start at 1 since locks use 0 as default value for "held by thread x"
     static CURRENT_PID: AtomicU64 = AtomicU64::new(1);
     let current = CURRENT_PID.fetch_add(1, Ordering::Relaxed);
-    TaskID { inner: current }
+    ThreadID { inner: current }
 }
 
 #[cfg(feature = "test_run")]

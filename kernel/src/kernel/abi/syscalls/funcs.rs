@@ -174,11 +174,11 @@ pub fn yield_now() -> SysCallRes<()> {
 
 pub fn exit(status: i64) -> ! {
     post_event(WaitEvent::with_data(
-        QueueType::Thread(tls::task_data().current_pid()),
+        QueueType::Thread(tls::task_data().current_tid()),
         TaskStateChange::EXIT.bits() as u64,
     ));
 
-    tls::task_data().kill(&tls::task_data().current_pid(), 0);
+    tls::task_data().kill(&tls::task_data().current_tid(), 0);
     threading::yield_now();
     unreachable!("task did not exit properly");
 }
@@ -362,7 +362,7 @@ pub fn machine() -> SysCallRes<()> {
 }
 
 pub fn get_pid() -> SysCallRes<u64> {
-    Ok(tls::task_data().current_pid().get_inner())
+    Ok(tls::task_data().current_tid().get_inner())
 }
 
 pub fn serial(buf: *const u8, len: usize) -> SysCallRes<()> {
