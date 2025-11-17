@@ -310,6 +310,7 @@ pub fn waittime(duration: u64) -> SysCallRes<()> {
     wait_self(conditions).ok_or(SysRetCode::Fail)
 }
 
+// should be wait_tid?
 pub fn wait_pid(
     id: u64,
     timeout: i64,
@@ -362,7 +363,11 @@ pub fn machine() -> SysCallRes<()> {
 }
 
 pub fn get_pid() -> SysCallRes<u64> {
-    Ok(tls::task_data().current_tid().get_inner())
+    Ok(tls::task_data()
+        .get_current()
+        .ok_or(SysRetCode::Fail)?
+        .pid()
+        .0);
 }
 
 pub fn serial(buf: *const u8, len: usize) -> SysCallRes<()> {

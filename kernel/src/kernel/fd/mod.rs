@@ -128,12 +128,9 @@ impl<T: ?Sized> MaybeOwned<T> {
     }
 
     pub fn make_shared(&mut self) {
-        // TODO figure out how to do thsi without unsafe
         match self {
             Self::Owned(o) => {
-                // temporarily put a nullptr as Box<T>
-                let inner = unsafe { core::mem::replace(o, core::mem::zeroed()) };
-                *self = Self::Shared(inner.into());
+                todo!()
             }
             Self::Shared(_) => {}
         }

@@ -4,6 +4,7 @@
 #![feature(unsafe_cell_access)]
 #![feature(stmt_expr_attributes)]
 #![feature(str_from_raw_parts)]
+#![feature(box_into_inner)]
 #![allow(
     unreachable_code,
     unused_doc_comments,

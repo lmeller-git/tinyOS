@@ -41,7 +41,7 @@ use crate::{
 
 pub const USER_MMAP_START: usize = 0x9000_000_0000;
 
-pub trait TaskRepr: Debug {
+pub trait TaskRepr: Debug + Sized {
     fn tidx(&self) -> usize;
     fn tid(&self) -> ThreadID;
     fn pgrid(&self) -> ProcessGroupID;
@@ -63,9 +63,7 @@ pub trait TaskRepr: Debug {
     fn add_next_file(&self, f: impl Into<Arc<File>>) -> FileDescriptor;
     fn next_fd(&self) -> FileDescriptor;
     fn next_addr(&self) -> &AtomicUsize;
-    fn ensure_ready(&mut self) -> Result<(), ThreadingError> {
-        Ok(())
-    }
+    fn ensure_ready(self) -> Result<Self, ThreadingError>;
 }
 
 #[repr(u8)]
@@ -278,9 +276,9 @@ impl TaskRepr for Task {
         &self.core.next_free_addr
     }
 
-    fn ensure_ready(&mut self) -> Result<(), ThreadingError> {
-        self.core.make_shared();
-        Ok(())
+    fn ensure_ready(mut self) -> Result<Self, ThreadingError> {
+        self.core = self.core.into_shared();
+        Ok(self)
     }
 
     fn pid(&self) -> ProcessID {
@@ -723,8 +721,7 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
         // a) make fields immutable
         // b) allow threads with same core
         // After this point no exculsive refs to task are possible anyways
-        self.inner.ensure_ready().unwrap();
-        self.inner
+        self.inner.ensure_ready().unwrap()
     }
 }
 
