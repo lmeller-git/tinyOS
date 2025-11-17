@@ -367,7 +367,7 @@ pub fn get_pid() -> SysCallRes<u64> {
         .get_current()
         .ok_or(SysRetCode::Fail)?
         .pid()
-        .0);
+        .0)
 }
 
 pub fn serial(buf: *const u8, len: usize) -> SysCallRes<()> {
