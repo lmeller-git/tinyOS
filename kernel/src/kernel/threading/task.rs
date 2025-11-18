@@ -80,6 +80,9 @@ pub enum PrivilegeLevel {
 // metadata contains data owned by each thread
 // TaskID > 0 is globally unique and refers to a specific thread, which existed at some point
 
+// TODO: we should replace MaybeOwned by an Arc<TaskCore>, and inititalize in another way
+// Maybe not an Arc, but some type that we can enforce to be shared after taskBuilder::build() finishes.
+
 #[derive(Debug)]
 pub struct Task {
     pub metadata: TaskMetadata,
@@ -98,6 +101,9 @@ pub struct TaskCore {
     pub parent: Option<ThreadID>,
     _private: PhantomData<()>,
 }
+
+unsafe impl Sync for TaskCore {}
+unsafe impl Send for TaskCore {}
 
 #[derive(Debug)]
 pub struct TaskMetadata {
@@ -125,7 +131,7 @@ impl Task {
 
 impl TaskCore {
     fn new() -> Self {
-        let (pgrid, pid) = if let Some(current) = tls::task_data().get_current()
+        let (pgrid, pid) = if let Some(current) = tls::task_data().current_thread()
             && let Some(group) = tls::task_data().current_pgr()
         {
             (current.pgrid(), group.read().next_pid())
@@ -135,7 +141,9 @@ impl TaskCore {
 
         Self {
             name: None,
-            parent: tls::task_data().get_current().map(|current| current.tid()),
+            parent: tls::task_data()
+                .current_thread()
+                .map(|current| current.tid()),
             pid,   // copied from parent if thread
             pgrid, // copied from parent if exists or thread
             pagedir: APageTable::global().into(),
@@ -476,7 +484,7 @@ impl<S> TaskBuilder<Task, S> {
 
     /// adds open files of current into the new process, if current is accessible, else uses defaults for stdin, stderr and stdout
     pub fn with_default_files(self, clone_these: bool) -> TaskBuilder<Task, S> {
-        if clone_these && let Some(current) = tls::task_data().get_current() {
+        if clone_these && let Some(current) = tls::task_data().current_thread() {
             self.override_files(
                 current
                     .core
@@ -730,7 +738,7 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<KTaskInfo>> {
         let next_top =
             unsafe { init_kernel_task(&self._marker.inner, self.inner.exit_info(), &self.data) };
         self.inner.set_krsp(&next_top);
-        self.inner
+        self.inner.ensure_ready().unwrap()
     }
 }
 

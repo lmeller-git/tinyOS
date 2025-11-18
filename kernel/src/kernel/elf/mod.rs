@@ -42,7 +42,7 @@ pub fn apply<M1: Mapper<Size4KiB>>(
         let addr = VirtAddr::new(header.p_vaddr);
         let mapper = PageMapper::init(&addr, header.p_memsz);
         let active_table_root: PhysFrame<Size4KiB> = if let Some(current) =
-            tls::task_data().get_current()
+            tls::task_data().current_thread()
             && let Some(task_tbl) = current.pagedir().try_get_owned()
         {
             task_tbl.lock().root

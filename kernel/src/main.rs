@@ -107,7 +107,7 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
 
     eprintln!("panic: {:#?}", info);
 
-    if let Some(task) = tls::task_data().get_current() {
+    if let Some(task) = tls::task_data().current_thread() {
         eprintln!(
             "unrecoverable error in task {:?} with name {:?}\nKilling this task...",
             tls::task_data().current_tid(),

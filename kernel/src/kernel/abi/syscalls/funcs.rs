@@ -57,14 +57,14 @@ pub fn open(path: *const u8, len: usize, flags: OpenOptions) -> SysCallRes<FileD
     let p = unsafe { str::from_raw_parts(path, len) };
     let p = Path::new(p);
     Ok(tls::task_data()
-        .get_current()
+        .current_thread()
         .ok_or(SysRetCode::Fail)?
         .add_next_file(fs::open(p, flags).map_err(|_| SysRetCode::Fail)?))
 }
 
 pub fn close(fd: FileDescriptor) -> SysCallRes<()> {
     tls::task_data()
-        .get_current()
+        .current_thread()
         .map(|t| t.remove_fd(fd))
         .flatten()
         .ok_or(SysRetCode::Fail)?;
@@ -75,7 +75,7 @@ pub fn read(fd: FileDescriptor, buf: *mut u8, len: usize, timeout: i64) -> SysCa
     if !valid_ptr(buf, len) {
         return Err(SysRetCode::Fail);
     }
-    let current_task = tls::task_data().get_current().ok_or(SysRetCode::Fail)?;
+    let current_task = tls::task_data().current_thread().ok_or(SysRetCode::Fail)?;
     let b = unsafe { &mut *core::ptr::slice_from_raw_parts_mut(buf, len) };
     let n = current_task
         .fd(fd)
@@ -134,7 +134,7 @@ pub fn write(fd: FileDescriptor, buf: *const u8, len: usize) -> SysCallRes<isize
     }
     let b = unsafe { &*core::ptr::slice_from_raw_parts(buf, len) };
     let n = tls::task_data()
-        .get_current()
+        .current_thread()
         .map(|t| t.fd(fd).map(|f| f.write_continuous(b).ok()))
         .flatten()
         .flatten()
@@ -144,7 +144,7 @@ pub fn write(fd: FileDescriptor, buf: *const u8, len: usize) -> SysCallRes<isize
 
 pub fn seek(fd: FileDescriptor, offset: usize) -> SysCallRes<()> {
     tls::task_data()
-        .get_current()
+        .current_thread()
         .map(|t| t.fd(fd).map(|f| f.set_cursor(offset)))
         .flatten()
         .ok_or(SysRetCode::Fail)?;
@@ -152,7 +152,7 @@ pub fn seek(fd: FileDescriptor, offset: usize) -> SysCallRes<()> {
 }
 
 pub fn dup(old_fd: FileDescriptor, new_fd: i32) -> SysCallRes<FileDescriptor> {
-    let current = tls::task_data().get_current().ok_or(SysRetCode::Fail)?;
+    let current = tls::task_data().current_thread().ok_or(SysRetCode::Fail)?;
     let next_fd = if new_fd >= 0 {
         new_fd as FileDescriptor
     } else {
@@ -198,7 +198,7 @@ pub fn kill(pid: u64, signal: i64) -> SysCallRes<()> {
 // TODO zero out memory if necessary
 pub fn mmap(len: usize, addr: *mut u8, flags: PageTableFlags, fd: i32) -> SysCallRes<*mut u8> {
     // TODO add a more sophisticated approach for managing address spaces
-    let current = tls::task_data().get_current().ok_or(SysRetCode::Fail)?;
+    let current = tls::task_data().current_thread().ok_or(SysRetCode::Fail)?;
     let addr = if !valid_ptr(addr, len) {
         serial_println!("assigning new mmap ptr");
         current
@@ -286,7 +286,7 @@ pub fn munmap(addr: *mut u8, len: usize) -> SysCallRes<()> {
     }
 
     let base = VirtAddr::from_ptr(addr).align_up(Size4KiB::SIZE);
-    let current = tls::task_data().get_current().ok_or(SysRetCode::Fail)?;
+    let current = tls::task_data().current_thread().ok_or(SysRetCode::Fail)?;
 
     unmap_region(base, len, current.pagedir()).map_err(|_| SysRetCode::Fail)
 }
@@ -320,47 +320,53 @@ pub fn waittime(duration: u64) -> SysCallRes<()> {
 // this should wait for the specified PROCESS to change state.
 // TODO
 // --> need Process state / exit first
+// TODO what do we wait for:
+// - process exit
+// - any child thread exit?
+// - any child exit?
+// ...?
 pub fn wait_pid(
     id: u64,
     timeout: i64,
     w_flags: WaitOptions,
     tw_flags: TaskWaitOptions,
 ) -> SysCallRes<TaskStateChange> {
-    let task = tls::task_data().get(&id.into()).ok_or(SysRetCode::Fail)?;
-    if timeout == 0 {
-        return Ok(TaskStateChange::empty());
-    }
-    let mut conditions = Vec::new();
-    if timeout > 0 {
-        let until = Duration::from_millis(timeout as u64) + current_time();
-        conditions.push(QueuTypeCondition::with_cond(
-            QueueType::Timer,
-            WaitCondition::Time(until),
-        ));
-    }
-    conditions.push(QueuTypeCondition::with_cond(
-        QueueType::Thread(id.into()),
-        WaitCondition::Thread(id.into(), tw_flags),
-    ));
+    todo!()
+    // let task = tls::task_data().thread(&id.into()).ok_or(SysRetCode::Fail)?;
+    // if timeout == 0 {
+    //     return Ok(TaskStateChange::empty());
+    // }
+    // let mut conditions = Vec::new();
+    // if timeout > 0 {
+    //     let until = Duration::from_millis(timeout as u64) + current_time();
+    //     conditions.push(QueuTypeCondition::with_cond(
+    //         QueueType::Timer,
+    //         WaitCondition::Time(until),
+    //     ));
+    // }
+    // conditions.push(QueuTypeCondition::with_cond(
+    //     QueueType::Thread(id.into()),
+    //     WaitCondition::Thread(id.into(), tw_flags),
+    // ));
 
-    if w_flags.contains(WaitOptions::NOBLOCK) {
-        todo!()
-    }
-    let q_type = QueueType::Thread(id.into());
-    add_queue(
-        QueueHandle::from_owned(Box::new(GenericWaitQueue::new()) as Box<dyn WaitQueue>),
-        q_type.clone(),
-    );
+    // if w_flags.contains(WaitOptions::NOBLOCK) {
+    //     todo!()
+    // }
+    // let q_type = QueueType::Thread(id.into());
+    // add_queue(
+    //     QueueHandle::from_owned(Box::new(GenericWaitQueue::new()) as Box<dyn WaitQueue>),
+    //     q_type.clone(),
+    // );
 
-    let r = wait_self(&conditions)
-        .ok_or(SysRetCode::Fail)
-        .map(|_| match task.state() {
-            TaskState::Running | TaskState::Ready => TaskStateChange::WAKEUP,
-            TaskState::Blocking | TaskState::Sleeping => TaskStateChange::BLOCK,
-            TaskState::Zombie => TaskStateChange::EXIT,
-        });
-    remove_queue(&q_type);
-    r
+    // let r = wait_self(&conditions)
+    //     .ok_or(SysRetCode::Fail)
+    //     .map(|_| match task.state() {
+    //         TaskState::Running | TaskState::Ready => TaskStateChange::WAKEUP,
+    //         TaskState::Blocking | TaskState::Sleeping => TaskStateChange::BLOCK,
+    //         TaskState::Zombie => TaskStateChange::EXIT,
+    //     });
+    // remove_queue(&q_type);
+    // r
 }
 
 pub fn eventfd() -> SysCallRes<FileDescriptor> {
@@ -373,7 +379,7 @@ pub fn machine() -> SysCallRes<()> {
 
 pub fn get_pid() -> SysCallRes<u64> {
     Ok(tls::task_data()
-        .get_current()
+        .current_thread()
         .ok_or(SysRetCode::Fail)?
         .pid()
         .0)
@@ -426,7 +432,7 @@ pub fn thread_create(start_rotine: *const (), args: *const ()) -> SysCallRes<u64
     }
     let task = unsafe { TaskBuilder::from_addr(VirtAddr::from_ptr(start_rotine)) }
         .map_err(|_| SysRetCode::Fail)?
-        .like_existing_usr(&*tls::task_data().get_current().ok_or(SysRetCode::Fail)?)
+        .like_existing_usr(&*tls::task_data().current_thread().ok_or(SysRetCode::Fail)?)
         .map_err(|_| SysRetCode::Fail)?
         .with_args(args!(args))
         .build();
@@ -452,7 +458,9 @@ pub fn thread_join(
     w_flags: WaitOptions,
     tw_flags: TaskWaitOptions,
 ) -> SysCallRes<TaskStateChange> {
-    let task = tls::task_data().get(&id.into()).ok_or(SysRetCode::Fail)?;
+    let task = tls::task_data()
+        .thread(&id.into())
+        .ok_or(SysRetCode::Fail)?;
     if timeout == 0 {
         return Ok(TaskStateChange::empty());
     }
@@ -491,7 +499,7 @@ pub fn thread_join(
 
 pub fn get_tid() -> SysCallRes<u64> {
     tls::task_data()
-        .get_current()
+        .current_thread()
         .map(|t| t.tid().get_inner())
         .ok_or(SysRetCode::Fail)
 }
@@ -503,7 +511,7 @@ pub fn time() -> SysCallRes<u64> {
 
 pub fn get_pgrid() -> SysCallRes<u64> {
     tls::task_data()
-        .get_current()
+        .current_thread()
         .map(|p| p.pgrid().0)
         .ok_or(SysRetCode::Fail)
 }

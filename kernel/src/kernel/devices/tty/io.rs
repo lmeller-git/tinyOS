@@ -22,7 +22,7 @@ pub fn __write_stdout(input: Arguments) {
         let bytes = bytes.as_bytes();
 
         tls::task_data()
-            .get_current()
+            .current_thread()
             .unwrap()
             .fd(STDOUT_FILENO)
             .unwrap()
@@ -36,7 +36,7 @@ pub fn __write_stderr(input: Arguments) {
     let bytes = bytes.as_bytes();
 
     tls::task_data()
-        .get_current()
+        .current_thread()
         .unwrap()
         .fd(STDERR_FILENO)
         .unwrap()

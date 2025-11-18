@@ -507,7 +507,7 @@ impl Drop for RawFrameBuffer {
     fn drop(&mut self) {
         let addr = VirtAddr::from_ptr(self.addr);
         let size = self.height * self.width;
-        if let Some(task) = tls::task_data().get_current() {
+        if let Some(task) = tls::task_data().current_thread() {
             unmap_region(addr, size, task.pagedir())
         } else {
             unmap_region(addr, size, &mut *PAGETABLE.lock())

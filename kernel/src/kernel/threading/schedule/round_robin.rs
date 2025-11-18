@@ -5,7 +5,7 @@ use crate::{
     arch::interrupt,
     kernel::threading::{
         schedule::Scheduler,
-        task::{ThreadID, TaskRepr, TaskState},
+        task::{TaskRepr, TaskState, ThreadID},
         tls,
     },
     serial_println,
@@ -21,7 +21,7 @@ impl LazyRoundRobin {
     pub fn log_all(&self) {
         serial_println!("LazyRoundRobin: tasks:");
         for t in self.queue.lock().iter() {
-            serial_println!("{:?}", tls::task_data().get(t));
+            serial_println!("{:?}", tls::task_data().thread(t));
         }
     }
 }
@@ -53,7 +53,7 @@ impl Scheduler for LazyRoundRobin {
     fn switch(&self) -> Option<ThreadID> {
         let mut queue = self.queue.try_lock()?;
         while let Some(id) = queue.pop_front() {
-            let Some(task) = tls::task_data().try_get(&id) else {
+            let Some(task) = tls::task_data().try_thread(&id) else {
                 // Task was likely killed and removed from task manager
                 continue;
             };

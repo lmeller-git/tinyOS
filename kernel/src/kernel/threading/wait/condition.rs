@@ -26,7 +26,7 @@ impl WaitCondition {
             Self::Time(t) => *t <= current_time(),
             Self::Keyboard => !KEYBOARD_BUFFER.is_empty(),
             Self::Thread(id, config) => tls::task_data()
-                .get(id)
+                .thread(id)
                 .and_then(|t| {
                     Some(
                         (config.contains(TaskWaitOptions::W_EXIT)

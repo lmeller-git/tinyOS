@@ -50,7 +50,7 @@ pub fn user_map_region(start: VirtAddr, len: usize) -> Result<(), &'static str> 
         start,
         len,
         flags,
-        tls::task_data().get_current().unwrap().pagedir(),
+        tls::task_data().current_thread().unwrap().pagedir(),
     )
 }
 

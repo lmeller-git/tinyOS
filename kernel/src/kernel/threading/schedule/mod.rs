@@ -68,7 +68,7 @@ pub fn get_scheduler<'a>() -> &'a GlobalScheduler {
 #[allow(static_mut_refs)]
 pub fn current_task() -> Result<GlobalTaskPtr, ThreadingError> {
     tls::task_data()
-        .get_current()
+        .current_thread()
         .ok_or(ThreadingError::Unknown(
             "could not find current task".into(),
         ))
@@ -81,11 +81,11 @@ pub unsafe extern "C" fn context_switch_local(rsp: u64) {
     // WE CANNOT BLOCK HERE
 
     let task_data = tls::task_data();
-    let current = if let Some(current) = task_data.try_get_current() {
+    let current = if let Some(current) = task_data.try_current_thread() {
         current.set_krsp(&VirtAddr::new(rsp));
         current
     } else if task_data.current_tid() == ThreadID::default() {
-        let Some(current) = task_data.get(&1.into()) else {
+        let Some(current) = task_data.thread(&1.into()) else {
             serial_println!("{:#?}", task_data);
             panic!("could not load initial task");
         };
@@ -97,7 +97,7 @@ pub unsafe extern "C" fn context_switch_local(rsp: u64) {
     let Some(next) = get_scheduler().switch() else {
         return;
     };
-    let Some(next_task) = task_data.try_get(&next) else {
+    let Some(next_task) = task_data.try_thread(&next) else {
         todo!()
     };
     if current.state() == super::task::TaskState::Running {

@@ -100,7 +100,7 @@ pub fn test_test_main() -> ! {
 #[cfg(feature = "test_run")]
 #[with_default_args]
 extern "C" fn kernel_test_runner() -> ProcessReturn {
-    let current = tls::task_data().get_current().unwrap();
+    let current = tls::task_data().current_thread().unwrap();
     _ = current.add_fd(
         STDERR_FILENO,
         fs::open(Path::new("/proc/kernel/io/serial"), OpenOptions::WRITE).unwrap(),
