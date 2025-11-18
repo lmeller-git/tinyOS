@@ -325,48 +325,68 @@ pub fn waittime(duration: u64) -> SysCallRes<()> {
 // - any child thread exit?
 // - any child exit?
 // ...?
+// for now just allow W_EXIT
 pub fn wait_pid(
     id: u64,
     timeout: i64,
     w_flags: WaitOptions,
     tw_flags: TaskWaitOptions,
 ) -> SysCallRes<TaskStateChange> {
-    todo!()
-    // let task = tls::task_data().thread(&id.into()).ok_or(SysRetCode::Fail)?;
-    // if timeout == 0 {
-    //     return Ok(TaskStateChange::empty());
-    // }
-    // let mut conditions = Vec::new();
-    // if timeout > 0 {
-    //     let until = Duration::from_millis(timeout as u64) + current_time();
-    //     conditions.push(QueuTypeCondition::with_cond(
-    //         QueueType::Timer,
-    //         WaitCondition::Time(until),
-    //     ));
-    // }
-    // conditions.push(QueuTypeCondition::with_cond(
-    //     QueueType::Thread(id.into()),
-    //     WaitCondition::Thread(id.into(), tw_flags),
-    // ));
+    if !tw_flags.contains(TaskWaitOptions::W_EXIT) {
+        return Err(SysRetCode::Fail);
+    }
+    let task = tls::task_data()
+        .thread(&id.into())
+        .ok_or(SysRetCode::Fail)?;
+    if timeout == 0 {
+        return Ok(TaskStateChange::empty());
+    }
+    let mut conditions = Vec::new();
+    if timeout > 0 {
+        let until = Duration::from_millis(timeout as u64) + current_time();
+        conditions.push(QueuTypeCondition::with_cond(
+            QueueType::Timer,
+            WaitCondition::Time(until),
+        ));
+    }
+    conditions.push(QueuTypeCondition::with_cond(
+        QueueType::Process(id.into()),
+        WaitCondition::Generic(
+            id.into(),
+            Box::leak(Box::new(|pid: u64| {
+                let state = tls::task_data();
+                let processes = state.processes().read();
+                let Some(process) = processes.get(&pid.into()) else {
+                    eprintln!("could not retrieve process that was waited on");
+                    return true;
+                };
+                if process.get_state() == TaskState::Zombie {
+                    true
+                } else {
+                    false
+                }
+            })) as *mut dyn Fn(u64) -> bool as *const () as usize,
+        ),
+    ));
 
-    // if w_flags.contains(WaitOptions::NOBLOCK) {
-    //     todo!()
-    // }
-    // let q_type = QueueType::Thread(id.into());
-    // add_queue(
-    //     QueueHandle::from_owned(Box::new(GenericWaitQueue::new()) as Box<dyn WaitQueue>),
-    //     q_type.clone(),
-    // );
+    if w_flags.contains(WaitOptions::NOBLOCK) {
+        todo!()
+    }
+    let q_type = QueueType::Process(id.into());
+    add_queue(
+        QueueHandle::from_owned(Box::new(GenericWaitQueue::new()) as Box<dyn WaitQueue>),
+        q_type.clone(),
+    );
 
-    // let r = wait_self(&conditions)
-    //     .ok_or(SysRetCode::Fail)
-    //     .map(|_| match task.state() {
-    //         TaskState::Running | TaskState::Ready => TaskStateChange::WAKEUP,
-    //         TaskState::Blocking | TaskState::Sleeping => TaskStateChange::BLOCK,
-    //         TaskState::Zombie => TaskStateChange::EXIT,
-    //     });
-    // remove_queue(&q_type);
-    // r
+    let r = wait_self(&conditions)
+        .ok_or(SysRetCode::Fail)
+        .map(|_| match task.state() {
+            TaskState::Running | TaskState::Ready => TaskStateChange::WAKEUP,
+            TaskState::Blocking | TaskState::Sleeping => TaskStateChange::BLOCK,
+            TaskState::Zombie => TaskStateChange::EXIT,
+        });
+    remove_queue(&q_type);
+    r
 }
 
 pub fn eventfd() -> SysCallRes<FileDescriptor> {

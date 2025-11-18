@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use core::time::Duration;
 
 use tinyos_abi::flags::{TaskStateChange, TaskWaitOptions};
@@ -16,6 +17,7 @@ pub enum WaitCondition {
     Time(Duration),
     Keyboard,
     Thread(ThreadID, TaskWaitOptions),
+    Generic(u64, usize),
     None,
 }
 
@@ -39,6 +41,10 @@ impl WaitCondition {
                     )
                 })
                 .is_none_or(|r| r),
+            Self::Generic(val, callback) => {
+                let callback = unsafe { &*(*callback as *mut () as *mut dyn Fn(u64) -> bool) };
+                callback(*val)
+            }
             Self::None => true,
         }
     }
