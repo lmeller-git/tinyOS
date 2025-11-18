@@ -17,9 +17,12 @@ pub enum WaitCondition {
     Time(Duration),
     Keyboard,
     Thread(ThreadID, TaskWaitOptions),
-    Generic(u64, usize),
+    Generic(u64, *const dyn Fn(u64) -> bool),
     None,
 }
+
+unsafe impl Send for WaitCondition {}
+unsafe impl Sync for WaitCondition {}
 
 impl WaitCondition {
     //TODO add msg: T, where msg is the msg passed in WaitEvent
@@ -42,7 +45,7 @@ impl WaitCondition {
                 })
                 .is_none_or(|r| r),
             Self::Generic(val, callback) => {
-                let callback = unsafe { &*(*callback as *mut () as *mut dyn Fn(u64) -> bool) };
+                let callback = unsafe { &**callback };
                 callback(*val)
             }
             Self::None => true,
