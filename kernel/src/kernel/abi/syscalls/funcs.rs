@@ -27,7 +27,7 @@ use crate::{
         threading::{
             self,
             schedule::{self, add_built_task},
-            task::{TaskBuilder, TaskRepr, TaskState},
+            task::{ProcessID, TaskBuilder, TaskRepr, TaskState},
             tls,
             trampoline::TaskExitInfo,
             wait::{
@@ -353,19 +353,19 @@ pub fn wait_pid(
         QueueType::Process(id.into()),
         WaitCondition::Generic(
             id.into(),
-            Box::leak(Box::new(|pid: u64| {
+            Box::into_raw(Box::new(|pid: u64| {
                 let state = tls::task_data();
                 let processes = state.processes().read();
-                let Some(process) = processes.get(&pid.into()) else {
+                let Some(process) = processes.get::<ProcessID>(&pid.into()) else {
                     eprintln!("could not retrieve process that was waited on");
                     return true;
                 };
-                if process.get_state() == TaskState::Zombie {
+                if process.get_process_state() == TaskState::Zombie {
                     true
                 } else {
                     false
                 }
-            })) as *mut dyn Fn(u64) -> bool as *const () as usize,
+            })),
         ),
     ));
 

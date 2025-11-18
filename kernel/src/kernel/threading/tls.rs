@@ -161,7 +161,7 @@ impl TaskManager {
     }
 
     pub fn pgrid(&self, pid: &ProcessID) -> Option<ProcessGroupID> {
-        self.processes.read().get(pid)
+        self.processes.read().get(pid).map(|p| p.pgrid)
     }
 
     pub fn current_tid(&self) -> ThreadID {
@@ -209,35 +209,51 @@ impl TaskManager {
     }
 
     fn cleanup_tree(&self) {
-        let mut groups = self.tree.read();
-        for (group_id, group) in groups.iter() {
-            let mut group = group.write_arc();
-            {
-                for (pid, process) in group.members.iter() {
-                    let mut process = process.write_arc();
-                    let mut killed = Vec::new();
-                    {
-                        for (tid, thread) in process.threads.iter() {
-                            if thread.state() == TaskState::Zombie {
-                                post_event(WaitEvent::with_data(
-                                    QueueType::Process(*pid),
-                                    TaskStateChange::EXIT.bits() as u64,
-                                ));
-                                killed.push(tid);
-                            }
-                        }
-                    }
-                    for item in killed.iter() {
-                        process.threads.remove(item);
-                    }
-                    if process.threads.is_empty() {
-                        group.members.remove(pid);
+        let groups = self.tree.read();
+        let mut empty_groups = Vec::new();
+        let mut empty_members = Vec::new();
+        let mut dead_threads = Vec::new();
+
+        for (group_id, group_arc) in groups.iter() {
+            let group = group_arc.read_arc();
+
+            for (pid, process_arc) in group.members.iter() {
+                let process = process_arc.read_arc();
+
+                for (tid, thread) in process.threads.iter() {
+                    if thread.state() == TaskState::Zombie {
+                        post_event(WaitEvent::with_data(
+                            QueueType::Process(*pid),
+                            TaskStateChange::EXIT.bits() as u64,
+                        ));
+                        dead_threads.push(*tid);
                     }
                 }
+
+                drop(process);
+                let mut process = process_arc.write_arc();
+                for tid in dead_threads.drain(..) {
+                    process.threads.remove(&tid);
+                }
+                if process.threads.is_empty() {
+                    empty_members.push(*pid);
+                }
+            }
+
+            drop(group);
+            let mut group = group_arc.write_arc();
+            for pid in empty_members.drain(..) {
+                group.members.remove(&pid);
             }
             if group.members.is_empty() {
-                groups.remove(group_id);
+                empty_groups.push(*group_id);
             }
+        }
+
+        drop(groups);
+        let mut groups = self.tree.write();
+        for gid in empty_groups.drain(..) {
+            groups.remove(&gid);
         }
     }
 
@@ -315,14 +331,15 @@ impl TaskManager {
     pub fn kill_process(&self, pid: &ProcessID) -> Option<()> {
         // this sucks.
         // might want to flatten th tree into maps of ids
-        let process = self.processes.read().get(pid)?;
+        let processes = self.processes.read();
+        let process = processes.get(pid)?;
         let tree = self.tree.read();
         let group = tree.get(&process.pgrid)?.read();
         let thread_list = group.members.get(pid)?.read();
         for id in thread_list.threads.iter().map(|(id, _)| id) {
             self.kill(id, 0)?;
         }
-        process.as_ref().set_state(TaskState::Zombie);
+        process.set_process_state(TaskState::Zombie);
         post_event(WaitEvent::with_data(
             QueueType::Process(*pid),
             TaskStateChange::EXIT.bits() as u64,

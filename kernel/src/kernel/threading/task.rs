@@ -171,11 +171,11 @@ impl TaskCore {
         self
     }
 
-    fn get_process_state(&self) -> TaskState {
+    pub fn get_process_state(&self) -> TaskState {
         self.state.load(Ordering::Acquire).into()
     }
 
-    fn set_process_state(&self, state: TaskState) {
+    pub fn set_process_state(&self, state: TaskState) {
         self.state.store(state as u8, Ordering::Release);
     }
 }
