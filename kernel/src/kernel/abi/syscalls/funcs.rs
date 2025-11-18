@@ -172,6 +172,9 @@ pub fn yield_now() -> SysCallRes<()> {
     Ok(())
 }
 
+// This should kill the current PROCESS
+// TODO fix
+// --> need process exit first
 pub fn exit(status: i64) -> ! {
     post_event(WaitEvent::with_data(
         QueueType::Thread(tls::task_data().current_tid()),
@@ -183,12 +186,16 @@ pub fn exit(status: i64) -> ! {
     unreachable!("task did not exit properly");
 }
 
+// This should kill the specified PROCESS
+// TODO fix
+// --> need process exit first
 pub fn kill(pid: u64, signal: i64) -> SysCallRes<()> {
     tls::task_data()
         .kill(&pid.into(), signal as i32)
         .ok_or(SysRetCode::Fail)
 }
 
+// TODO zero out memory if necessary
 pub fn mmap(len: usize, addr: *mut u8, flags: PageTableFlags, fd: i32) -> SysCallRes<*mut u8> {
     // TODO add a more sophisticated approach for managing address spaces
     let current = tls::task_data().get_current().ok_or(SysRetCode::Fail)?;
@@ -285,7 +292,7 @@ pub fn munmap(addr: *mut u8, len: usize) -> SysCallRes<()> {
 }
 
 // TODO handle args
-/// spawns a new thread in a new address space.
+/// spawns a new thread in a new address space from some provided binary.
 pub fn spawn(elf_data: *const u8, len: usize) -> SysCallRes<()> {
     if !valid_ptr(elf_data, len) {
         return Err(SysRetCode::Fail);
@@ -310,7 +317,9 @@ pub fn waittime(duration: u64) -> SysCallRes<()> {
     wait_self(conditions).ok_or(SysRetCode::Fail)
 }
 
-// should be wait_tid?
+// this should wait for the specified PROCESS to change state.
+// TODO
+// --> need Process state / exit first
 pub fn wait_pid(
     id: u64,
     timeout: i64,
@@ -379,6 +388,7 @@ pub fn serial(buf: *const u8, len: usize) -> SysCallRes<()> {
     Ok(())
 }
 
+// TODO
 pub fn fork() -> SysCallRes<bool> {
     // procedure:
     // - copy relevant structures from current task into new task (devices, privilege, ....)
@@ -386,29 +396,31 @@ pub fn fork() -> SysCallRes<bool> {
     // - modify the interrupt frame, such that the syscall returns true (1) for the new task in RAX. The old task will receive false (0) in RAX.
     // - add the new task to task data
     // - sysret
-    todo!()
+    Err(SysRetCode::Fail)
 }
 
+// TODO args?
 pub fn execve(path: *const u8, len: usize) -> SysCallRes<u64> {
     if !valid_ptr(path, len) {
         return Err(SysRetCode::Fail);
     }
-    let path = unsafe { str::from_raw_parts(path, len) };
 
+    let path = unsafe { str::from_raw_parts(path, len) };
     let bin = fs::open(Path::new(path), OpenOptions::READ).map_err(|_| SysRetCode::Fail)?;
     let mut buf = Vec::new();
     let bytes = bin.read_to_end(&mut buf, 0).map_err(|_| SysRetCode::Fail)?;
-    let current = tls::task_data().get_current().ok_or(SysRetCode::Fail)?;
+
     let mut new = TaskBuilder::from_bytes(&buf[..bytes])
         .map_err(|_| SysRetCode::Fail)?
         .with_default_files(true);
     let new = new.as_usr().map_err(|_| SysRetCode::Fail)?.build();
-    let id = new.tid().get_inner();
+
+    let id = new.pid().0;
     add_built_task(new);
     Ok(id)
 }
 
-pub fn pthread_create(start_rotine: *const (), args: *const ()) -> SysCallRes<u64> {
+pub fn thread_create(start_rotine: *const (), args: *const ()) -> SysCallRes<u64> {
     if !valid_ptr(start_rotine, 0) {
         return Err(SysRetCode::Fail);
     }
@@ -423,52 +435,58 @@ pub fn pthread_create(start_rotine: *const (), args: *const ()) -> SysCallRes<u6
     Ok(tid)
 }
 
-pub fn pthread_exit() -> ! {
+pub fn thread_exit() -> ! {
     exit(0)
 }
 
-// TODO for these we need to group threads per process in tls::task_data
-pub fn pthread_cancel(id: u64) -> SysCallRes<i64> {
-    todo!()
+pub fn thread_cancel(id: u64) -> SysCallRes<i64> {
+    tls::task_data()
+        .kill(&id.into(), 0)
+        .map(|_| 0)
+        .ok_or(SysRetCode::Fail)
 }
 
-pub fn pthread_join(id: u64, timeout: i64) -> SysCallRes<i64> {
-    todo!()
-    // let task = tls::task_data().get(&id.into()).ok_or(SysRetCode::Fail)?;
-    //     if timeout == 0 {
-    //         return Ok(TaskStateChange::empty());
-    //     }
-    //     let mut conditions = Vec::new();
-    //     if timeout > 0 {
-    //         let until = Duration::from_millis(timeout as u64) + current_time();
-    //         conditions.push(QueuTypeCondition::with_cond(
-    //             QueueType::Timer,
-    //             WaitCondition::Time(until),
-    //         ));
-    //     }
-    //     conditions.push(QueuTypeCondition::with_cond(
-    //         QueueType::Thread(id.into()),
-    //         WaitCondition::Thread(id.into(), tw_flags),
-    //     ));
+pub fn thread_join(
+    id: u64,
+    timeout: i64,
+    w_flags: WaitOptions,
+    tw_flags: TaskWaitOptions,
+) -> SysCallRes<TaskStateChange> {
+    let task = tls::task_data().get(&id.into()).ok_or(SysRetCode::Fail)?;
+    if timeout == 0 {
+        return Ok(TaskStateChange::empty());
+    }
+    let mut conditions = Vec::new();
+    if timeout > 0 {
+        let until = Duration::from_millis(timeout as u64) + current_time();
+        conditions.push(QueuTypeCondition::with_cond(
+            QueueType::Timer,
+            WaitCondition::Time(until),
+        ));
+    }
+    conditions.push(QueuTypeCondition::with_cond(
+        QueueType::Thread(id.into()),
+        WaitCondition::Thread(id.into(), tw_flags),
+    ));
 
-    //     if w_flags.contains(WaitOptions::NOBLOCK) {
-    //         todo!()
-    //     }
-    //     let q_type = QueueType::Thread(id.into());
-    //     add_queue(
-    //         QueueHandle::from_owned(Box::new(GenericWaitQueue::new()) as Box<dyn WaitQueue>),
-    //         q_type.clone(),
-    //     );
+    if w_flags.contains(WaitOptions::NOBLOCK) {
+        todo!()
+    }
+    let q_type = QueueType::Thread(id.into());
+    add_queue(
+        QueueHandle::from_owned(Box::new(GenericWaitQueue::new()) as Box<dyn WaitQueue>),
+        q_type.clone(),
+    );
 
-    //     let r = wait_self(&conditions)
-    //         .ok_or(SysRetCode::Fail)
-    //         .map(|_| match task.state() {
-    //             TaskState::Running | TaskState::Ready => TaskStateChange::WAKEUP,
-    //             TaskState::Blocking | TaskState::Sleeping => TaskStateChange::BLOCK,
-    //             TaskState::Zombie => TaskStateChange::EXIT,
-    //         });
-    //     remove_queue(&q_type);
-    //     r
+    let r = wait_self(&conditions)
+        .ok_or(SysRetCode::Fail)
+        .map(|_| match task.state() {
+            TaskState::Running | TaskState::Ready => TaskStateChange::WAKEUP,
+            TaskState::Blocking | TaskState::Sleeping => TaskStateChange::BLOCK,
+            TaskState::Zombie => TaskStateChange::EXIT,
+        });
+    remove_queue(&q_type);
+    r
 }
 
 pub fn get_tid() -> SysCallRes<u64> {
@@ -481,4 +499,11 @@ pub fn get_tid() -> SysCallRes<u64> {
 pub fn time() -> SysCallRes<u64> {
     // TODO this should return a u128, but this requires splitting across registers / ptr
     Ok(current_time().as_millis() as u64)
+}
+
+pub fn get_pgrid() -> SysCallRes<u64> {
+    tls::task_data()
+        .get_current()
+        .map(|p| p.pgrid().0)
+        .ok_or(SysRetCode::Fail)
 }

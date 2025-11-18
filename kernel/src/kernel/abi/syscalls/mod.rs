@@ -21,14 +21,14 @@ use crate::{
         mmap,
         munmap,
         open,
-        pthread_cancel,
-        pthread_create,
-        pthread_exit,
-        pthread_join,
         read,
         seek,
         serial,
         spawn,
+        thread_cancel,
+        thread_create,
+        thread_exit,
+        thread_join,
         time,
         wait_pid,
         waittime,
@@ -94,7 +94,7 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
         SysCallDispatch::Fork => fork().map(|r| r as i64),
         SysCallDispatch::WaitTime => waittime(args.first()).map(|_| 0),
         SysCallDispatch::Machine => machine().map(|_| 0),
-        SysCallDispatch::GetPid => get_pid().map(|r| r as i64),
+        SysCallDispatch::GetPID => get_pid().map(|r| r as i64),
         SysCallDispatch::Seek => seek(args.first() as u32, args.second() as usize).map(|_| 0),
         SysCallDispatch::Dup => dup(args.first() as u32, args.second() as i32).map(|r| r as i64),
         SysCallDispatch::Spawn => {
@@ -106,12 +106,18 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
         SysCallDispatch::Execve => {
             execve(args.first() as *const u8, args.second() as usize).map(|r| r as i64)
         }
-        SysCallDispatch::PThreadCreate => {
-            pthread_create(args.first() as *const (), args.second() as *const ()).map(|r| r as i64)
+        SysCallDispatch::ThreadCreate => {
+            thread_create(args.first() as *const (), args.second() as *const ()).map(|r| r as i64)
         }
-        SysCallDispatch::PThreadExit => pthread_exit(),
-        SysCallDispatch::PThreadCancel => pthread_cancel(args.first()),
-        SysCallDispatch::PThreadJoin => pthread_join(args.first(), args.second() as i64),
+        SysCallDispatch::ThreadExit => thread_exit(),
+        SysCallDispatch::ThreadCancel => thread_cancel(args.first()),
+        SysCallDispatch::ThreadJoin => thread_join(
+            args.first(),
+            args.second() as i64,
+            WaitOptions::from_bits_truncate(args.third() as u16),
+            TaskWaitOptions::from_bits_truncate(args.fourth() as u16),
+        )
+        .map(|r| r.bits() as i64),
         SysCallDispatch::WaitPID => wait_pid(
             args.first(),
             args.second() as i64,
@@ -121,7 +127,8 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
         .map(|r| r.bits() as i64),
         SysCallDispatch::EventFD => eventfd().map(|r| r as i64),
         SysCallDispatch::Time => time().map(|r| r as i64),
-        SysCallDispatch::GetTid => get_tid().map(|r| r as i64),
+        SysCallDispatch::GetTID => get_tid().map(|r| r as i64),
+        SysCallDispatch::GetPgrID => todo!(),
     };
 
     // in case of err we return the error value in ret2 and do not touch ret1
