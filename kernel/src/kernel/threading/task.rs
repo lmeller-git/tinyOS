@@ -99,6 +99,7 @@ pub struct TaskCore {
     pub next_free_addr: AtomicUsize,
     pub name: Option<String>,
     pub parent: Option<ThreadID>,
+    pub state: AtomicU8,
     _private: PhantomData<()>,
 }
 
@@ -150,6 +151,7 @@ impl TaskCore {
             heap_size: 0.into(),
             next_free_addr: AtomicUsize::new(0),
             fd_table: RwLock::default(),
+            state: (TaskState::default() as u8).into(),
             _private: PhantomData,
         }
     }
@@ -167,6 +169,14 @@ impl TaskCore {
     fn with_name(mut self, name: String) -> Self {
         self.name.replace(name);
         self
+    }
+
+    fn get_process_state(&self) -> TaskState {
+        self.state.load(Ordering::Acquire).into()
+    }
+
+    fn set_process_state(&self, state: TaskState) {
+        self.state.store(state as u8, Ordering::Release);
     }
 }
 

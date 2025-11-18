@@ -17,7 +17,7 @@ use crate::{
         fs::{Path, PathBuf},
         threading::{
             self,
-            task::ThreadID,
+            task::{ProcessID, ThreadID},
             tls,
             wait::{condition::WaitCondition, queues::WaitQueue},
         },
@@ -151,6 +151,7 @@ pub enum QueueType {
     Timer,
     KeyBoard,
     Thread(ThreadID),
+    Process(ProcessID),
     File(u64),
 }
 

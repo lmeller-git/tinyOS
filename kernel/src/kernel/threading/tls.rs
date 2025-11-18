@@ -10,6 +10,7 @@ use core::{
 
 use conquer_once::spin::OnceCell;
 use hashbrown::HashMap;
+use tinyos_abi::flags::TaskStateChange;
 
 use crate::{
     kernel::{
@@ -26,6 +27,7 @@ use crate::{
                 TaskStateData,
                 ThreadID,
             },
+            wait::{QueueType, WaitEvent, post_event},
         },
     },
     sync::locks::{Mutex, RwLock},
@@ -154,6 +156,14 @@ impl TaskManager {
             .cloned()
     }
 
+    pub fn processes(&self) -> &RwLock<HashMap<ProcessID, MaybeOwned<TaskCore>>> {
+        &self.processes
+    }
+
+    pub fn pgrid(&self, pid: &ProcessID) -> Option<ProcessGroupID> {
+        self.processes.read().get(pid)
+    }
+
     pub fn current_tid(&self) -> ThreadID {
         (&self.current_running).into()
     }
@@ -195,6 +205,40 @@ impl TaskManager {
             };
             cleanup_task(task);
         }
+        self.cleanup_tree();
+    }
+
+    fn cleanup_tree(&self) {
+        let mut groups = self.tree.read();
+        for (group_id, group) in groups.iter() {
+            let mut group = group.write_arc();
+            {
+                for (pid, process) in group.members.iter() {
+                    let mut process = process.write_arc();
+                    let mut killed = Vec::new();
+                    {
+                        for (tid, thread) in process.threads.iter() {
+                            if thread.state() == TaskState::Zombie {
+                                post_event(WaitEvent::with_data(
+                                    QueueType::Process(*pid),
+                                    TaskStateChange::EXIT.bits() as u64,
+                                ));
+                                killed.push(tid);
+                            }
+                        }
+                    }
+                    for item in killed.iter() {
+                        process.threads.remove(item);
+                    }
+                    if process.threads.is_empty() {
+                        group.members.remove(pid);
+                    }
+                }
+            }
+            if group.members.is_empty() {
+                groups.remove(group_id);
+            }
+        }
     }
 
     /// thread
@@ -209,6 +253,10 @@ impl TaskManager {
 
     pub fn get_table(&self) -> &RwLock<HashMap<ThreadID, GlobalTaskPtr>> {
         &self.lut
+    }
+
+    pub fn get_tree(&self) -> &RwLock<BTreeMap<ProcessGroupID, Arc<RwLock<ProcessGroup>>>> {
+        &self.tree
     }
 
     /// thread
@@ -267,13 +315,18 @@ impl TaskManager {
     pub fn kill_process(&self, pid: &ProcessID) -> Option<()> {
         // this sucks.
         // might want to flatten th tree into maps of ids
-        let group_id = self.processes.read().get(pid)?.pgrid;
+        let process = self.processes.read().get(pid)?;
         let tree = self.tree.read();
-        let group = tree.get(&group_id)?.read();
-        let process = group.members.get(pid)?.read();
-        for id in process.threads.iter().map(|(id, _)| id) {
+        let group = tree.get(&process.pgrid)?.read();
+        let thread_list = group.members.get(pid)?.read();
+        for id in thread_list.threads.iter().map(|(id, _)| id) {
             self.kill(id, 0)?;
         }
+        process.as_ref().set_state(TaskState::Zombie);
+        post_event(WaitEvent::with_data(
+            QueueType::Process(*pid),
+            TaskStateChange::EXIT.bits() as u64,
+        ));
         Some(())
     }
 
