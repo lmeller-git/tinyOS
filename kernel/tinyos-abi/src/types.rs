@@ -27,6 +27,7 @@ pub enum SysCallDispatch {
     Time = 24,
     GetTID = 25,
     GetPgrID = 26,
+    Pipe = 27,
 }
 
 #[repr(i64)]

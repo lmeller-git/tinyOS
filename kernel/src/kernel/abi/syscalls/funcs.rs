@@ -17,7 +17,8 @@ use crate::{
     eprintln,
     kernel::{
         abi::syscalls::utils::{__sys_yield, valid_ptr},
-        fd::FileRepr,
+        devices::tty::Pipe,
+        fd::{File, FileRepr},
         fs::{self, Path},
         io::Read,
         mem::{
@@ -474,10 +475,15 @@ pub fn thread_exit() -> ! {
 }
 
 pub fn thread_cancel(id: u64) -> SysCallRes<i64> {
-    tls::task_data()
+    let r = tls::task_data()
         .kill(&id.into(), 0)
         .map(|_| 0)
-        .ok_or(SysRetCode::Fail)
+        .ok_or(SysRetCode::Fail);
+    post_event(WaitEvent::with_data(
+        QueueType::Thread(id.into()),
+        TaskStateChange::EXIT.bits() as u64,
+    ));
+    r
 }
 
 pub fn thread_join(
@@ -542,4 +548,25 @@ pub fn get_pgrid() -> SysCallRes<u64> {
         .current_thread()
         .map(|p| p.pgrid().0)
         .ok_or(SysRetCode::Fail)
+}
+
+pub fn pipe(fds: *mut [u32; 2]) -> SysCallRes<()> {
+    if !valid_ptr(fds, 1) {
+        return Err(SysRetCode::Fail);
+    }
+    let current_task = tls::task_data().current_thread().ok_or(SysRetCode::Fail)?;
+    let (read, write) = Pipe::new();
+    let read_fd = current_task.next_fd();
+    let write_fd = current_task.next_fd();
+
+    let reader = File::new(Box::new(read) as Box<dyn FileRepr>);
+    let writer = File::new(Box::new(write) as Box<dyn FileRepr>);
+
+    current_task.add_fd(read_fd, reader);
+    current_task.add_fd(write_fd, writer);
+
+    let arr = unsafe { &mut *fds };
+    arr[0] = read_fd;
+    arr[1] = write_fd;
+    Ok(())
 }

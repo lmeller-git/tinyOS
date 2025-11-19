@@ -14,6 +14,7 @@ use crate::{
         execve,
         exit,
         fork,
+        get_pgrid,
         get_pid,
         get_tid,
         kill,
@@ -21,6 +22,7 @@ use crate::{
         mmap,
         munmap,
         open,
+        pipe,
         read,
         seek,
         serial,
@@ -128,7 +130,8 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
         SysCallDispatch::EventFD => eventfd().map(|r| r as i64),
         SysCallDispatch::Time => time().map(|r| r as i64),
         SysCallDispatch::GetTID => get_tid().map(|r| r as i64),
-        SysCallDispatch::GetPgrID => todo!(),
+        SysCallDispatch::GetPgrID => get_pgrid().map(|r| r as i64),
+        SysCallDispatch::Pipe => pipe(args.first() as *mut [u32; 2]).map(|_| 0),
     };
 
     // in case of err we return the error value in ret2 and do not touch ret1

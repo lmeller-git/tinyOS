@@ -24,3 +24,4 @@ waittime - wait for n millis - (timeout: u64)
 time - returns current system time in milliseconds - () -> u64
 get_tid - returns tid of current thread - () -> u64
 get_pgrid - returns process group id of current process - () -> PgrID
+Pipe - creates a pipe which may be used for ipc - (*mut [u32; 2]) -> ()
