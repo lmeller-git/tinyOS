@@ -30,6 +30,7 @@ use crate::{
             wait::{QueueType, WaitEvent, post_event},
         },
     },
+    serial_println,
     sync::locks::{Mutex, RwLock},
 };
 
@@ -103,13 +104,18 @@ impl ProcessGroup {
 #[derive(Default, Debug)]
 pub struct Process {
     threads: BTreeMap<ThreadID, GlobalTaskPtr>,
+    leader: ThreadID,
 }
 
 impl Process {
     pub fn new(leader: GlobalTaskPtr) -> Self {
         let mut threads = BTreeMap::new();
-        threads.insert(leader.tid(), leader);
-        Self { threads }
+        let tid = leader.tid();
+        threads.insert(tid, leader);
+        Self {
+            threads,
+            leader: tid,
+        }
     }
 }
 
@@ -199,13 +205,13 @@ impl TaskManager {
 
         drop(tasks);
         // cleanup zombies and remove them from self.tasks
+        self.cleanup_tree();
         while let Some(zombie) = self.zombies.lock().pop_front() {
             let Some(task) = self.lut.write().remove(&zombie) else {
                 continue;
             };
             cleanup_task(task);
         }
-        self.cleanup_tree();
     }
 
     fn cleanup_tree(&self) {
@@ -219,23 +225,33 @@ impl TaskManager {
 
             for (pid, process_arc) in group.members.iter() {
                 let process = process_arc.read_arc();
+                let mut leader_dead = false;
 
                 for (tid, thread) in process.threads.iter() {
                     if thread.state() == TaskState::Zombie {
                         post_event(WaitEvent::with_data(
-                            QueueType::Process(*pid),
+                            QueueType::Thread(*tid),
                             TaskStateChange::EXIT.bits() as u64,
                         ));
+                        if tid == &process.leader {
+                            leader_dead = true;
+                        }
                         dead_threads.push(*tid);
                     }
                 }
 
                 drop(process);
                 let mut process = process_arc.write_arc();
+
                 for tid in dead_threads.drain(..) {
                     process.threads.remove(&tid);
                 }
-                if process.threads.is_empty() {
+
+                if process.threads.is_empty() || leader_dead {
+                    self.processes
+                        .read()
+                        .get(pid)
+                        .map(|p| p.set_process_state(TaskState::Zombie));
                     empty_members.push(*pid);
                 }
             }
@@ -244,6 +260,10 @@ impl TaskManager {
             let mut group = group_arc.write_arc();
             for pid in empty_members.drain(..) {
                 group.members.remove(&pid);
+                post_event(WaitEvent::with_data(
+                    QueueType::Process(pid),
+                    TaskStateChange::EXIT.bits() as u64,
+                ));
             }
             if group.members.is_empty() {
                 empty_groups.push(*group_id);

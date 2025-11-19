@@ -103,7 +103,8 @@ pub unsafe extern "C" fn context_switch_local(rsp: u64) {
     if current.state() == super::task::TaskState::Running {
         current.set_state(super::task::TaskState::Ready);
     }
-    task_data.update_current(next);
+    // this is already done in scheduler::switch currently
+    // task_data.update_current(next);
 
     let ptr = TaskState::from_task(next_task.as_ref());
 
