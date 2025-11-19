@@ -26,6 +26,7 @@ use crate::{
         interrupt,
         mem::{PageSize, Size4KiB, VirtAddr},
     },
+    eprintln,
     kernel::{
         elf::apply,
         fd::{FDMap, File, FileDescriptor, MaybeOwned, STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO},
@@ -36,6 +37,7 @@ use crate::{
         },
         threading::{tls, trampoline::TaskExitInfo},
     },
+    serial_println,
     sync::locks::{Mutex, RwLock},
 };
 
@@ -100,6 +102,7 @@ pub struct TaskCore {
     pub name: Option<String>,
     pub parent: Option<ThreadID>,
     pub state: AtomicU8,
+    pub tidx: AtomicUsize,
     _private: PhantomData<()>,
 }
 
@@ -112,7 +115,6 @@ pub struct TaskMetadata {
     pub state: AtomicU8,
     pub exit_info: Pin<Box<TaskExitInfo>>,
     pub tid: ThreadID,
-    pub tidx: AtomicUsize,
     pub user_stack_top: Option<VirtAddr>,
     pub ursp: Option<AtomicU64>,
     pub krsp: AtomicU64,
@@ -152,6 +154,7 @@ impl TaskCore {
             next_free_addr: AtomicUsize::new(0),
             fd_table: RwLock::default(),
             state: (TaskState::default() as u8).into(),
+            tidx: 1.into(), // this is initalized at 1, as the first thread will not use this number. thus we must "pre increment" it
             _private: PhantomData,
         }
     }
@@ -188,7 +191,6 @@ impl TaskMetadata {
             state: (TaskState::default() as u8).into(),
             privilege: PrivilegeLevel::default(),
             tid: get_tid(),
-            tidx: 0.into(),
             krsp: 0.into(),
             kernel_stack_top: VirtAddr::zero(),
             user_stack_top: None,
@@ -208,8 +210,9 @@ impl TaskRepr for Task {
         self.metadata.tid
     }
 
+    /// SAFETY: this only gives the current highest tidx, NOT the tidx of the current thread
     fn tidx(&self) -> usize {
-        self.metadata.tidx.load(Ordering::Relaxed)
+        self.core.tidx.load(Ordering::Relaxed)
     }
 
     fn pgrid(&self) -> ProcessGroupID {
@@ -666,18 +669,16 @@ impl TaskBuilder<Task, Init<'_>> {
             .core
             .try_clone()
             .ok_or(ThreadingError::Unknown("The tasks core is owned".into()))?;
-        let next_idx = task.metadata.tidx.fetch_add(1, Ordering::Release);
+        let next_idx = task.core.tidx.fetch_add(1, Ordering::Release);
 
         self.inner.core = core;
-        self.inner.metadata.tidx.store(next_idx, Ordering::Relaxed);
 
         let kstack = allocate_kstack()?;
         let tbl = self.inner.pagedir();
-
         let usr_end = allocate_userstack(
             tbl,
             USER_STACK_START.align_up(Size4KiB::SIZE)
-                + (next_idx * align_up(USER_STACK_SIZE, Size4KiB::SIZE as usize)) as u64,
+                + align_up(next_idx * USER_STACK_SIZE, Size4KiB::SIZE as usize) as u64,
         )?;
 
         self.inner.metadata.krsp = AtomicU64::new(kstack.as_u64());

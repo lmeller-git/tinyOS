@@ -27,7 +27,7 @@ use crate::{
         threading::{
             self,
             schedule::{self, add_built_task},
-            task::{ProcessID, TaskBuilder, TaskRepr, TaskState},
+            task::{Arg, Args, ProcessID, TaskBuilder, TaskRepr, TaskState},
             tls,
             trampoline::TaskExitInfo,
             wait::{
@@ -189,9 +189,9 @@ pub fn exit(status: i64) -> ! {
 // This should kill the specified PROCESS
 // TODO fix
 // --> need process exit first
-pub fn kill(pid: u64, signal: i64) -> SysCallRes<()> {
+pub fn kill(pid: u64, _signal: i64) -> SysCallRes<()> {
     tls::task_data()
-        .kill(&pid.into(), signal as i32)
+        .kill_process(&pid.into())
         .ok_or(SysRetCode::Fail)
 }
 
@@ -335,9 +335,6 @@ pub fn wait_pid(
     if !tw_flags.contains(TaskWaitOptions::W_EXIT) {
         return Err(SysRetCode::Fail);
     }
-    let task = tls::task_data()
-        .thread(&id.into())
-        .ok_or(SysRetCode::Fail)?;
     if timeout == 0 {
         return Ok(TaskStateChange::empty());
     }
@@ -357,7 +354,6 @@ pub fn wait_pid(
                 let state = tls::task_data();
                 let processes = state.processes().read();
                 let Some(process) = processes.get::<ProcessID>(&pid.into()) else {
-                    eprintln!("could not retrieve process that was waited on");
                     return true;
                 };
                 if process.get_process_state() == TaskState::Zombie {
@@ -378,13 +374,18 @@ pub fn wait_pid(
         q_type.clone(),
     );
 
-    let r = wait_self(&conditions)
-        .ok_or(SysRetCode::Fail)
-        .map(|_| match task.state() {
-            TaskState::Running | TaskState::Ready => TaskStateChange::WAKEUP,
-            TaskState::Blocking | TaskState::Sleeping => TaskStateChange::BLOCK,
-            TaskState::Zombie => TaskStateChange::EXIT,
-        });
+    let r = wait_self(&conditions).ok_or(SysRetCode::Fail).map(|_| {
+        match tls::task_data()
+            .processes()
+            .read()
+            .get::<ProcessID>(&id.into())
+            .map(|t| t.get_process_state())
+        {
+            Some(TaskState::Running) | Some(TaskState::Ready) => TaskStateChange::WAKEUP,
+            Some(TaskState::Blocking) | Some(TaskState::Sleeping) => TaskStateChange::BLOCK,
+            None | Some(TaskState::Zombie) => TaskStateChange::EXIT,
+        }
+    });
     remove_queue(&q_type);
     r
 }
@@ -446,15 +447,22 @@ pub fn execve(path: *const u8, len: usize) -> SysCallRes<u64> {
     Ok(id)
 }
 
-pub fn thread_create(start_rotine: *const (), args: *const ()) -> SysCallRes<u64> {
-    if !valid_ptr(start_rotine, 0) {
+pub fn thread_create(start_routine: *const (), args: *const ()) -> SysCallRes<u64> {
+    if !valid_ptr(start_routine, 0) {
         return Err(SysRetCode::Fail);
     }
-    let task = unsafe { TaskBuilder::from_addr(VirtAddr::from_ptr(start_rotine)) }
+    let current = tls::task_data()
+        .current_thread()
+        .ok_or(SysRetCode::Success)?;
+
+    let mut fn_args = Args::default();
+    *fn_args.get_mut(0) = Arg::from_ptr(args as *mut ());
+
+    let task = unsafe { TaskBuilder::from_addr(VirtAddr::from_ptr(start_routine)) }
         .map_err(|_| SysRetCode::Fail)?
-        .like_existing_usr(&*tls::task_data().current_thread().ok_or(SysRetCode::Fail)?)
+        .like_existing_usr(&current)
         .map_err(|_| SysRetCode::Fail)?
-        .with_args(args!(args))
+        .with_args(fn_args)
         .build();
     let tid = task.tid().get_inner();
     add_built_task(task);

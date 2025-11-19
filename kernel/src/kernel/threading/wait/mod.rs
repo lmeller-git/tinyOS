@@ -120,15 +120,24 @@ impl<'a> WaitObserver<'a> {
                 .map(|queue| queue.enqueue(id, q.cond.clone()));
         }
         drop(map);
-        loop {
-            if interrupt::without_interrupts(|| {
-                queue_data.iter().any(|c| c.cond.is_given())
-                    || tls::task_data().try_block(id).is_none()
-            }) {
-                threading::yield_now();
-            } else {
+        // at this point the task is enqueued, but not blocked.
+        // we must now block it and ensure, that it van still be woken up, ie no condition is already true
+        // retry n times. if this fails, the task is either already dead, or someone holds a writer lock
+
+        for _ in 0..5 {
+            if queue_data.iter().any(|c| c.cond.is_given()) {
+                // do not block
                 return;
             }
+            // try to block and recheck condition
+            if tls::task_data().try_block(id).is_some() {
+                if queue_data.iter().any(|c| c.cond.is_given()) {
+                    // need to unblock again, as we cannot ensured, that it got unblocked by queue
+                    _ = tls::task_data().wake(id);
+                }
+                return;
+            }
+            threading::yield_now();
         }
     }
 }
