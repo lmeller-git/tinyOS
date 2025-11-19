@@ -1,4 +1,4 @@
-use alloc::sync::Arc;
+use alloc::{collections::vec_deque::VecDeque, sync::Arc};
 use core::fmt::Debug;
 
 use hashbrown::HashMap;
@@ -13,6 +13,7 @@ use crate::{
         fs::NodeType,
         io::{IOError, IOResult, Read, Write},
     },
+    sync::locks::Mutex,
 };
 
 pub mod io;
@@ -40,6 +41,112 @@ pub trait TTYSource: Debug + Send + Sync {
         } else {
             Ok(0)
         }
+    }
+}
+
+pub struct Pipe;
+
+impl Pipe {
+    pub fn new() -> (PipeReadEnd, PipeWriteEnd) {
+        let buf: Arc<_> = PipeInternal::new().into();
+        (
+            PipeReadEnd { inner: buf.clone() },
+            PipeWriteEnd { inner: buf.clone() },
+        )
+    }
+}
+
+#[derive(Debug)]
+pub struct PipeWriteEnd {
+    inner: Arc<PipeInternal>,
+}
+
+impl Read for PipeWriteEnd {
+    fn read(&self, buf: &mut [u8], offset: usize) -> IOResult<usize> {
+        Err(IOError::simple(
+            crate::kernel::fs::FSErrorKind::PermissionDenied,
+        ))
+    }
+}
+
+impl Write for PipeWriteEnd {
+    fn write(&self, buf: &[u8], offset: usize) -> IOResult<usize> {
+        self.inner.write(buf, offset)
+    }
+}
+
+impl IOCapable for PipeWriteEnd {}
+
+impl FileRepr for PipeWriteEnd {
+    fn node_type(&self) -> NodeType {
+        self.inner.node_type()
+    }
+}
+
+#[derive(Debug)]
+pub struct PipeReadEnd {
+    inner: Arc<PipeInternal>,
+}
+
+impl Read for PipeReadEnd {
+    fn read(&self, buf: &mut [u8], offset: usize) -> IOResult<usize> {
+        self.inner.read(buf, offset)
+    }
+}
+
+impl Write for PipeReadEnd {
+    fn write(&self, buf: &[u8], offset: usize) -> IOResult<usize> {
+        Err(IOError::simple(
+            crate::kernel::fs::FSErrorKind::PermissionDenied,
+        ))
+    }
+}
+
+impl IOCapable for PipeReadEnd {}
+
+impl FileRepr for PipeReadEnd {
+    fn node_type(&self) -> NodeType {
+        self.inner.node_type()
+    }
+}
+
+#[derive(Debug)]
+pub struct PipeInternal {
+    buf: Mutex<VecDeque<u8>>,
+}
+
+impl PipeInternal {
+    pub fn new() -> Self {
+        Self {
+            buf: Mutex::default(),
+        }
+    }
+}
+
+impl Write for PipeInternal {
+    fn write(&self, buf: &[u8], _offset: usize) -> IOResult<usize> {
+        self.buf.lock().extend(buf);
+        Ok(buf.len())
+    }
+}
+
+impl Read for PipeInternal {
+    fn read(&self, buf: &mut [u8], _offset: usize) -> IOResult<usize> {
+        let mut internal = self.buf.lock();
+        let len = buf.len().min(internal.len());
+        buf[..len]
+            .iter_mut()
+            .zip(internal.drain(..len))
+            .for_each(|(buf_, item)| *buf_ = item);
+        Ok(len)
+    }
+}
+
+impl IOCapable for PipeInternal {}
+
+impl FileRepr for PipeInternal {
+    fn node_type(&self) -> NodeType {
+        NodeType::Void
     }
 }
 
