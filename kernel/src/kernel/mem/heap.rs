@@ -3,7 +3,7 @@ use crate::arch::mem::{FrameAllocator, Mapper, Page, PageTableFlags, VirtAddr};
 
 // TODO we should probably put this in the higher half or the address space
 pub const HEAP_START: usize = 0x_7444_4444_0000;
-pub const HEAP_SIZE: usize = 2000 * 1024; // 2 MiB (for initramfs binaries, ...)
+pub const HEAP_SIZE: usize = 10000 * 1024; // 10 MiB (for initramfs binaries, ...)
 
 pub fn init() {
     let page_range = {

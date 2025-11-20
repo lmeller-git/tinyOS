@@ -103,9 +103,15 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
         SysCallDispatch::Dbg => {
             serial(args.first() as *const u8, args.second() as usize).map(|_| 0)
         }
-        SysCallDispatch::Execve => {
-            execve(args.first() as *const u8, args.second() as usize).map(|r| r as i64)
-        }
+        SysCallDispatch::Execve => execve(
+            args.first() as *const u8,
+            args.second() as usize,
+            args.third() as *const u8,
+            args.fourth() as usize,
+            args.fifth() as *const u8,
+            args.sixth() as usize,
+        )
+        .map(|r| r as i64),
         SysCallDispatch::ThreadCreate => {
             thread_create(args.first() as *const (), args.second() as *const ()).map(|r| r as i64)
         }

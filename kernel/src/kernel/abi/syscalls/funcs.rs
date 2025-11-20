@@ -432,8 +432,14 @@ pub fn fork() -> SysCallRes<bool> {
     Err(SysRetCode::Fail)
 }
 
-// TODO args?
-pub fn execve(path: *const u8, len: usize) -> SysCallRes<u64> {
+pub fn execve(
+    path: *const u8,
+    len: usize,
+    argc: *const u8,
+    argc_size: usize,
+    argv: *const u8,
+    argv_size: usize,
+) -> SysCallRes<u64> {
     if !valid_ptr(path, len) {
         return Err(SysRetCode::Fail);
     }
@@ -443,14 +449,28 @@ pub fn execve(path: *const u8, len: usize) -> SysCallRes<u64> {
     let mut buf = Vec::new();
     let bytes = bin.read_to_end(&mut buf, 0).map_err(|_| SysRetCode::Fail)?;
     if bytes == BUILTIN_MARKER.len() && &buf[..bytes] == BUILTIN_MARKER {
-        let handle = spawn_fn(execute, args!(Path::new(path))).map_err(|_| SysRetCode::Fail)?;
+        let handle = spawn_fn(
+            execute,
+            args!(
+                Path::new(path),
+                Arg::from_ptr(argc as *mut u8),
+                Arg::from_ptr(argv as *mut u8),
+                Arg::from_usize(argc_size),
+                Arg::from_usize(argv_size)
+            ),
+        )
+        .map_err(|_| SysRetCode::Fail)?;
         return handle.get_task().map(|t| t.pid().0).ok_or(SysRetCode::Fail);
     }
 
     let mut new = TaskBuilder::from_bytes(&buf[..bytes])
         .map_err(|_| SysRetCode::Fail)?
         .with_default_files(true);
-    let new = new.as_usr().map_err(|_| SysRetCode::Fail)?.build();
+    let new = new
+        .as_usr()
+        .map_err(|_| SysRetCode::Fail)?
+        .allocate_argc_argv(argc, argc_size, argv, argv_size)
+        .build();
 
     let id = new.pid().0;
     add_built_task(new);
