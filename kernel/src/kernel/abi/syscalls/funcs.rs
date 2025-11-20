@@ -1,4 +1,8 @@
-use alloc::{boxed::Box, vec, vec::Vec};
+use alloc::{
+    boxed::Box,
+    sync::Arc,
+    vec::{self, Vec},
+};
 use core::{str, sync::atomic::Ordering, time::Duration};
 
 use tinyos_abi::{
@@ -18,7 +22,7 @@ use crate::{
     kernel::{
         abi::syscalls::utils::{__sys_yield, valid_ptr},
         devices::tty::Pipe,
-        fd::{File, FileRepr},
+        fd::{FPerms, File, FileRepr},
         fs::{self, Path},
         io::Read,
         mem::{
@@ -97,11 +101,11 @@ pub fn read(fd: FileDescriptor, buf: *mut u8, len: usize, timeout: i64) -> SysCa
             WaitCondition::Time(until),
         ));
     }
-    if let Some(path) = current_task.fd(fd).ok_or(SysRetCode::Fail)?.get_path() {
-        conditions.push(QueuTypeCondition::new(QueueType::file(path)));
+    if let Some(cond) = current_task.fd(fd).ok_or(SysRetCode::Fail)?.get_waiter() {
+        conditions.push(cond.clone());
         add_queue(
             QueueHandle::from_owned(Box::new(GenericWaitQueue::new()) as Box<dyn WaitQueue>),
-            QueueType::file(path),
+            cond.q_type,
         );
     }
 
@@ -117,7 +121,7 @@ pub fn read(fd: FileDescriptor, buf: *mut u8, len: usize, timeout: i64) -> SysCa
             .ok_or(SysRetCode::Fail)?;
 
         if n == 0 && until > current_time() {
-            wait_self(&conditions).unwrap();
+            wait_self(&conditions).ok_or(SysRetCode::Fail)?;
         } else {
             // TODO we do not want to do this for EVERY queue. Some files (like keyboard) may be queried very often.
             // These should persist
@@ -555,12 +559,12 @@ pub fn pipe(fds: *mut [u32; 2]) -> SysCallRes<()> {
         return Err(SysRetCode::Fail);
     }
     let current_task = tls::task_data().current_thread().ok_or(SysRetCode::Fail)?;
-    let (read, write) = Pipe::new();
+    let pipe = Arc::new(Pipe::new());
     let read_fd = current_task.next_fd();
     let write_fd = current_task.next_fd();
 
-    let reader = File::new(Box::new(read) as Box<dyn FileRepr>);
-    let writer = File::new(Box::new(write) as Box<dyn FileRepr>);
+    let reader = File::new(pipe.clone() as Arc<dyn FileRepr>).with_perms(FPerms::READ);
+    let writer = File::new(pipe as Arc<dyn FileRepr>).with_perms(FPerms::WRITE);
 
     current_task.add_fd(read_fd, reader);
     current_task.add_fd(write_fd, writer);

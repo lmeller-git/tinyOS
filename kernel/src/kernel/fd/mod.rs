@@ -1,4 +1,10 @@
-use alloc::{boxed::Box, collections::btree_map::BTreeMap, string::String, sync::Arc, vec::Vec};
+use alloc::{
+    boxed::Box,
+    collections::btree_map::{BTreeMap, Values},
+    string::String,
+    sync::Arc,
+    vec::Vec,
+};
 use core::{
     fmt::{self, Debug},
     ops::Deref,
@@ -18,6 +24,7 @@ use crate::{
     kernel::{
         fs::{FSError, FSErrorKind, NodeType, OpenOptions, Path, PathBuf},
         io::{IOResult, Read, Write},
+        threading::wait::{QueuTypeCondition, QueueType},
     },
 };
 
@@ -26,6 +33,7 @@ pub type FDMap = BTreeMap<FileDescriptor, Arc<File>>;
 pub trait IOCapable: Read + Write {}
 
 pub trait FileRepr: Debug + IOCapable + Send + Sync {
+    fn node_type(&self) -> NodeType;
     fn fstat(&self) -> FStat {
         FStat::new()
     }
@@ -37,7 +45,9 @@ pub trait FileRepr: Debug + IOCapable + Send + Sync {
         (null_mut(), 0)
     }
 
-    fn node_type(&self) -> NodeType;
+    fn get_waiter(&self) -> Option<QueuTypeCondition> {
+        None
+    }
 }
 
 #[macro_export]
@@ -81,7 +91,7 @@ impl FStat {
 
 bitflags! {
     #[derive(Clone, Debug, PartialEq, Eq)]
-    struct FPerms: u8 {
+    pub struct FPerms: u8 {
         const READ = 1 << 0;
         const WRITE = 1 << 1;
     }
@@ -89,7 +99,9 @@ bitflags! {
 
 impl From<OpenOptions> for FPerms {
     fn from(value: OpenOptions) -> Self {
-        if value.contains(OpenOptions::WRITE) {
+        if value.contains(OpenOptions::WRITE | OpenOptions::READ) {
+            Self::READ | Self::WRITE
+        } else if value.contains(OpenOptions::WRITE) {
             Self::WRITE
         } else if value.contains(OpenOptions::READ) {
             Self::READ
@@ -266,6 +278,8 @@ impl File {
         self.perms.contains(FPerms::WRITE)
     }
 
+    // TODO this should only be allowed if we have read permission (for channels, ...)
+    // However a lot of code currently assumes otherwise. This needs to be reworked
     pub fn may_read(&self) -> bool {
         self.perms.contains(FPerms::READ) || self.may_write()
     }
@@ -303,6 +317,14 @@ impl FileRepr for File {
         let (ptr, len) = self.repr.as_raw_parts();
         let offset = self.cursor.get().min(len);
         (unsafe { ptr.offset(offset as isize) }, len - offset)
+    }
+
+    fn get_waiter(&self) -> Option<QueuTypeCondition> {
+        if let Some(path) = &self.path {
+            Some(QueuTypeCondition::new(QueueType::file(path)))
+        } else {
+            self.repr.get_waiter()
+        }
     }
 }
 

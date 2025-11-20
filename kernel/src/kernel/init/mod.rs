@@ -34,6 +34,9 @@ pub fn default_task() -> KernelRes<()> {
     let mut bin_data = Vec::new();
 
     for name in binaries.split('\t').filter(|n| !n.is_empty()) {
+        if name != "term" {
+            continue;
+        }
         bin_path.push(name);
 
         if let Ok(bin) = fs::open(&bin_path, OpenOptions::READ)
@@ -57,6 +60,14 @@ pub fn default_task() -> KernelRes<()> {
 
 fn load_init_bins() {
     let mut binaries: Vec<(String, &'static [u8])> = include_bins::get_binaries();
+    binaries.push((
+        "shell".into(),
+        include_bytes!("../../../../../tinyTerm/shell/a.out"),
+    ));
+    binaries.push((
+        "term".into(),
+        include_bytes!("../../../../../tinyTerm/term/a.out"),
+    ));
 
     let mut bin_path: PathBuf = Path::new(INCLUDED_BINS).into();
 
