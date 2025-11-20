@@ -11,7 +11,6 @@ pub enum SysCallDispatch {
     Munmap = 8,
     Fork = 9,
     WaitTime = 10,
-    Machine = 11,
     GetPID = 12,
     Seek = 13,
     Dup = 14,

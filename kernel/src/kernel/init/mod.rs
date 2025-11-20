@@ -6,7 +6,7 @@ use crate::{
     include_bins,
     kernel::{
         devices,
-        fs::{self, OpenOptions, Path, PathBuf, UnlinkOptions},
+        fs::{self, OpenOptions, Path, PathBuf, UnlinkOptions, builtin_bins},
         io::{Read, Write},
         mem,
         threading::{self, schedule, task::TaskBuilder},
@@ -25,16 +25,18 @@ pub fn late_init() {
     fs::init();
     devices::init();
     load_init_bins();
+    builtin_bins::init();
     threading::init();
 }
 
 pub fn default_task() -> KernelRes<()> {
     let mut bin_path = Path::new(INCLUDED_BINS).to_owned();
     let binaries = fs::lsdir(&bin_path)?;
+    serial_println!("the binaries are {}", binaries);
     let mut bin_data = Vec::new();
 
     for name in binaries.split('\t').filter(|n| !n.is_empty()) {
-        if name != "term" {
+        if name != "tinyTerm.out" {
             continue;
         }
         bin_path.push(name);
@@ -60,14 +62,6 @@ pub fn default_task() -> KernelRes<()> {
 
 fn load_init_bins() {
     let mut binaries: Vec<(String, &'static [u8])> = include_bins::get_binaries();
-    binaries.push((
-        "shell".into(),
-        include_bytes!("../../../../../tinyTerm/shell/a.out"),
-    ));
-    binaries.push((
-        "term".into(),
-        include_bytes!("../../../../../tinyTerm/term/a.out"),
-    ));
 
     let mut bin_path: PathBuf = Path::new(INCLUDED_BINS).into();
 

@@ -18,7 +18,6 @@ use crate::{
         get_pid,
         get_tid,
         kill,
-        machine,
         mmap,
         munmap,
         open,
@@ -95,7 +94,6 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
         }
         SysCallDispatch::Fork => fork().map(|r| r as i64),
         SysCallDispatch::WaitTime => waittime(args.first()).map(|_| 0),
-        SysCallDispatch::Machine => machine().map(|_| 0),
         SysCallDispatch::GetPID => get_pid().map(|r| r as i64),
         SysCallDispatch::Seek => seek(args.first() as u32, args.second() as usize).map(|_| 0),
         SysCallDispatch::Dup => dup(args.first() as u32, args.second() as i32).map(|r| r as i64),

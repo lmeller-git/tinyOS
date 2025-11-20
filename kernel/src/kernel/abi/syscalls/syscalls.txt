@@ -4,7 +4,6 @@ open - acquires a filehandle - (path: *const u8, len: usize, flags: u16) -> i32 
 exit - kills the current process - (status: i64) -> !
 kill - kills targeted process - (PID: u64, signal: i64) -> isize
 yield - yields the current process - () -> ()
-machine_state - changes machine state (shutdown, reboot ,...) - (TODO) -> TODO
 close - frees a filehandle - (fd: u32) -> ()
 mmap - maps memory into the processes virtual spac, if fd is >= 0 the file opened at fd will be mapped into memory, starting at its offset - (len: usize, ptr: *mut u8, flags: u32, fd: i32) -> *mut u8
 munmap - unmaps memory from the processes virtual space - (ptr: *mut u8, len: usize) -> ()
