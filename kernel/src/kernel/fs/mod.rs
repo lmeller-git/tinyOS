@@ -1,7 +1,9 @@
+pub mod builtin_bins;
 mod path;
 pub mod procfs;
 mod ramfs;
 mod vfs;
+
 use alloc::{boxed::Box, sync::Arc};
 use core::{
     error,

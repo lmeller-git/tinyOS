@@ -23,7 +23,11 @@ use crate::{
         abi::syscalls::utils::{__sys_yield, valid_ptr},
         devices::tty::Pipe,
         fd::{FPerms, File, FileRepr},
-        fs::{self, Path},
+        fs::{
+            self,
+            Path,
+            builtin_bins::{BUILTIN_MARKER, execute},
+        },
         io::Read,
         mem::{
             align_up,
@@ -32,6 +36,7 @@ use crate::{
         threading::{
             self,
             schedule::{self, add_built_task},
+            spawn_fn,
             task::{Arg, Args, ProcessID, TaskBuilder, TaskRepr, TaskState},
             tls,
             trampoline::TaskExitInfo,
@@ -399,10 +404,6 @@ pub fn eventfd() -> SysCallRes<FileDescriptor> {
     todo!()
 }
 
-pub fn machine() -> SysCallRes<()> {
-    todo!()
-}
-
 pub fn get_pid() -> SysCallRes<u64> {
     Ok(tls::task_data()
         .current_thread()
@@ -441,6 +442,10 @@ pub fn execve(path: *const u8, len: usize) -> SysCallRes<u64> {
     let bin = fs::open(Path::new(path), OpenOptions::READ).map_err(|_| SysRetCode::Fail)?;
     let mut buf = Vec::new();
     let bytes = bin.read_to_end(&mut buf, 0).map_err(|_| SysRetCode::Fail)?;
+    if bytes == BUILTIN_MARKER.len() && &buf[..bytes] == BUILTIN_MARKER {
+        let handle = spawn_fn(execute, args!(Path::new(path))).map_err(|_| SysRetCode::Fail)?;
+        return handle.get_task().map(|t| t.pid().0).ok_or(SysRetCode::Fail);
+    }
 
     let mut new = TaskBuilder::from_bytes(&buf[..bytes])
         .map_err(|_| SysRetCode::Fail)?
