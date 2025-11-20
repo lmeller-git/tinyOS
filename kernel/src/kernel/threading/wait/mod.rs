@@ -162,6 +162,7 @@ pub enum QueueType {
     Thread(ThreadID),
     Process(ProcessID),
     File(u64),
+    Lock(u64),
 }
 
 impl QueueType {
@@ -172,7 +173,7 @@ impl QueueType {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct QueuTypeCondition {
     pub q_type: QueueType,
     pub cond: WaitCondition,

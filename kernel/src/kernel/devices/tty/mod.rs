@@ -12,8 +12,9 @@ use crate::{
         fd::{FileRepr, IOCapable},
         fs::NodeType,
         io::{IOError, IOResult, Read, Write},
+        threading::wait::{QueuTypeCondition, QueueType},
     },
-    sync::locks::Mutex,
+    sync::{get_next_lock_var, locks::Mutex},
 };
 
 pub mod io;
@@ -44,93 +45,30 @@ pub trait TTYSource: Debug + Send + Sync {
     }
 }
 
-pub struct Pipe;
+#[derive(Debug)]
+pub struct Pipe {
+    buf: Mutex<VecDeque<u8>>,
+    lock_descriptor: u64,
+}
 
 impl Pipe {
-    pub fn new() -> (PipeReadEnd, PipeWriteEnd) {
-        let buf: Arc<_> = PipeInternal::new().into();
-        (
-            PipeReadEnd { inner: buf.clone() },
-            PipeWriteEnd { inner: buf.clone() },
-        )
-    }
-}
-
-#[derive(Debug)]
-pub struct PipeWriteEnd {
-    inner: Arc<PipeInternal>,
-}
-
-impl Read for PipeWriteEnd {
-    fn read(&self, buf: &mut [u8], offset: usize) -> IOResult<usize> {
-        Err(IOError::simple(
-            crate::kernel::fs::FSErrorKind::PermissionDenied,
-        ))
-    }
-}
-
-impl Write for PipeWriteEnd {
-    fn write(&self, buf: &[u8], offset: usize) -> IOResult<usize> {
-        self.inner.write(buf, offset)
-    }
-}
-
-impl IOCapable for PipeWriteEnd {}
-
-impl FileRepr for PipeWriteEnd {
-    fn node_type(&self) -> NodeType {
-        self.inner.node_type()
-    }
-}
-
-#[derive(Debug)]
-pub struct PipeReadEnd {
-    inner: Arc<PipeInternal>,
-}
-
-impl Read for PipeReadEnd {
-    fn read(&self, buf: &mut [u8], offset: usize) -> IOResult<usize> {
-        self.inner.read(buf, offset)
-    }
-}
-
-impl Write for PipeReadEnd {
-    fn write(&self, buf: &[u8], offset: usize) -> IOResult<usize> {
-        Err(IOError::simple(
-            crate::kernel::fs::FSErrorKind::PermissionDenied,
-        ))
-    }
-}
-
-impl IOCapable for PipeReadEnd {}
-
-impl FileRepr for PipeReadEnd {
-    fn node_type(&self) -> NodeType {
-        self.inner.node_type()
-    }
-}
-
-#[derive(Debug)]
-pub struct PipeInternal {
-    buf: Mutex<VecDeque<u8>>,
-}
-
-impl PipeInternal {
     pub fn new() -> Self {
+        let lock_descriptor = get_next_lock_var();
         Self {
             buf: Mutex::default(),
+            lock_descriptor,
         }
     }
 }
 
-impl Write for PipeInternal {
+impl Write for Pipe {
     fn write(&self, buf: &[u8], _offset: usize) -> IOResult<usize> {
         self.buf.lock().extend(buf);
         Ok(buf.len())
     }
 }
 
-impl Read for PipeInternal {
+impl Read for Pipe {
     fn read(&self, buf: &mut [u8], _offset: usize) -> IOResult<usize> {
         let mut internal = self.buf.lock();
         let len = buf.len().min(internal.len());
@@ -142,11 +80,17 @@ impl Read for PipeInternal {
     }
 }
 
-impl IOCapable for PipeInternal {}
+impl IOCapable for Pipe {}
 
-impl FileRepr for PipeInternal {
+impl FileRepr for Pipe {
     fn node_type(&self) -> NodeType {
         NodeType::Void
+    }
+
+    fn get_waiter(&self) -> Option<QueuTypeCondition> {
+        Some(QueuTypeCondition::new(QueueType::Lock(
+            self.lock_descriptor,
+        )))
     }
 }
 

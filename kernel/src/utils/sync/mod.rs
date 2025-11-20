@@ -1,3 +1,5 @@
+use core::sync::atomic::{AtomicU64, Ordering};
+
 use crossbeam::queue::SegQueue;
 use thiserror::Error;
 
@@ -27,6 +29,12 @@ pub mod locks {
     pub type RwLock<T> = GenericRwLock<T, YieldWaiter>;
     pub type RwLockReadGuard<'a, T> = GenericRwLockReadGuard<'a, T, YieldWaiter>;
     pub type RwLockWriteGuard<'a, T> = GenericRwLockWriteGuard<'a, T, YieldWaiter>;
+}
+
+static LOCK_VAR: AtomicU64 = AtomicU64::new(0);
+
+pub fn get_next_lock_var() -> u64 {
+    LOCK_VAR.fetch_add(1, Ordering::Release)
 }
 
 #[derive(Debug, Error, PartialEq, Eq, Clone)]
