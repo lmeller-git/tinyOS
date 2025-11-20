@@ -11,7 +11,7 @@ getpid - returns process id of current process - () -> u64
 seek - sets the offset of a file to offset - (fd: u32, offset: usize) -> ()
 dup - returns a new fd, referring to the same file at fd if new_fd is >= 0, new_fd will refer to old_fd - (old_fd: u32, new_fd: i32) -> u32
 dbg - prints something to kernel serial outptut. This is inteded for debugging. This guarantees to print within the syscall. - (buf: *const u8, len: usize) -> ()
-execve - spawns a new process using the binary at path. Copies open file descriptors - (path: *const u8, len: usize) -> PID
+execve - spawns a new process using the binary at path. Copies open file descriptors - puts argc into rdi and argv into rsi. Both may be null. - (path: *const u8, len: usize, argc: *const (), argv: *const ()) -> PID
 fork - clones the current thread into a new thread - () -> isize
 thread_create - creates a new thread in the calling proccess - (start_routine: *const () (where this points to a fn(*mut ())), args: *const ()) -> TID
 thread_exit - exits the current thread - () -> !

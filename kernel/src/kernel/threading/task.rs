@@ -4,6 +4,7 @@ use core::{
     fmt::{Debug, Display, LowerHex},
     marker::PhantomData,
     pin::Pin,
+    ptr::null,
     sync::atomic::{AtomicU8, AtomicU32, AtomicU64, AtomicUsize, Ordering},
 };
 
@@ -350,6 +351,7 @@ impl Arg {
 
 impl Default for Arg {
     fn default() -> Self {
+        //TODO this should be null()
         Self(42)
     }
 }
@@ -719,6 +721,50 @@ impl TaskBuilder<Task, Init<'_>> {
 }
 
 impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
+    pub fn allocate_argc_argv(
+        mut self,
+        argc: *const u8,
+        argc_size: usize,
+        argv: *const u8,
+        argv_size: usize,
+    ) -> Self {
+        let mut current_top = self._marker.inner.info.usr_stack_top;
+
+        let argc_ptr = if !argc.is_null() && argc_size > 0 {
+            let stack_top = current_top.as_mut_ptr();
+            unsafe {
+                core::ptr::copy_nonoverlapping(argc, stack_top, argc_size);
+            }
+            current_top -= argc_size as u64;
+            stack_top
+        } else {
+            core::ptr::null()
+        };
+
+        let argv_ptr = if !argc.is_null() && argv_size > 0 {
+            let stack_top = current_top.as_mut_ptr();
+            unsafe {
+                core::ptr::copy_nonoverlapping(argv, stack_top, argv_size);
+            }
+            current_top -= argv_size as u64;
+            stack_top
+        } else {
+            core::ptr::null()
+        };
+
+        self.data.args = Args([
+            Arg::from_ptr(argc_ptr as *mut u8),
+            Arg::from_ptr(argv_ptr as *mut u8),
+            Arg::from_usize(argc_size),
+            Arg::from_usize(argv_size),
+            Arg::default(),
+            Arg::default(),
+        ]);
+
+        self._marker.inner.info.usr_stack_top = current_top;
+        self
+    }
+
     pub fn build(mut self) -> T {
         unsafe {
             interrupt::disable();

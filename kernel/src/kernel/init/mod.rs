@@ -34,18 +34,21 @@ pub fn default_task() -> KernelRes<()> {
     let binaries = fs::lsdir(&bin_path)?;
     serial_println!("the binaries are {}", binaries);
     let mut bin_data = Vec::new();
+    serial_println!("wtf");
 
     for name in binaries.split('\t').filter(|n| !n.is_empty()) {
         if name != "tinyTerm.out" {
             continue;
         }
         bin_path.push(name);
+        serial_println!("wtf");
 
         if let Ok(bin) = fs::open(&bin_path, OpenOptions::READ)
             && let Ok(n_read) = bin
                 .read_to_end(&mut bin_data, 0)
                 .inspect_err(|e| eprintln!("binary {} could not be read.\n{}", name, e))
         {
+            serial_println!("spawning term");
             let task = TaskBuilder::from_bytes(&bin_data[..n_read])?
                 .with_default_files(true)
                 .with_name(name.into())
