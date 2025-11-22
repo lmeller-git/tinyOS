@@ -63,10 +63,6 @@ pub fn default_task() -> KernelRes<()> {
 
 fn load_init_bins() {
     let mut binaries: Vec<(String, &'static [u8])> = include_bins::get_binaries();
-    binaries.push((
-        "echo".into(),
-        include_bytes!("../../../../../tinyosprograms/programs/echo/a.out"),
-    ));
 
     let mut bin_path: PathBuf = Path::new(INCLUDED_BINS).into();
 
