@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, format, string::String, sync::Arc};
+use alloc::{boxed::Box, format, string::String, sync::Arc, vec};
 use core::{
     cell::UnsafeCell,
     fmt::{Debug, Display, LowerHex},
@@ -25,7 +25,7 @@ use crate::{
             unmap_ustack_mappings,
         },
         interrupt,
-        mem::{PageSize, Size4KiB, VirtAddr},
+        mem::{Cr3, Cr3Flags, PageSize, PhysFrame, Size4KiB, VirtAddr},
     },
     eprintln,
     kernel::{
@@ -34,7 +34,14 @@ use crate::{
         fs::{self, Path},
         mem::{
             align_up,
-            paging::{APageTable, PAGETABLE, TaskPageTable, create_new_pagedir},
+            paging::{
+                APageTable,
+                PAGETABLE,
+                TaskPageTable,
+                create_new_pagedir,
+                get_frame_alloc,
+                get_kernel_pagetbl_root,
+            },
         },
         threading::{tls, trampoline::TaskExitInfo},
     },
@@ -729,11 +736,49 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
         argv_size: usize,
     ) -> Self {
         let mut current_top = self._marker.inner.info.usr_stack_top;
+        let active_table_root: PhysFrame<Size4KiB> = if let Some(current) =
+            tls::task_data().current_thread()
+            && let Some(task_tbl) = current.pagedir().try_get_owned()
+        {
+            task_tbl.lock().root
+        } else {
+            get_kernel_pagetbl_root().clone()
+        };
+
+        // copy data into kernel heap to ensure access across address spaces
+        let mut kernel_buf = vec![0; argc_size + argv_size];
+        if !argc.is_null() && argc_size > 0 {
+            unsafe { core::ptr::copy_nonoverlapping(argc, kernel_buf.as_mut_ptr(), argc_size) };
+        }
+        if !argv.is_null() && argv_size > 0 {
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    argv,
+                    kernel_buf[argc_size..].as_mut_ptr(),
+                    argv_size,
+                )
+            };
+        }
+
+        let _alloc = get_frame_alloc().lock();
+
+        unsafe {
+            interrupt::disable();
+            Cr3::write(get_kernel_pagetbl_root().clone(), Cr3Flags::empty());
+        }
+        drop(_alloc);
+
+        copy_ustack_mappings_into(self.inner.pagedir(), &mut *PAGETABLE.lock());
 
         let argc_ptr = if !argc.is_null() && argc_size > 0 {
+            serial_println!(
+                "setting up argc with size {} at {:#x}",
+                argc_size,
+                current_top.as_u64()
+            );
             let stack_top = current_top.as_mut_ptr();
             unsafe {
-                core::ptr::copy_nonoverlapping(argc, stack_top, argc_size);
+                core::ptr::copy_nonoverlapping(kernel_buf.as_ptr(), stack_top, argc_size);
             }
             current_top -= argc_size as u64;
             stack_top
@@ -741,16 +786,26 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
             core::ptr::null()
         };
 
-        let argv_ptr = if !argc.is_null() && argv_size > 0 {
+        let argv_ptr = if !argv.is_null() && argv_size > 0 {
             let stack_top = current_top.as_mut_ptr();
             unsafe {
-                core::ptr::copy_nonoverlapping(argv, stack_top, argv_size);
+                core::ptr::copy_nonoverlapping(
+                    kernel_buf[argc_size..].as_ptr(),
+                    stack_top,
+                    argv_size,
+                );
             }
             current_top -= argv_size as u64;
             stack_top
         } else {
             core::ptr::null()
         };
+
+        unmap_ustack_mappings(&mut PAGETABLE.lock());
+        unsafe {
+            Cr3::write(active_table_root, Cr3Flags::empty());
+            interrupt::enable();
+        }
 
         self.data.args = Args([
             Arg::from_ptr(argc_ptr as *mut u8),
@@ -766,9 +821,21 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
     }
 
     pub fn build(mut self) -> T {
+        let active_table_root: PhysFrame<Size4KiB> = if let Some(current) =
+            tls::task_data().current_thread()
+            && let Some(task_tbl) = current.pagedir().try_get_owned()
+        {
+            task_tbl.lock().root
+        } else {
+            get_kernel_pagetbl_root().clone()
+        };
+        let _alloc = get_frame_alloc().lock();
+
         unsafe {
             interrupt::disable();
+            Cr3::write(get_kernel_pagetbl_root().clone(), Cr3Flags::empty());
         }
+        drop(_alloc);
 
         copy_ustack_mappings_into(self.inner.pagedir(), &mut *PAGETABLE.lock());
 
@@ -778,6 +845,7 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
         unmap_ustack_mappings(&mut PAGETABLE.lock());
 
         unsafe {
+            Cr3::write(active_table_root, Cr3Flags::empty());
             interrupt::enable();
         }
 
