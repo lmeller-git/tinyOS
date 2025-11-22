@@ -730,7 +730,17 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
     ) -> Self {
         let mut current_top = self._marker.inner.info.usr_stack_top;
 
+        unsafe {
+            interrupt::disable();
+        }
+        copy_ustack_mappings_into(self.inner.pagedir(), &mut *PAGETABLE.lock());
+
         let argc_ptr = if !argc.is_null() && argc_size > 0 {
+            serial_println!(
+                "setting up argc with size {} at {:#x}",
+                argc_size,
+                current_top.as_u64()
+            );
             let stack_top = current_top.as_mut_ptr();
             unsafe {
                 core::ptr::copy_nonoverlapping(argc, stack_top, argc_size);
@@ -741,7 +751,7 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
             core::ptr::null()
         };
 
-        let argv_ptr = if !argc.is_null() && argv_size > 0 {
+        let argv_ptr = if !argv.is_null() && argv_size > 0 {
             let stack_top = current_top.as_mut_ptr();
             unsafe {
                 core::ptr::copy_nonoverlapping(argv, stack_top, argv_size);
@@ -751,6 +761,11 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
         } else {
             core::ptr::null()
         };
+
+        unmap_ustack_mappings(&mut PAGETABLE.lock());
+        unsafe {
+            interrupt::enable();
+        }
 
         self.data.args = Args([
             Arg::from_ptr(argc_ptr as *mut u8),
