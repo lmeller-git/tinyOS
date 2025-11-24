@@ -63,8 +63,8 @@ pub struct SysCallCtx {
 }
 
 impl SysCallCtx {
-    pub fn ret(&mut self, val: i64) {
-        self.rax = val as u64
+    pub fn ret(&mut self, val: u64) {
+        self.rax = val
     }
 
     pub fn num(&self) -> u64 {
@@ -95,8 +95,8 @@ impl SysCallCtx {
         self.r8
     }
 
-    pub fn ret2(&mut self, val: i64) {
-        self.rdx = val as u64
+    pub fn ret2(&mut self, val: u64) {
+        self.rdx = val
     }
 }
 

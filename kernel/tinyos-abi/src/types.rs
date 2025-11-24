@@ -29,28 +29,71 @@ pub enum SysCallDispatch {
     Pipe = 27,
 }
 
-#[repr(i64)]
+#[repr(u64)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SysRetCode {
-    Unknown = -2,
-    Success = 0,
-    Fail = -1,
+pub enum SysErrCode {
+    NoErr = 0,
+    AccessDenied,
+    OpDenied,
+    AddrInUse,
+    AddrNotAvail,
+    AddrNotValid,
+    BadFd,
+    BadMsg,
+    BadRqstD,
+    Cancelled,
+    NoChild,
+    SendErr,
+    Deadlock,
+    DiskFull,
+    FileExists,
+    FileTooBig,
+    InvalidArg,
+    IO,
+    NoDevice,
+    NoFile,
+    OOM,
+    DirNotEmpty,
+    InvalidSeek,
+    NoProcess,
+    TimerExp,
+    WouldBlock,
 }
 
-impl TryFrom<i64> for SysRetCode {
+const MAX_ERRNO: u64 = 25;
+
+impl TryFrom<u64> for SysErrCode {
     type Error = i64;
 
-    fn try_from(value: i64) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(Self::Success),
-            -1 => Ok(Self::Fail),
-            -2 => Ok(Self::Unknown),
-            _ => Err(value),
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        if value > MAX_ERRNO {
+            Err(-1)
+        } else {
+            Ok(unsafe { core::mem::transmute(value) })
         }
     }
 }
 
-pub type SysResult<T> = Result<T, SysRetCode>;
+pub trait FromSyscall: Sized {
+    fn try_parse_from(rax: u64, rdx: u64) -> Option<Self>;
+    fn parse_from(rax: u64, rdx: u64) -> Self {
+        Self::try_parse_from(rax, rdx).unwrap()
+    }
+}
+
+pub type SysResult<T> = Result<T, SysErrCode>;
+
+impl<T: TryFrom<u64>> FromSyscall for SysResult<T> {
+    fn try_parse_from(rax: u64, rdx: u64) -> Option<Self> {
+        let errno = rdx.try_into().ok()?;
+        if errno == SysErrCode::NoErr {
+            Some(Ok(rax.try_into().ok()?))
+        } else {
+            Some(Err(errno))
+        }
+    }
+}
+
 pub type SysCallRes<T> = SysResult<T>;
 
 pub type FileDescriptor = u32;

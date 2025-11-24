@@ -1,7 +1,7 @@
 use tinyos_abi::{
     consts::MAX_SYSCALL,
     flags::{OpenOptions, PageTableFlags, TaskWaitOptions, WaitOptions},
-    types::{SysCallDispatch, SysRetCode},
+    types::{SysCallDispatch, SysErrCode},
 };
 
 use crate::{
@@ -53,7 +53,7 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
             args.num(),
             MAX_SYSCALL
         );
-        args.ret(SysRetCode::Fail as i64);
+        args.ret(SysErrCode::BadRqstD as u64);
         return;
     }
     let dispatch = unsafe { core::mem::transmute(dispatch) };
@@ -64,7 +64,7 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
             args.second() as usize,
             OpenOptions::from_bits_truncate(args.third() as u32),
         )
-        .map(|r| r as i64),
+        .map(|r| r as u64),
         SysCallDispatch::Close => close(args.first() as u32).map(|_| 0),
         SysCallDispatch::Read => read(
             args.first() as u32,
@@ -72,13 +72,13 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
             args.third() as usize,
             args.fourth() as i64,
         )
-        .map(|r| r as i64),
+        .map(|r| r as u64),
         SysCallDispatch::Write => write(
             args.first() as u32,
             args.second() as usize as *const u8,
             args.third() as usize,
         )
-        .map(|r| r as i64),
+        .map(|r| r as u64),
         SysCallDispatch::Yield => yield_now().map(|_| 0),
         SysCallDispatch::Exit => exit(args.first() as i64),
         SysCallDispatch::Kill => kill(args.first(), args.second() as i64).map(|_| 0),
@@ -88,15 +88,15 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
             PageTableFlags::from_bits_truncate(args.third()),
             args.fourth() as i32,
         )
-        .map(|r| r as usize as i64),
+        .map(|r| r as usize as u64),
         SysCallDispatch::Munmap => {
             munmap(args.first() as usize as *mut u8, args.second() as usize).map(|_| 0)
         }
-        SysCallDispatch::Fork => fork().map(|r| r as i64),
+        SysCallDispatch::Fork => fork().map(|r| r as u64),
         SysCallDispatch::WaitTime => waittime(args.first()).map(|_| 0),
-        SysCallDispatch::GetPID => get_pid().map(|r| r as i64),
+        SysCallDispatch::GetPID => get_pid().map(|r| r),
         SysCallDispatch::Seek => seek(args.first() as u32, args.second() as usize).map(|_| 0),
-        SysCallDispatch::Dup => dup(args.first() as u32, args.second() as i32).map(|r| r as i64),
+        SysCallDispatch::Dup => dup(args.first() as u32, args.second() as i32).map(|r| r as u64),
         SysCallDispatch::Spawn => {
             spawn(args.first() as *const u8, args.second() as usize).map(|_| 0)
         }
@@ -111,37 +111,37 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
             args.fifth() as *const u8,
             args.sixth() as usize,
         )
-        .map(|r| r as i64),
+        .map(|r| r),
         SysCallDispatch::ThreadCreate => {
-            thread_create(args.first() as *const (), args.second() as *const ()).map(|r| r as i64)
+            thread_create(args.first() as *const (), args.second() as *const ()).map(|r| r)
         }
         SysCallDispatch::ThreadExit => thread_exit(),
-        SysCallDispatch::ThreadCancel => thread_cancel(args.first()),
+        SysCallDispatch::ThreadCancel => thread_cancel(args.first()).map(|r| r as u64),
         SysCallDispatch::ThreadJoin => thread_join(
             args.first(),
             args.second() as i64,
             WaitOptions::from_bits_truncate(args.third() as u16),
             TaskWaitOptions::from_bits_truncate(args.fourth() as u16),
         )
-        .map(|r| r.bits() as i64),
+        .map(|r| r.bits() as u64),
         SysCallDispatch::WaitPID => wait_pid(
             args.first(),
             args.second() as i64,
             WaitOptions::from_bits_truncate(args.third() as u16),
             TaskWaitOptions::from_bits_truncate(args.fourth() as u16),
         )
-        .map(|r| r.bits() as i64),
-        SysCallDispatch::EventFD => eventfd().map(|r| r as i64),
-        SysCallDispatch::Time => time().map(|r| r as i64),
-        SysCallDispatch::GetTID => get_tid().map(|r| r as i64),
-        SysCallDispatch::GetPgrID => get_pgrid().map(|r| r as i64),
+        .map(|r| r.bits() as u64),
+        SysCallDispatch::EventFD => eventfd().map(|r| r as u64),
+        SysCallDispatch::Time => time().map(|r| r),
+        SysCallDispatch::GetTID => get_tid().map(|r| r),
+        SysCallDispatch::GetPgrID => get_pgrid().map(|r| r),
         SysCallDispatch::Pipe => pipe(args.first() as *mut [u32; 2]).map(|_| 0),
     };
 
     // in case of err we return the error value in ret2 and do not touch ret1
     // in case of success we return the return value in ret1 and return success value in ret2
-    res.inspect_err(|e| args.ret2(*e as i64)).inspect(|r| {
+    res.inspect_err(|e| args.ret2(*e as u64)).inspect(|r| {
         args.ret(*r);
-        args.ret2(SysRetCode::Success as i64);
+        args.ret2(SysErrCode::NoErr as u64);
     });
 }
