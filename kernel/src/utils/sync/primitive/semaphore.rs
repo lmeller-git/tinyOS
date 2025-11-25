@@ -1,4 +1,7 @@
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::{
+    fmt::Debug,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use lock_api::GuardSend;
 
@@ -82,6 +85,25 @@ unsafe impl<S: WaitStrategy> RawSemaphore for DynamicSemaphore<S> {
     }
 }
 
+impl<S: Clone + WaitStrategy> Clone for DynamicSemaphore<S> {
+    fn clone(&self) -> Self {
+        Self {
+            counter: self.counter.load(Ordering::Acquire).into(),
+            strategy: self.strategy.clone(),
+        }
+    }
+}
+
+impl<S: WaitStrategy> Debug for DynamicSemaphore<S> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "Dynamic Sema with count {}",
+            self.counter.load(Ordering::Relaxed),
+        )
+    }
+}
+
 pub struct StaticSemaphore<const N: usize, S: WaitStrategy> {
     inner: DynamicSemaphore<S>,
 }
@@ -121,6 +143,20 @@ unsafe impl<const N: usize, S: WaitStrategy> RawSemaphore for StaticSemaphore<N,
         unsafe {
             self.inner.up_n(n);
         }
+    }
+}
+
+impl<const N: usize, S: Clone + WaitStrategy> Clone for StaticSemaphore<N, S> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl<const N: usize, S: WaitStrategy> Debug for StaticSemaphore<N, S> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Static Sema with inner {:?}", self.inner)
     }
 }
 

@@ -516,8 +516,11 @@ impl<S> TaskBuilder<Task, S> {
                     .map(|(&fd, f)| (fd, f.clone())),
             )
         } else {
-            let stdin =
-                fs::open(Path::new("/proc/kernel/io/keyboard"), fs::OpenOptions::READ).unwrap();
+            let stdin = fs::open(
+                Path::new("/proc/kernel/io/stateful_keyboard"),
+                fs::OpenOptions::READ,
+            )
+            .unwrap();
             let stdout = fs::open(
                 Path::new("/proc/kernel/io/fbbackend"),
                 fs::OpenOptions::READ | fs::OpenOptions::WRITE,

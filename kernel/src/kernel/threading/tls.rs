@@ -53,6 +53,10 @@ static GLOBAL_TASK_MANAGER: OnceCell<TaskManager> = OnceCell::uninit();
 
 // TODO may want to add ids to Process, ProcessGroup
 
+// TODO add 'hooking' system:
+// processes may insert various hooks into task_data, which are hooked to a state_change of task y.
+// once this state change happens, the hooks will be called (and maybe cleaned up). -> better blocking semantics, usefule for cleanup, ...
+
 ///
 /// Usage:
 /// ```

@@ -50,6 +50,13 @@ pub trait FileRepr: Debug + IOCapable + Send + Sync {
     }
 }
 
+pub trait FileReprFactory: Debug + Send + Sync {
+    fn get_file_impl(&self) -> Result<Box<dyn FileRepr>, FSError>;
+    fn get_file(&self) -> Result<File, FSError> {
+        self.get_file_impl().map(File::new)
+    }
+}
+
 #[macro_export]
 macro_rules!  impl_file_for_wr {
     (@impl [$($impl_generics:tt)*] $name:ty: $node:expr) => {

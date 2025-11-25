@@ -69,6 +69,7 @@ where
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct SpinWaiter;
 
 impl StatelessWaitStrategy for SpinWaiter {
@@ -81,6 +82,7 @@ impl StatelessWaitStrategy for SpinWaiter {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct YieldWaiter;
 
 impl StatelessWaitStrategy for YieldWaiter {
@@ -119,6 +121,7 @@ impl WaitStrategy for BlockingWaiter {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct NoBlock;
 
 impl StatelessWaitStrategy for NoBlock {
