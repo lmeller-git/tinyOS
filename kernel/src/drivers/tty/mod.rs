@@ -35,6 +35,15 @@ pub enum ControlCode {
     BS = 0x08,
 }
 
+fn write(buf: &mut [u8], bytes: &[u8]) -> isize {
+    if buf.len() < bytes.len() {
+        return -1;
+    }
+    buf[..bytes.len()].copy_from_slice(bytes);
+
+    bytes.len() as isize
+}
+
 pub fn map_key(key: DecodedKey, buf: &mut [u8]) -> isize {
     match key {
         DecodedKey::RawKey(raw) => match raw {
@@ -52,41 +61,28 @@ pub fn map_key(key: DecodedKey, buf: &mut [u8]) -> isize {
                 *buf.first_mut().unwrap() = ControlCode::BS as u8;
                 1
             }
-            KeyCode::Delete => {
-                if buf.len() < 4 {
-                    return -1;
-                };
-                buf[..4].copy_from_slice(&[ControlCode::ESC as u8, b'[', b'3', b'~']);
-                4
-            }
-            KeyCode::ArrowUp => {
-                if buf.len() < 3 {
-                    return -1;
-                };
-                buf[..3].copy_from_slice(&[ControlCode::ESC as u8, b'[', b'A']);
-                3
-            }
-            KeyCode::ArrowLeft => {
-                if buf.len() < 3 {
-                    return -1;
-                };
-                buf[..3].copy_from_slice(&[ControlCode::ESC as u8, b'[', b'D']);
-                3
-            }
-            KeyCode::ArrowDown => {
-                if buf.len() < 3 {
-                    return -1;
-                };
-                buf[..3].copy_from_slice(&[ControlCode::ESC as u8, b'[', b'B']);
-                3
-            }
-            KeyCode::ArrowRight => {
-                if buf.len() < 3 {
-                    return -1;
-                };
-                buf[..3].copy_from_slice(&[ControlCode::ESC as u8, b'[', b'C']);
-                3
-            }
+            KeyCode::Delete => write(buf, &[ControlCode::ESC as u8, b'[', b'3', b'~']),
+            KeyCode::ArrowUp => write(buf, &[ControlCode::ESC as u8, b'[', b'A']),
+            KeyCode::ArrowLeft => write(buf, &[ControlCode::ESC as u8, b'[', b'D']),
+            KeyCode::ArrowDown => write(buf, &[ControlCode::ESC as u8, b'[', b'B']),
+            KeyCode::ArrowRight => write(buf, &[ControlCode::ESC as u8, b'[', b'C']),
+            KeyCode::Home => write(buf, b"\x1B[H"),
+            KeyCode::End => write(buf, b"\x1B[F"),
+            KeyCode::PageUp => write(buf, b"\x1B[5~"),
+            KeyCode::PageDown => write(buf, b"\x1B[6~"),
+            KeyCode::Insert => write(buf, b"\x1B[2~"),
+            KeyCode::F1 => write(buf, b"\x1BOP"),
+            KeyCode::F2 => write(buf, b"\x1BOQ"),
+            KeyCode::F3 => write(buf, b"\x1BOR"),
+            KeyCode::F4 => write(buf, b"\x1BOS"),
+            KeyCode::F5 => write(buf, b"\x1B[15~"),
+            KeyCode::F6 => write(buf, b"\x1B[17~"),
+            KeyCode::F7 => write(buf, b"\x1B[18~"),
+            KeyCode::F8 => write(buf, b"\x1B[19~"),
+            KeyCode::F9 => write(buf, b"\x1B[20~"),
+            KeyCode::F10 => write(buf, b"\x1B[21~"),
+            KeyCode::F11 => write(buf, b"\x1B[23~"),
+            KeyCode::F12 => write(buf, b"\x1B[24~"),
             k => {
                 serial_println!("not handled: {:#?}", k);
                 0

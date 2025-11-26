@@ -34,14 +34,12 @@ pub fn default_task() -> KernelRes<()> {
     let binaries = fs::lsdir(&bin_path)?;
     serial_println!("the binaries are {}", binaries);
     let mut bin_data = Vec::new();
-    serial_println!("wtf");
 
     for name in binaries.split('\t').filter(|n| !n.is_empty()) {
         if name != "tinyTerm.out" {
             continue;
         }
         bin_path.push(name);
-        serial_println!("wtf");
 
         if let Ok(bin) = fs::open(&bin_path, OpenOptions::READ)
             && let Ok(n_read) = bin

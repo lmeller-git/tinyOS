@@ -1,4 +1,4 @@
-use pc_keyboard::{HandleControl, Keyboard, ScancodeSet1, layouts};
+use pc_keyboard::{EventDecoder, HandleControl, Keyboard, ScancodeSet1, layouts};
 
 use super::KeyboardError;
 use crate::sync::locks::Mutex;
@@ -6,7 +6,7 @@ use crate::sync::locks::Mutex;
 pub static KEYBOARD: Mutex<Keyboard<layouts::Us104Key, ScancodeSet1>> = Mutex::new(Keyboard::new(
     ScancodeSet1::new(),
     layouts::Us104Key,
-    HandleControl::Ignore,
+    HandleControl::MapLettersToUnicode,
 ));
 
 pub fn parse_scancode(scancode: u8) -> Result<pc_keyboard::DecodedKey, KeyboardError> {
