@@ -595,14 +595,14 @@ pub fn get_pgrid() -> SysCallRes<u64> {
         .ok_or(SysErrCode::NoProcess)
 }
 
-pub fn pipe(fds: *mut [u32; 2]) -> SysCallRes<()> {
+pub fn pipe(fds: *mut [u32; 2], cap: isize) -> SysCallRes<()> {
     if !valid_ptr(fds, 1) {
         return Err(SysErrCode::AddrNotValid);
     }
     let current_task = tls::task_data()
         .current_thread()
         .ok_or(SysErrCode::NoProcess)?;
-    let pipe = Arc::new(Pipe::new());
+    let pipe = Arc::new(Pipe::new(cap));
     let read_fd = current_task.next_fd();
     let write_fd = current_task.next_fd();
 

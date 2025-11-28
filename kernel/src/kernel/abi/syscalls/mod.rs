@@ -135,7 +135,9 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
         SysCallDispatch::Time => time().map(|r| r),
         SysCallDispatch::GetTID => get_tid().map(|r| r),
         SysCallDispatch::GetPgrID => get_pgrid().map(|r| r),
-        SysCallDispatch::Pipe => pipe(args.first() as *mut [u32; 2]).map(|_| 0),
+        SysCallDispatch::Pipe => {
+            pipe(args.first() as *mut [u32; 2], args.second() as isize).map(|_| 0)
+        }
     };
 
     // in case of err we return the error value in ret2 and do not touch ret1

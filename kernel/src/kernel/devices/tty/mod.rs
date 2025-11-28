@@ -48,14 +48,16 @@ pub trait TTYSource: Debug + Send + Sync {
 #[derive(Debug)]
 pub struct Pipe {
     buf: Mutex<VecDeque<u8>>,
+    cap: usize,
     lock_descriptor: u64,
 }
 
 impl Pipe {
-    pub fn new() -> Self {
+    pub fn new(cap: isize) -> Self {
         let lock_descriptor = get_next_lock_var();
         Self {
             buf: Mutex::default(),
+            cap: if cap >= 0 { cap as usize } else { usize::MAX },
             lock_descriptor,
         }
     }
@@ -63,8 +65,13 @@ impl Pipe {
 
 impl Write for Pipe {
     fn write(&self, buf: &[u8], _offset: usize) -> IOResult<usize> {
-        self.buf.lock().extend(buf);
-        Ok(buf.len())
+        let mut q = self.buf.lock();
+        let can_push = self.cap.saturating_sub(q.len()).min(buf.len());
+        if can_push == 0 {
+            return Err(IOError::simple(crate::kernel::fs::FSErrorKind::StorageFull));
+        }
+        q.extend(buf[..can_push]);
+        Ok(can_push)
     }
 }
 
