@@ -70,7 +70,7 @@ impl Write for Pipe {
         if can_push == 0 {
             return Err(IOError::simple(crate::kernel::fs::FSErrorKind::StorageFull));
         }
-        q.extend(buf[..can_push]);
+        q.extend(&buf[..can_push]);
         Ok(can_push)
     }
 }
