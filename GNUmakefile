@@ -179,9 +179,20 @@ run-hdd-bios: $(IMAGE_NAME).hdd
 		-hda $(IMAGE_NAME).hdd \
 		$(QEMUFLAGS)
 
+# TODO update fallback version automatically (for now manully every now and then)
+# TODO migrate this to use https://github.com/rust-osdev/ovmf-prebuilt/
 ovmf/ovmf-code-$(KARCH).fd:
 	mkdir -p ovmf
 	curl -Lo $@ https://github.com/osdev0/edk2-ovmf-nightly/releases/latest/download/ovmf-code-$(KARCH).fd
+	if [ $$(stat -c%s $@) -lt 1024 ]; then \
+		echo "Download of ovmf-code failed, trying to use knwon to be good falback version"; \
+		curl -Lo $@ https://github.com/osdev0/edk2-ovmf-nightly/releases/download/nightly-20251203T012444Z/ovmf-code-$(KARCH).fd; \
+		if [ $$(stat -c%s $@) -lt 1024 ]; then \
+			echo "Download of fallback version failed. Aborting..."; \
+			rm -f $@; \
+			exit 1; \
+		fi; \
+	fi
 	case "$(KARCH)" in \
 		aarch64) dd if=/dev/zero of=$@ bs=1 count=0 seek=67108864 2>/dev/null;; \
 		loongarch64) dd if=/dev/zero of=$@ bs=1 count=0 seek=5242880 2>/dev/null;; \
@@ -191,6 +202,15 @@ ovmf/ovmf-code-$(KARCH).fd:
 ovmf/ovmf-vars-$(KARCH).fd:
 	mkdir -p ovmf
 	curl -Lo $@ https://github.com/osdev0/edk2-ovmf-nightly/releases/latest/download/ovmf-vars-$(KARCH).fd
+	if [ $$(stat -c%s $@) -lt 1024 ]; then \
+		echo "Download of ovmf-vars failed, trying to use knwon to be good falback version"; \
+		curl -fLo $@ https://github.com/osdev0/edk2-ovmf-nightly/releases/download/nightly-20251203T012444Z/ovmf-vars-$(KARCH).fd; \
+		if [ $$(stat -c%s $@) -lt 1024 ]; then \
+			echo "Download of fallback version failed. Aborting..."; \
+			rm -f $@; \
+			exit 1; \
+		fi; \
+	fi
 	case "$(KARCH)" in \
 		aarch64) dd if=/dev/zero of=$@ bs=1 count=0 seek=67108864 2>/dev/null;; \
 		loongarch64) dd if=/dev/zero of=$@ bs=1 count=0 seek=5242880 2>/dev/null;; \
