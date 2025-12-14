@@ -201,6 +201,15 @@ impl FileRepr for LockedRamFile {
             RamNode::File(_) => super::NodeType::File,
         }
     }
+
+    fn clear(&self) -> crate::kernel::io::IOResult<()> {
+        match &mut self.write().node {
+            RamNode::SoftLink(_) | RamNode::Dir(_) => {
+                Err(FSError::simple(FSErrorKind::NotSupported))
+            }
+            RamNode::File(f) => Ok(f.inner.clear()),
+        }
+    }
 }
 
 impl IOCapable for LockedRamFile {}
@@ -278,7 +287,8 @@ impl Read for LockedRamFile {
 
 impl Write for LockedRamFile {
     fn write(&self, buf: &[u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
-        match self.write().node {
+        let mut writer = self.write();
+        match writer.node {
             RamNode::SoftLink(ref mut l) => {
                 let str_ =
                     str::from_utf8(buf).map_err(|_| FSError::simple(FSErrorKind::InvalidPath))?;
@@ -296,6 +306,7 @@ impl Write for LockedRamFile {
                 // no need to validate offset, as we just resized
                 let len = f.inner.len().sub(offset).min(buf.len());
                 f.inner[offset..offset + len].copy_from_slice(&buf[..len]);
+                writer.stat.size = f.inner.len();
                 Ok(len)
             }
         }

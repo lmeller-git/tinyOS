@@ -38,6 +38,10 @@ pub trait FileRepr: Debug + IOCapable + Send + Sync {
         FStat::new()
     }
 
+    fn clear(&self) -> IOResult<()> {
+        Err(FSError::simple(FSErrorKind::NotSupported))
+    }
+
     fn as_raw_parts(&self) -> (*mut u8, usize) {
         eprintln!(
             "called default FileRepr::as_raw_parts implementation. This is not what you want."
@@ -96,25 +100,33 @@ impl FStat {
     }
 }
 
+// this is very hacky, we should do the append/truncate stuff ONLY on file creation, not on with_perms. Should not be a FilePerm. TODO
 bitflags! {
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub struct FPerms: u8 {
         const READ = 1 << 0;
         const WRITE = 1 << 1;
+        const APPEND = 1 << 2;
+        const TRUNCATE = 1 << 3;
     }
 }
 
 impl From<OpenOptions> for FPerms {
     fn from(value: OpenOptions) -> Self {
-        if value.contains(OpenOptions::WRITE | OpenOptions::READ) {
-            Self::READ | Self::WRITE
-        } else if value.contains(OpenOptions::WRITE) {
-            Self::WRITE
-        } else if value.contains(OpenOptions::READ) {
-            Self::READ
-        } else {
-            Self::empty()
+        let mut zelf = FPerms::empty();
+        if value.contains(OpenOptions::READ) {
+            zelf |= FPerms::READ;
         }
+        if value.contains(OpenOptions::WRITE) {
+            zelf |= FPerms::WRITE;
+        }
+        if value.contains(OpenOptions::APPEND) {
+            zelf |= FPerms::APPEND;
+        }
+        if value.contains(OpenOptions::TRUNCATE) {
+            zelf |= FPerms::TRUNCATE;
+        }
+        zelf
     }
 }
 
@@ -257,6 +269,13 @@ impl File {
         FPerms: From<T>,
     {
         self.perms |= perms.into();
+        if self.perms.contains(FPerms::APPEND) {
+            self.set_cursor(self.repr.fstat().size);
+        }
+        if self.perms.contains(FPerms::WRITE | FPerms::TRUNCATE) {
+            _ = self.repr.clear();
+            self.set_cursor(0);
+        }
         self
     }
 
