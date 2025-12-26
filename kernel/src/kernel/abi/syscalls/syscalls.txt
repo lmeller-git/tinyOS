@@ -24,3 +24,4 @@ time - returns current system time in milliseconds - () -> u64
 get_tid - returns tid of current thread - () -> u64
 get_pgrid - returns process group id of current process - () -> PgrID
 Pipe - creates a pipe which may be used for ipc with capacity cap if cap >= 0 else unbounded - (*mut [u32; 2], cap: isize) -> ()
+spawn - spawns a new process, allowing for fd mutation - (path: *const u8, len: usize, fd_count: usize, fd_map: *const [FileDescriptor], argv: *const u8, argc: *const SizedArg, envp: *const SizedArg)

@@ -5,7 +5,11 @@
 use alloc::str;
 
 use os_macros::with_default_args;
-use tinyos_abi::flags::{OpenOptions, UnlinkOptions};
+use tinyos_abi::{
+    consts::STDIN_FILENO,
+    flags::{OpenOptions, UnlinkOptions},
+    types::FileDescriptor,
+};
 
 use crate::{
     eprintln,
@@ -14,7 +18,10 @@ use crate::{
         fs::{self, Path},
         init::INCLUDED_BINS,
         io::Write,
-        threading::task::Arg,
+        threading::{
+            schedule::current_task,
+            task::{Arg, TaskRepr},
+        },
     },
     println,
     serial_println,
@@ -31,6 +38,7 @@ pub trait Executable {
 pub fn init() {
     ShutDown::init();
     Serial::init();
+    ReadFromFD::init();
 }
 
 #[with_default_args]
@@ -98,6 +106,34 @@ impl Executable for Serial {
         }
         let str = unsafe { str::from_raw_parts(argc, argc_size) };
         serial_println!("received argc: {}", str);
+        0
+    }
+}
+
+pub struct ReadFromFD;
+
+impl Executable for ReadFromFD {
+    const PATH: &str = "/ram/bin/read_from";
+
+    fn init() {
+        init_fake_bin(Path::new(Self::PATH));
+    }
+
+    fn execute(argc: *const u8, argv: *const u8, argc_size: usize, argv_size: usize) -> usize {
+        let fd = if argc.is_null() || argc_size < size_of::<FileDescriptor>() {
+            STDIN_FILENO
+        } else {
+            *unsafe { &*(argc as *const FileDescriptor) }
+        };
+
+        let contents = current_task()
+            .unwrap()
+            .fd(fd)
+            .unwrap()
+            .read_all_as_str()
+            .unwrap();
+        println!("read \n{}\n from fd {}", contents, fd);
+        serial_println!("read \n{}\n from fd {}", contents, fd);
         0
     }
 }

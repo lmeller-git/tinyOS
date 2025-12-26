@@ -1,4 +1,9 @@
-use std::{env, fs, path::Path, process::Command};
+use std::{
+    env,
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 fn main() {
     println!("cargo:rerun-if-changed=NULL");
@@ -100,9 +105,6 @@ fn build_user_programs() {
     }
     includes.push_str("\t]\n}\n");
 
-    fs::write(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("src/include_bins.rs"),
-        includes,
-    )
-    .unwrap();
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    fs::write(out_dir.join("include_bins.rs"), includes).unwrap();
 }

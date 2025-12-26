@@ -3,7 +3,6 @@ use alloc::{string::String, vec::Vec};
 use crate::{
     KernelRes,
     eprintln,
-    include_bins,
     kernel::{
         devices,
         fs::{self, OpenOptions, Path, PathBuf, UnlinkOptions, builtin_bins},
@@ -13,6 +12,8 @@ use crate::{
     },
     serial_println,
 };
+
+include!(concat!(env!("OUT_DIR"), "/include_bins.rs"));
 
 pub const KERNEL_DIR: &str = "/kernel";
 pub const INCLUDED_BINS: &str = "/ram/bin";
@@ -62,7 +63,7 @@ pub fn default_task() -> KernelRes<()> {
 }
 
 fn load_init_bins() {
-    let mut binaries: Vec<(String, &'static [u8])> = include_bins::get_binaries();
+    let mut binaries: Vec<(String, &'static [u8])> = get_binaries();
 
     let mut bin_path: PathBuf = Path::new(INCLUDED_BINS).into();
 
