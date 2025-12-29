@@ -6,10 +6,14 @@ use core::{
     ptr::NonNull,
 };
 
-use atomic_pool::pool;
+use atomic_pool::{Pool, pool};
 use conquer_once::spin::OnceCell;
 use hashbrown::HashMap;
-use nblfq::HeaplessQueue;
+use nblfq::{
+    MPMCQueue,
+    array::StaticQueue,
+    slot::{PtrLike, TaggedPtr64},
+};
 
 use crate::{
     arch::interrupt,
@@ -32,25 +36,42 @@ pub const MAX_WAIT_EVENTS: usize = 20;
 
 pool!(MessagePool: [WaitEvent<u64>; MAX_WAIT_EVENTS]);
 
-// pub static MESSAGE_QUEUE: OnceCell<ArrayQueue<WaitEvent<u64>>> = OnceCell::uninit();
-pub static MESSAGE_QUEUE: OnceCell<HeaplessQueue<MAX_WAIT_EVENTS, WaitEvent<u64>>> =
-    OnceCell::uninit();
+pub static MESSAGE_QUEUE: OnceCell<
+    StaticQueue<MAX_WAIT_EVENTS, TaggedPtr64<PoolPointer<MessagePool>>>,
+> = OnceCell::uninit();
+
+struct PoolPointer<P: Pool>(atomic_pool::Box<P>);
+
+unsafe impl<P: Pool> PtrLike for PoolPointer<P> {
+    type Item = P::Item;
+
+    fn as_ptr(zelf: Self) -> *mut Self::Item {
+        atomic_pool::Box::into_raw(zelf.0).as_ptr()
+    }
+
+    fn from_raw(raw: *mut Self::Item) -> Option<Self> {
+        NonNull::from_raw(raw)
+            .map(|nonnull| PoolPointer(unsafe { atomic_pool::Box::from_raw(nonnull) }))
+    }
+}
 
 pub fn init() {
-    MESSAGE_QUEUE.init_once(|| HeaplessQueue::new());
+    MESSAGE_QUEUE.init_once(|| StaticQueue::new());
 }
 
 pub fn post_event(event: WaitEvent<u64>) -> Option<()> {
-    let event: NonNull<WaitEvent<u64>> =
-        atomic_pool::Box::into_raw(atomic_pool::Box::<MessagePool>::new(event)?);
-    let event: &'static WaitEvent<u64> = unsafe { event.as_ref() };
-    MESSAGE_QUEUE.get().and_then(|queue| queue.push(event).ok())
+    if let Some(event) = atomic_pool::Box::<MessagePool>::new(event) {
+        MESSAGE_QUEUE
+            .get()
+            .and_then(|queue| queue.push(PoolPointer(event)).ok())
+    } else {
+        None
+    }
 }
 
 pub fn get_event() -> Option<atomic_pool::Box<MessagePool>> {
     let event = MESSAGE_QUEUE.get()?.pop()?;
-    let event = unsafe { atomic_pool::Box::<MessagePool>::from_raw(NonNull::from_ref(event)) };
-    Some(event)
+    Some(event.0)
 }
 
 pub(crate) struct QueueHandle<'a>(QueueHandleInner<'a>);
