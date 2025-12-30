@@ -9,7 +9,7 @@ use core::{
 use atomic_pool::{Pool, pool};
 use conquer_once::spin::OnceCell;
 use hashbrown::HashMap;
-use nblfq::{
+use nblfqueue::{
     MPMCQueue,
     array::StaticQueue,
     slot::{PtrLike, TaggedPtr64},
