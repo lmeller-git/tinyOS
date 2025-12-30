@@ -53,10 +53,6 @@ unsafe impl<P: Pool> PtrLike for PoolPointer<P> {
         NonNull::from_raw(raw)
             .map(|nonnull| PoolPointer(unsafe { atomic_pool::Box::from_raw(nonnull) }))
     }
-
-    fn drop_callback(raw: *mut Self::Item) {
-        let boxed = Self::from_raw(raw);
-    }
 }
 
 pub fn init() {
