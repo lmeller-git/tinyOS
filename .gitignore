@@ -3,7 +3,3 @@
 /logs
 *.iso
 *.hdd
-**.lock
-
-# generated files
-kernel/src/include_bins.rs

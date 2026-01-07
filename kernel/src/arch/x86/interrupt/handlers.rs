@@ -49,9 +49,9 @@ pub fn timer_interrupt_handler_local_(rsp: u64) {
         event_type: QueueType::Timer,
         data: 0,
     })
-    .is_none()
+    .is_err()
     {
-        // serial_println!("could not push timer event");
+        serial_println!("could not push timer event");
     }
 
     unsafe { context_switch_local(rsp) }
@@ -180,11 +180,11 @@ pub(super) extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: In
     let mut port = Port::<u8>::new(0x60);
     let scancode: u8 = unsafe { port.read() };
     _ = crate::drivers::keyboard::put_scancode(scancode);
-    if post_event(WaitEvent::new(QueueType::KeyBoard)).is_none()
+    if post_event(WaitEvent::new(QueueType::KeyBoard)).is_err()
         || post_event(WaitEvent::new(QueueType::file(Path::new(
             "/proc/kernel/io/keyoard",
         ))))
-        .is_none()
+        .is_err()
     {
         serial_println!("could not push keyboard event");
     }

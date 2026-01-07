@@ -6,14 +6,9 @@ use core::{
     ptr::NonNull,
 };
 
-use atomic_pool::{Pool, pool};
 use conquer_once::spin::OnceCell;
 use hashbrown::HashMap;
-use nblf_queue::{
-    MPMCQueue,
-    array::StaticQueue,
-    slot::{PtrLike, TaggedPtr64},
-};
+use nblf_queue::{MPMCQueue, PooledStaticQueue, core::slots::TaggedPtr64};
 
 use crate::{
     arch::interrupt,
@@ -34,44 +29,22 @@ pub mod queues;
 
 pub const MAX_WAIT_EVENTS: usize = 20;
 
-pool!(MessagePool: [WaitEvent<u64>; MAX_WAIT_EVENTS]);
-
 pub static MESSAGE_QUEUE: OnceCell<
-    StaticQueue<MAX_WAIT_EVENTS, TaggedPtr64<PoolPointer<MessagePool>>>,
+    PooledStaticQueue<WaitEvent<u64>, MAX_WAIT_EVENTS, TaggedPtr64>,
 > = OnceCell::uninit();
 
-struct PoolPointer<P: Pool>(atomic_pool::Box<P>);
-
-unsafe impl<P: Pool> PtrLike for PoolPointer<P> {
-    type Item = P::Item;
-
-    fn as_ptr(zelf: Self) -> *mut Self::Item {
-        atomic_pool::Box::into_raw(zelf.0).as_ptr()
-    }
-
-    fn from_raw(raw: *mut Self::Item) -> Option<Self> {
-        NonNull::from_raw(raw)
-            .map(|nonnull| PoolPointer(unsafe { atomic_pool::Box::from_raw(nonnull) }))
-    }
-}
-
 pub fn init() {
-    MESSAGE_QUEUE.init_once(|| StaticQueue::new());
+    MESSAGE_QUEUE.init_once(|| PooledStaticQueue::with_slot());
 }
 
-pub fn post_event(event: WaitEvent<u64>) -> Option<()> {
-    if let Some(event) = atomic_pool::Box::<MessagePool>::new(event) {
-        MESSAGE_QUEUE
-            .get()
-            .and_then(|queue| queue.push(PoolPointer(event)).ok())
-    } else {
-        None
-    }
+pub fn post_event(event: WaitEvent<u64>) -> Result<(), WaitEvent<u64>> {
+    MESSAGE_QUEUE
+        .get_or_init(|| PooledStaticQueue::with_slot())
+        .push(event)
 }
 
-pub fn get_event() -> Option<atomic_pool::Box<MessagePool>> {
-    let event = MESSAGE_QUEUE.get()?.pop()?;
-    Some(event.0)
+pub fn get_event() -> Option<WaitEvent<u64>> {
+    MESSAGE_QUEUE.get()?.pop()
 }
 
 pub(crate) struct QueueHandle<'a>(QueueHandleInner<'a>);

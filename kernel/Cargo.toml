@@ -28,7 +28,8 @@ spin = "0.10.0"
 pc-keyboard = "0.8.0"
 pic8259 = "0.11.0"
 volatile = "0.6.1"
-crossbeam = { git = "https://github.com/lmeller-git/crossbeam", branch = "try_push_queue", features = ["alloc"], default-features = false }
+# crossbeam = { git = "https://github.com/lmeller-git/crossbeam", branch = "try_push_queue", features = ["alloc"], default-features = false }
+crossbeam = { version = "0.8.4", default-features = false, features = ["alloc"] }
 linked_list_allocator = "0.10.5"
 uart_16550 = "0.3.2"
 embedded-graphics = "0.8.1"
@@ -42,7 +43,6 @@ lock_api = { version = "0.4.13", features = ["arc_lock"] }
 bitflags = "2.9.2"
 indexmap = { version = "2.11.1", default-features = false }
 nblf-queue = { git = "https://github.com/lmeller-git/nblf-queue", features = ["alloc"] }
-atomic-pool = "2.0.0"
 portable-atomic = { version = "1", default-features = false, features = ["require-cas"] }
 cfg-if = "1.0.3"
 
