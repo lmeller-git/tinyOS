@@ -31,7 +31,7 @@ pub const BUILTIN_MARKER: &[u8] = b"tiny_builtin";
 
 pub trait Executable {
     const PATH: &str;
-    fn execute(argc: *const u8, argv: *const u8, argc_size: usize, argv_size: usize) -> usize;
+    fn execute(argc: usize, argv: *const u8, envc: usize, envp: *const u8) -> usize;
     fn init();
 }
 
@@ -42,21 +42,15 @@ pub fn init() {
 }
 
 #[with_default_args]
-pub extern "C" fn execute(
-    path: Arg,
-    argc: Arg,
-    argv: Arg,
-    argc_size: Arg,
-    argv_size: Arg,
-) -> usize {
+pub extern "C" fn execute(path: Arg, argc: Arg, argv: Arg, envc: Arg, envp: Arg) -> usize {
     let path = unsafe { path.as_val::<&Path>() };
-    let argc = unsafe { argc.as_val::<*const u8>() };
     let argv = unsafe { argv.as_val::<*const u8>() };
-    let argc_size = unsafe { argc_size.as_val::<usize>() };
-    let argv_size = unsafe { argv_size.as_val::<usize>() };
+    let envp = unsafe { envp.as_val::<*const u8>() };
+    let argc = unsafe { argc.as_val::<usize>() };
+    let envc = unsafe { envc.as_val::<usize>() };
     match path.as_str() {
-        ShutDown::PATH => ShutDown::execute(argc, argv, argc_size, argv_size),
-        Serial::PATH => Serial::execute(argc, argv, argc_size, argv_size),
+        ShutDown::PATH => ShutDown::execute(argc, argv, envc, envp),
+        Serial::PATH => Serial::execute(argc, argv, envc, envp),
         _ => 0,
     }
 }
@@ -84,7 +78,7 @@ impl Executable for ShutDown {
         init_fake_bin(Path::new(Self::PATH));
     }
 
-    fn execute(argc: *const u8, argv: *const u8, argc_size: usize, argv_size: usize) -> usize {
+    fn execute(argc: usize, argv: *const u8, envc: usize, envp: *const u8) -> usize {
         println!("shutting down system...");
         exit_qemu(crate::QemuExitCode::Success);
         unreachable!()
@@ -100,11 +94,11 @@ impl Executable for Serial {
         init_fake_bin(Path::new(Self::PATH));
     }
 
-    fn execute(argc: *const u8, argv: *const u8, argc_size: usize, argv_size: usize) -> usize {
-        if argc.is_null() {
+    fn execute(argc: usize, argv: *const u8, envc: usize, envp: *const u8) -> usize {
+        if argv.is_null() {
             return 0;
         }
-        let str = unsafe { str::from_raw_parts(argc, argc_size) };
+        let str = unsafe { str::from_raw_parts(argv, argc) };
         serial_println!("received argc: {}", str);
         0
     }
@@ -119,11 +113,11 @@ impl Executable for ReadFromFD {
         init_fake_bin(Path::new(Self::PATH));
     }
 
-    fn execute(argc: *const u8, argv: *const u8, argc_size: usize, argv_size: usize) -> usize {
-        let fd = if argc.is_null() || argc_size < size_of::<FileDescriptor>() {
+    fn execute(argc: usize, argv: *const u8, envc: usize, envp: *const u8) -> usize {
+        let fd = if argv.is_null() || argc < size_of::<FileDescriptor>() {
             STDIN_FILENO
         } else {
-            *unsafe { &*(argc as *const FileDescriptor) }
+            *unsafe { &*(argv as *const FileDescriptor) }
         };
 
         let contents = current_task()

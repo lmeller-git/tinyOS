@@ -1,3 +1,5 @@
+use crate::flags::OpenOptions;
+
 #[repr(u64)]
 pub enum SysCallDispatch {
     Open = 0,
@@ -27,6 +29,7 @@ pub enum SysCallDispatch {
     GetTID = 25,
     GetPgrID = 26,
     Pipe = 27,
+    SpawnProcess = 28,
 }
 
 #[repr(u64)]
@@ -97,3 +100,25 @@ impl<T: TryFrom<u64>> FromSyscall for SysResult<T> {
 pub type SysCallRes<T> = SysResult<T>;
 
 pub type FileDescriptor = u32;
+
+#[derive(Debug, PartialEq, Eq)]
+#[repr(C)]
+pub struct FatPtr<T> {
+    pub size: usize,
+    pub thin: *const T,
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub enum FDAction {
+    Open(FDOpen, FileDescriptor),
+    Close(FileDescriptor),
+    Dup(FileDescriptor, FileDescriptor),
+}
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct FDOpen {
+    pub path: FatPtr<u8>,
+    pub flags: OpenOptions,
+}

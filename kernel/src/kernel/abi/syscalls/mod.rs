@@ -1,7 +1,7 @@
 use tinyos_abi::{
     consts::MAX_SYSCALL,
     flags::{OpenOptions, PageTableFlags, TaskWaitOptions, WaitOptions},
-    types::{SysCallDispatch, SysErrCode},
+    types::{FDAction, FatPtr, SysCallDispatch, SysErrCode},
 };
 
 use crate::{
@@ -26,6 +26,7 @@ use crate::{
         seek,
         serial,
         spawn,
+        spawn_process,
         thread_cancel,
         thread_create,
         thread_exit,
@@ -106,12 +107,9 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
         SysCallDispatch::Execve => execve(
             args.first() as *const u8,
             args.second() as usize,
-            args.third() as *const u8,
-            args.fourth() as usize,
-            args.fifth() as *const u8,
-            args.sixth() as usize,
-        )
-        .map(|r| r),
+            args.third() as *const FatPtr<u8>,
+            args.fourth() as *const FatPtr<u8>,
+        ),
         SysCallDispatch::ThreadCreate => {
             thread_create(args.first() as *const (), args.second() as *const ()).map(|r| r)
         }
@@ -138,6 +136,13 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
         SysCallDispatch::Pipe => {
             pipe(args.first() as *mut [u32; 2], args.second() as isize).map(|_| 0)
         }
+        SysCallDispatch::SpawnProcess => spawn_process(
+            args.first() as *const u8,
+            args.second() as usize,
+            args.third() as *const FatPtr<u8>,
+            args.fourth() as *const FatPtr<u8>,
+            args.fifth() as *const FatPtr<FDAction>,
+        ),
     };
 
     // in case of err we return the error value in ret2 and do not touch ret1
