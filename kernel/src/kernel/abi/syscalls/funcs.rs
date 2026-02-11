@@ -503,25 +503,26 @@ pub fn spawn_process(
         .map_err(|_| SysErrCode::BadMsg)?
         .with_default_files(true);
 
-    let actions = unsafe { &*core::ptr::slice_from_raw_parts(actions.thin, actions.size) };
+    if !actions.thin.is_null() {
+        let actions = unsafe { &*core::ptr::slice_from_raw_parts(actions.thin, actions.size) };
 
-    for action in actions {
-        match action {
-            FDAction::Open(config, fd) => {
-                let path = unsafe { str::from_raw_parts(config.path.thin, config.path.size) };
-                new = new.with_file(
-                    *fd,
-                    fs::open(Path::new(path), config.flags).map_err(|_| SysErrCode::NoFile)?,
-                );
-            }
-            FDAction::Close(fd) => new = new.remove_file(*fd),
-            FDAction::Dup(from, to) => {
-                let current = new.get_file(*from).ok_or(SysErrCode::NoFile)?;
-                new = new.with_file(*to, current)
+        for action in actions {
+            match action {
+                FDAction::Open(config, fd) => {
+                    let path = unsafe { str::from_raw_parts(config.path.thin, config.path.size) };
+                    new = new.with_file(
+                        *fd,
+                        fs::open(Path::new(path), config.flags).map_err(|_| SysErrCode::NoFile)?,
+                    );
+                }
+                FDAction::Close(fd) => new = new.remove_file(*fd),
+                FDAction::Dup(from, to) => {
+                    let current = new.get_file(*from).ok_or(SysErrCode::NoFile)?;
+                    new = new.with_file(*to, current)
+                }
             }
         }
     }
-
     let new = new
         .as_usr()
         .map_err(|_| SysErrCode::Cancelled)?
