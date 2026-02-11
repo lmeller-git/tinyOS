@@ -7,7 +7,7 @@ use core::{str, sync::atomic::Ordering, time::Duration};
 
 use tinyos_abi::{
     flags::{OpenOptions, PageTableFlags, TaskStateChange, TaskWaitOptions, WaitOptions},
-    types::{FileDescriptor, SysCallRes, SysErrCode},
+    types::{FDAction, FatPtr, FileDescriptor, SysCallRes, SysErrCode},
 };
 
 use crate::{
@@ -448,28 +448,47 @@ pub fn fork() -> SysCallRes<bool> {
 pub fn execve(
     path: *const u8,
     len: usize,
-    argc: *const u8,
-    argc_size: usize,
-    argv: *const u8,
-    argv_size: usize,
+    arg: *const FatPtr<u8>,
+    env: *const FatPtr<u8>,
 ) -> SysCallRes<u64> {
-    if !valid_ptr(path, len) {
+    Err(SysErrCode::OpDenied)
+}
+
+// essentially posix_spawn
+pub fn spawn_process(
+    path: *const u8,
+    len: usize,
+    arg: *const FatPtr<u8>,
+    env: *const FatPtr<u8>,
+    fd_actions: *const FatPtr<FDAction>,
+) -> SysCallRes<u64> {
+    if !valid_ptr(path, len)
+        || !valid_ptr(arg, 1)
+        || !valid_ptr(env, 1)
+        || !valid_ptr(fd_actions, 1)
+    {
         return Err(SysErrCode::AddrNotValid);
     }
+
+    let arg_data = unsafe { &*arg };
+    let env_data = unsafe { &*env };
+    let actions = unsafe { &*fd_actions };
 
     let path = unsafe { str::from_raw_parts(path, len) };
     let bin = fs::open(Path::new(path), OpenOptions::READ).map_err(|_| SysErrCode::NoFile)?;
     let mut buf = Vec::new();
     let bytes = bin.read_to_end(&mut buf, 0).map_err(|_| SysErrCode::IO)?;
+
+    // builtin bins (mainly for testing, ...)
     if bytes == BUILTIN_MARKER.len() && &buf[..bytes] == BUILTIN_MARKER {
         let handle = spawn_fn(
             execute,
             args!(
                 Path::new(path),
-                Arg::from_ptr(argc as *mut u8),
-                Arg::from_ptr(argv as *mut u8),
-                Arg::from_usize(argc_size),
-                Arg::from_usize(argv_size)
+                Arg::from_usize(arg_data.size),
+                Arg::from_ptr(arg_data.thin as *mut u8),
+                Arg::from_usize(env_data.size),
+                Arg::from_ptr(env_data.thin as *mut u8)
             ),
         )
         .map_err(|_| SysErrCode::Cancelled)?;
@@ -479,13 +498,34 @@ pub fn execve(
             .ok_or(SysErrCode::NoChild);
     }
 
+    // normal path
     let mut new = TaskBuilder::from_bytes(&buf[..bytes])
         .map_err(|_| SysErrCode::BadMsg)?
         .with_default_files(true);
+
+    let actions = unsafe { &*core::ptr::slice_from_raw_parts(actions.thin, actions.size) };
+
+    for action in actions {
+        match action {
+            FDAction::Open(config, fd) => {
+                let path = unsafe { str::from_raw_parts(config.path.thin, config.path.size) };
+                new = new.with_file(
+                    *fd,
+                    fs::open(Path::new(path), config.flags).map_err(|_| SysErrCode::NoFile)?,
+                );
+            }
+            FDAction::Close(fd) => new = new.remove_file(*fd),
+            FDAction::Dup(from, to) => {
+                let current = new.get_file(*from).ok_or(SysErrCode::NoFile)?;
+                new = new.with_file(*to, current)
+            }
+        }
+    }
+
     let new = new
         .as_usr()
         .map_err(|_| SysErrCode::Cancelled)?
-        .allocate_argc_argv(argc, argc_size, argv, argv_size)
+        .allocate_arg_env(arg_data.size, arg_data.thin, env_data.size, env_data.thin)
         .build();
 
     let id = new.pid().0;

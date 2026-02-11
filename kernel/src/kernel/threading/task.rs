@@ -499,9 +499,18 @@ impl<S> TaskBuilder<Task, S> {
         self
     }
 
-    pub fn with_file(self, fd: FileDescriptor, f: File) -> TaskBuilder<Task, S> {
+    pub fn with_file(self, fd: FileDescriptor, f: impl Into<Arc<File>>) -> TaskBuilder<Task, S> {
         _ = self.inner.add_fd(fd, f);
         self
+    }
+
+    pub fn remove_file(self, fd: FileDescriptor) -> TaskBuilder<Task, S> {
+        _ = self.inner.remove_fd(fd);
+        self
+    }
+
+    pub fn get_file(&self, fd: FileDescriptor) -> Option<Arc<File>> {
+        self.inner.fd(fd)
     }
 
     /// adds open files of current into the new process, if current is accessible, else uses defaults for stdin, stderr and stdout
@@ -731,12 +740,12 @@ impl TaskBuilder<Task, Init<'_>> {
 }
 
 impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
-    pub fn allocate_argc_argv(
+    pub fn allocate_arg_env(
         mut self,
-        argc: *const u8,
-        argc_size: usize,
+        argc: usize,
         argv: *const u8,
-        argv_size: usize,
+        envc: usize,
+        envp: *const u8,
     ) -> Self {
         let mut current_top = self._marker.inner.info.usr_stack_top;
         let active_table_root: PhysFrame<Size4KiB> = if let Some(current) =
@@ -749,18 +758,12 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
         };
 
         // copy data into kernel heap to ensure access across address spaces
-        let mut kernel_buf = vec![0; argc_size + argv_size];
-        if !argc.is_null() && argc_size > 0 {
-            unsafe { core::ptr::copy_nonoverlapping(argc, kernel_buf.as_mut_ptr(), argc_size) };
+        let mut kernel_buf = vec![0; argc + envc];
+        if !argv.is_null() && argc > 0 {
+            unsafe { core::ptr::copy_nonoverlapping(argv, kernel_buf.as_mut_ptr(), argc) };
         }
-        if !argv.is_null() && argv_size > 0 {
-            unsafe {
-                core::ptr::copy_nonoverlapping(
-                    argv,
-                    kernel_buf[argc_size..].as_mut_ptr(),
-                    argv_size,
-                )
-            };
+        if !envp.is_null() && envc > 0 {
+            unsafe { core::ptr::copy_nonoverlapping(envp, kernel_buf[argc..].as_mut_ptr(), envc) };
         }
 
         let _alloc = get_frame_alloc().lock();
@@ -773,32 +776,28 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
 
         copy_ustack_mappings_into(self.inner.pagedir(), &mut *PAGETABLE.lock());
 
-        let argc_ptr = if !argc.is_null() && argc_size > 0 {
+        let argv_ptr = if !argv.is_null() && argc > 0 {
             serial_println!(
-                "setting up argc with size {} at {:#x}",
-                argc_size,
+                "setting up argv with size {} at {:#x}",
+                argc,
                 current_top.as_u64()
             );
             let stack_top = current_top.as_mut_ptr();
             unsafe {
-                core::ptr::copy_nonoverlapping(kernel_buf.as_ptr(), stack_top, argc_size);
+                core::ptr::copy_nonoverlapping(kernel_buf.as_ptr(), stack_top, argc);
             }
-            current_top -= argc_size as u64;
+            current_top -= argc as u64;
             stack_top
         } else {
             core::ptr::null()
         };
 
-        let argv_ptr = if !argv.is_null() && argv_size > 0 {
+        let env_ptr = if !envp.is_null() && envc > 0 {
             let stack_top = current_top.as_mut_ptr();
             unsafe {
-                core::ptr::copy_nonoverlapping(
-                    kernel_buf[argc_size..].as_ptr(),
-                    stack_top,
-                    argv_size,
-                );
+                core::ptr::copy_nonoverlapping(kernel_buf[argc..].as_ptr(), stack_top, envc);
             }
-            current_top -= argv_size as u64;
+            current_top -= envc as u64;
             stack_top
         } else {
             core::ptr::null()
@@ -811,10 +810,10 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
         }
 
         self.data.args = Args([
-            Arg::from_ptr(argc_ptr as *mut u8),
+            Arg::from_usize(argc),
             Arg::from_ptr(argv_ptr as *mut u8),
-            Arg::from_usize(argc_size),
-            Arg::from_usize(argv_size),
+            Arg::from_usize(envc),
+            Arg::from_ptr(env_ptr as *mut u8),
             Arg::default(),
             Arg::default(),
         ]);
