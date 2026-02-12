@@ -114,6 +114,7 @@ pub enum FDAction {
     Open(FDOpen, FileDescriptor),
     Close(FileDescriptor),
     Dup(FileDescriptor, FileDescriptor),
+    Inherit(FileDescriptor, FileDescriptor),
     Clear,
 }
 

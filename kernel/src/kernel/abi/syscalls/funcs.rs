@@ -35,7 +35,7 @@ use crate::{
         },
         threading::{
             self,
-            schedule::{self, add_built_task},
+            schedule::{self, add_built_task, current_task},
             spawn_fn,
             task::{Arg, Args, ProcessID, TaskBuilder, TaskRepr, TaskState},
             tls,
@@ -521,6 +521,13 @@ pub fn spawn_process(
                     new = new.with_file(*to, current)
                 }
                 FDAction::Clear => new = new.with_default_files(false),
+                FDAction::Inherit(parent, child) => {
+                    let current = current_task()
+                        .map_err(|_| SysErrCode::NoProcess)?
+                        .fd(*parent)
+                        .ok_or(SysErrCode::NoFile)?;
+                    new = new.with_file(*child, current);
+                }
             }
         }
     }
