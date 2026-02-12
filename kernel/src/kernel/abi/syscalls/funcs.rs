@@ -520,6 +520,7 @@ pub fn spawn_process(
                     let current = new.get_file(*from).ok_or(SysErrCode::NoFile)?;
                     new = new.with_file(*to, current)
                 }
+                FDAction::Clear => new = new.with_default_files(false),
             }
         }
     }
