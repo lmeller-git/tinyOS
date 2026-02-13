@@ -26,6 +26,7 @@ use crate::{
         fs::{
             self,
             Path,
+            PathBuf,
             builtin_bins::{BUILTIN_MARKER, execute},
         },
         io::Read,
@@ -481,14 +482,34 @@ pub fn spawn_process(
 
     // builtin bins (mainly for testing, ...)
     if bytes == BUILTIN_MARKER.len() && &buf[..bytes] == BUILTIN_MARKER {
+        // copy args to heap
+        let arg_container = if valid_ptr(arg_data.thin, arg_data.size) {
+            let slice = unsafe { core::slice::from_raw_parts(arg_data.thin, arg_data.size) };
+            Some(slice.to_vec().into_boxed_slice())
+        } else {
+            None
+        };
+        let env_container = if valid_ptr(env_data.thin, env_data.size) {
+            let slice = unsafe { core::slice::from_raw_parts(env_data.thin, env_data.size) };
+            Some(slice.to_vec().into_boxed_slice())
+        } else {
+            None
+        };
+
+        if let Some(v) = &arg_container {
+            serial_print!("received {}", unsafe {
+                alloc::str::from_boxed_utf8_unchecked(v.clone())
+            });
+        }
+
         let handle = spawn_fn(
             execute,
             args!(
-                Path::new(path),
-                Arg::from_usize(arg_data.size),
-                Arg::from_ptr(arg_data.thin as *mut u8),
-                Arg::from_usize(env_data.size),
-                Arg::from_ptr(env_data.thin as *mut u8)
+                Path::new(path).to_owned(),
+                arg_data.size,
+                arg_container,
+                env_data.size,
+                env_container,
             ),
         )
         .map_err(|_| SysErrCode::Cancelled)?;
@@ -531,6 +552,7 @@ pub fn spawn_process(
             }
         }
     }
+
     let new = new
         .as_usr()
         .map_err(|_| SysErrCode::Cancelled)?
@@ -652,13 +674,14 @@ pub fn pipe(fds: *mut [u32; 2], cap: isize) -> SysCallRes<()> {
         .current_thread()
         .ok_or(SysErrCode::NoProcess)?;
     let pipe = Arc::new(Pipe::new(cap));
-    let read_fd = current_task.next_fd();
-    let write_fd = current_task.next_fd();
 
     let reader = File::new(pipe.clone() as Arc<dyn FileRepr>).with_perms(FPerms::READ);
     let writer = File::new(pipe as Arc<dyn FileRepr>).with_perms(FPerms::WRITE);
 
+    let read_fd = current_task.next_fd();
     current_task.add_fd(read_fd, reader);
+
+    let write_fd = current_task.next_fd();
     current_task.add_fd(write_fd, writer);
 
     let arr = unsafe { &mut *fds };

@@ -320,7 +320,7 @@ unsafe impl Send for Task {}
 unsafe impl Sync for Task {}
 
 #[repr(transparent)]
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Arg(usize);
 
 impl Arg {
@@ -394,7 +394,7 @@ macro_rules! args {
     ($($arg:expr),* $(,)?) => {{
         const MAX_ARGS: usize = 6;
         #[allow(unused_mut)]
-        let mut arr = [$crate::kernel::threading::task::Arg::default(); MAX_ARGS];
+        let mut arr = core::array::from_fn(|_| Default::default());
         #[allow(unused_mut, unused_assignments)]
         let mut idx = 0;
         $(

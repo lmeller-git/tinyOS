@@ -2,7 +2,7 @@
 // they may be executed via execve(path).
 // execve may treat them differntly from 'real' binaries though.
 
-use alloc::str;
+use alloc::{boxed::Box, str};
 
 use os_macros::with_default_args;
 use tinyos_abi::{
@@ -15,7 +15,7 @@ use crate::{
     eprintln,
     exit_qemu,
     kernel::{
-        fs::{self, Path},
+        fs::{self, Path, PathBuf},
         init::INCLUDED_BINS,
         io::Write,
         threading::{
@@ -31,7 +31,7 @@ pub const BUILTIN_MARKER: &[u8] = b"tiny_builtin";
 
 pub trait Executable {
     const PATH: &str;
-    fn execute(argc: usize, argv: *const u8, envc: usize, envp: *const u8) -> usize;
+    fn execute(argv: Option<Box<[u8]>>, envp: Option<Box<[u8]>>) -> usize;
     fn init();
 }
 
@@ -43,14 +43,12 @@ pub fn init() {
 
 #[with_default_args]
 pub extern "C" fn execute(path: Arg, argc: Arg, argv: Arg, envc: Arg, envp: Arg) -> usize {
-    let path = unsafe { path.as_val::<&Path>() };
-    let argv = unsafe { argv.as_val::<*const u8>() };
-    let envp = unsafe { envp.as_val::<*const u8>() };
-    let argc = unsafe { argc.as_val::<usize>() };
-    let envc = unsafe { envc.as_val::<usize>() };
+    let path = unsafe { path.as_val::<PathBuf>() };
+    let argv = unsafe { argv.as_val::<Option<Box<[u8]>>>() };
+    let envp = unsafe { envp.as_val::<Option<Box<[u8]>>>() };
     match path.as_str() {
-        ShutDown::PATH => ShutDown::execute(argc, argv, envc, envp),
-        Serial::PATH => Serial::execute(argc, argv, envc, envp),
+        ShutDown::PATH => ShutDown::execute(argv, envp),
+        Serial::PATH => Serial::execute(argv, envp),
         _ => 0,
     }
 }
@@ -78,7 +76,7 @@ impl Executable for ShutDown {
         init_fake_bin(Path::new(Self::PATH));
     }
 
-    fn execute(argc: usize, argv: *const u8, envc: usize, envp: *const u8) -> usize {
+    fn execute(argv: Option<Box<[u8]>>, envp: Option<Box<[u8]>>) -> usize {
         println!("shutting down system...");
         exit_qemu(crate::QemuExitCode::Success);
         unreachable!()
@@ -94,12 +92,12 @@ impl Executable for Serial {
         init_fake_bin(Path::new(Self::PATH));
     }
 
-    fn execute(argc: usize, argv: *const u8, envc: usize, envp: *const u8) -> usize {
-        if argv.is_null() {
+    fn execute(argv: Option<Box<[u8]>>, envp: Option<Box<[u8]>>) -> usize {
+        if argv.is_none() {
             return 0;
         }
-        let str = unsafe { str::from_raw_parts(argv, argc) };
-        serial_println!("received argc: {}", str);
+        let str = unsafe { str::from_boxed_utf8_unchecked(argv.unwrap()) };
+        serial_println!("received argv: {}", str);
         0
     }
 }
@@ -113,11 +111,11 @@ impl Executable for ReadFromFD {
         init_fake_bin(Path::new(Self::PATH));
     }
 
-    fn execute(argc: usize, argv: *const u8, envc: usize, envp: *const u8) -> usize {
-        let fd = if argv.is_null() || argc < size_of::<FileDescriptor>() {
+    fn execute(argv: Option<Box<[u8]>>, envp: Option<Box<[u8]>>) -> usize {
+        let fd = if argv.is_none() {
             STDIN_FILENO
         } else {
-            *unsafe { &*(argv as *const FileDescriptor) }
+            unsafe { *(argv.unwrap().as_ptr() as *const FileDescriptor) }
         };
 
         let contents = current_task()
