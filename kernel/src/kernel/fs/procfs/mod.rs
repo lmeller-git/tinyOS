@@ -13,7 +13,7 @@ use thiserror::Error;
 
 use crate::{
     kernel::{
-        fd::{FStat, File, FileRepr, IOCapable},
+        fd::{FStat, File, FileBuilder, FileRepr, IOCapable},
         fs::{FS, FSError, FSErrorKind, FSResult, OpenOptions, Path, UnlinkOptions},
         io::{Read, Write},
     },
@@ -339,8 +339,8 @@ pub fn proc_dir() -> ProcFilePtr {
     ProcFilePtr::new(ProcFile::new(ProcNode::new_dir()))
 }
 
-fn as_file(ptr: ProcFilePtr) -> File {
-    File::new(ptr as Arc<dyn FileRepr>)
+fn as_file(ptr: ProcFilePtr) -> FileBuilder {
+    FileBuilder::new(ptr as Arc<dyn FileRepr>)
 }
 
 fn with_dir<F, R>(parent: ProcFilePtr, func: F) -> FSResult<R>
@@ -400,7 +400,7 @@ impl FS for ProcFS {
         &self,
         path: &super::Path,
         options: super::OpenOptions,
-    ) -> super::FSResult<crate::kernel::fd::File> {
+    ) -> super::FSResult<crate::kernel::fd::FileBuilder> {
         let Some(parent) = path.parent() else {
             return Ok(as_file(self.root.clone()).with_perms(options));
         };
@@ -426,7 +426,7 @@ impl FS for ProcFS {
         &self,
         path: &super::Path,
         options: super::UnlinkOptions,
-    ) -> super::FSResult<crate::kernel::fd::File> {
+    ) -> super::FSResult<crate::kernel::fd::FileBuilder> {
         let parent = if path.as_str().ends_with('/')
             && let Some(dir) = path.parent()
             && let Some(parent) = path.parent()
@@ -651,7 +651,8 @@ mod tests {
                 Path::new("/Test.dev"),
                 OpenOptions::READ | OpenOptions::WRITE,
             )
-            .unwrap();
+            .unwrap()
+            .finish();
         let mut buf = vec![0; 50];
 
         let n = file.read_continuous(&mut buf).unwrap();

@@ -17,7 +17,7 @@ mod fs_util;
 pub use fs_util::*;
 pub use tinyos_abi::flags::{OpenOptions, UnlinkOptions};
 
-use crate::kernel::fd::File;
+use crate::kernel::fd::{File, FileBuilder};
 
 pub const PROCFS_PATH: &str = "/proc";
 pub const RAMFS_PATH: &str = "/ram";
@@ -44,8 +44,8 @@ pub fn fs() -> &'static impl FS {
 pub type FSResult<T> = Result<T, FSError>;
 
 pub trait FS: Debug + Send + Sync {
-    fn open(&self, path: &Path, options: OpenOptions) -> FSResult<File>;
-    fn unlink(&self, path: &Path, options: UnlinkOptions) -> FSResult<File>;
+    fn open(&self, path: &Path, options: OpenOptions) -> FSResult<FileBuilder>;
+    fn unlink(&self, path: &Path, options: UnlinkOptions) -> FSResult<FileBuilder>;
     fn flush(&self, path: &Path) -> FSResult<()>;
 }
 

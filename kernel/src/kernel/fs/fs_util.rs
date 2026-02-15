@@ -7,12 +7,12 @@ use crate::kernel::{
 };
 
 pub fn mkdir(path: &Path) -> FSResult<()> {
-    fs().open(path, OpenOptions::CREATE_DIR)?;
+    open(path, OpenOptions::CREATE_DIR)?;
     Ok(())
 }
 
 pub fn lsdir(path: &Path) -> FSResult<String> {
-    let dir = fs().open(path, OpenOptions::READ)?;
+    let dir = open(path, OpenOptions::READ)?;
     let mut buf = String::new();
     let res = dir.read_to_string(&mut buf, 0)?;
     buf.truncate(res);
@@ -30,7 +30,7 @@ pub fn unmount(path: &Path) -> FSResult<()> {
 
 pub fn open(path: &Path, options: OpenOptions) -> FSResult<File> {
     fs().open(path, options)
-        .map(|file| file.with_path(path.into()))
+        .map(|file| file.with_path(path.into()).finish())
 }
 
 pub fn close(path: &Path, file: File) -> FSResult<()> {
@@ -43,7 +43,7 @@ pub fn rm(path: &Path, options: UnlinkOptions) -> FSResult<()> {
 }
 
 pub fn symlink(path: &Path, to: &Path) -> FSResult<()> {
-    let link = fs().open(path, OpenOptions::CREATE_LINK.with_write())?;
+    let link = open(path, OpenOptions::CREATE_LINK.with_write())?;
     let str_ = to.as_str();
     let bytes = str_.as_bytes();
     let res = link.write(bytes, 0)?;

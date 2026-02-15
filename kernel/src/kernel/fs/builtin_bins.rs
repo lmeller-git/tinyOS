@@ -49,6 +49,7 @@ pub extern "C" fn execute(path: Arg, argc: Arg, argv: Arg, envc: Arg, envp: Arg)
     match path.as_str() {
         ShutDown::PATH => ShutDown::execute(argv, envp),
         Serial::PATH => Serial::execute(argv, envp),
+        ReadFromFD::PATH => ReadFromFD::execute(argv, envp),
         _ => 0,
     }
 }
@@ -115,8 +116,12 @@ impl Executable for ReadFromFD {
         let fd = if argv.is_none() {
             STDIN_FILENO
         } else {
-            unsafe { *(argv.unwrap().as_ptr() as *const FileDescriptor) }
+            let str = unsafe { str::from_boxed_utf8_unchecked(argv.unwrap()) };
+            let num = str.parse::<FileDescriptor>().unwrap_or(STDIN_FILENO);
+            num
         };
+
+        serial_println!("read from {}", fd);
 
         let contents = current_task()
             .unwrap()

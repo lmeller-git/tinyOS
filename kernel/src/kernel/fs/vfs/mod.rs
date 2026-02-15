@@ -91,12 +91,16 @@ impl VFS {
 }
 
 impl FS for VFS {
-    fn open(&self, path: &Path, options: OpenOptions) -> FSResult<crate::kernel::fd::File> {
+    fn open(&self, path: &Path, options: OpenOptions) -> FSResult<crate::kernel::fd::FileBuilder> {
         self.deepest_matching_mount(path)
             .and_then(|(mount, path)| mount.open(path, options))
     }
 
-    fn unlink(&self, path: &Path, options: UnlinkOptions) -> FSResult<crate::kernel::fd::File> {
+    fn unlink(
+        &self,
+        path: &Path,
+        options: UnlinkOptions,
+    ) -> FSResult<crate::kernel::fd::FileBuilder> {
         self.deepest_matching_mount(path)
             .and_then(|(mount, path)| mount.unlink(path, options))
     }
@@ -222,7 +226,8 @@ mod tests {
                 Path::new("/ram/foo/bar.txt"),
                 OpenOptions::CREATE_ALL | OpenOptions::WRITE,
             )
-            .unwrap();
+            .unwrap()
+            .finish();
         // for now path to device must be rooted in proc, ie start with the proc's root, NOT with the path to proc
         assert!(
             registry
@@ -235,7 +240,8 @@ mod tests {
                 Path::new("/proc/foo/Test.dev"),
                 OpenOptions::CREATE_ALL | OpenOptions::READ,
             )
-            .unwrap();
+            .unwrap()
+            .finish();
 
         let writer = "Hello world!!".as_bytes();
         let mut reader = vec![0; 50];

@@ -13,8 +13,9 @@ use thiserror::Error;
 
 use crate::{
     kernel::{
-        fd::{FStat, File, FileRepr, IOCapable},
+        fd::{FStat, File, FileBuilder, FileRepr, IOCapable},
         fs::{
+            self,
             FS,
             FSError,
             FSErrorKind,
@@ -95,8 +96,8 @@ fn empty_ram_link() -> RamFilePtr {
     ram_link(PathBuf::new())
 }
 
-fn as_file(ptr: RamFilePtr) -> File {
-    File::new(ptr as Arc<dyn FileRepr>)
+fn as_file(ptr: RamFilePtr) -> FileBuilder {
+    FileBuilder::new(ptr as Arc<dyn FileRepr>)
 }
 
 fn with_mut_dir<F, R>(parent: RamFilePtr, func: F) -> FSResult<R>
@@ -374,7 +375,7 @@ impl FS for RamFS {
         &self,
         path: &super::Path,
         options: super::OpenOptions,
-    ) -> super::FSResult<crate::kernel::fd::File> {
+    ) -> super::FSResult<crate::kernel::fd::FileBuilder> {
         let Some(parent) = path.parent() else {
             return Ok(as_file(self.root.clone()).with_perms(options));
         };
@@ -405,7 +406,7 @@ impl FS for RamFS {
             if !options.contains(OpenOptions::NO_FOLLOW_LINK)
                 && let RamNode::SoftLink(ref p) = entry.read_arc().node
             {
-                open(p, options)
+                fs::fs().open(p, options).map(|f| f.with_path(p.clone()))
             } else {
                 Ok(as_file(entry.clone()).with_perms(options))
             }
@@ -416,7 +417,7 @@ impl FS for RamFS {
         &self,
         path: &super::Path,
         options: super::UnlinkOptions,
-    ) -> super::FSResult<crate::kernel::fd::File> {
+    ) -> super::FSResult<crate::kernel::fd::FileBuilder> {
         let parent = if path.as_str().ends_with('/')
             && let Some(dir) = path.parent()
             && let Some(parent) = path.parent()
@@ -542,7 +543,8 @@ mod tests {
                 Path::new("/foo/bar.txt"),
                 OpenOptions::CREATE_ALL | OpenOptions::WRITE,
             )
-            .unwrap();
+            .unwrap()
+            .finish();
         assert_eq!(
             bar.write_continuous("hello world".as_bytes()).unwrap(),
             "hello world".as_bytes().len()
@@ -561,7 +563,8 @@ mod tests {
                 Path::new("/foo/foobar"),
                 OpenOptions::CREATE | OpenOptions::READ,
             )
-            .unwrap();
+            .unwrap()
+            .finish();
         assert!(
             foobar
                 .write_continuous("hello world/n/they".as_bytes())

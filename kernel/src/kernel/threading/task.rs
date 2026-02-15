@@ -30,7 +30,16 @@ use crate::{
     eprintln,
     kernel::{
         elf::apply,
-        fd::{FDMap, File, FileDescriptor, MaybeOwned, STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO},
+        fd::{
+            FDMap,
+            File,
+            FileDescriptor,
+            FileHandle,
+            MaybeOwned,
+            STDERR_FILENO,
+            STDIN_FILENO,
+            STDOUT_FILENO,
+        },
         fs::{self, Path},
         mem::{
             align_up,
@@ -67,10 +76,10 @@ pub trait TaskRepr: Debug + Sized {
     fn name(&self) -> Option<&str>;
     fn exit_info(&self) -> &TaskExitInfo;
     fn kstack_top(&self) -> &VirtAddr;
-    fn fd(&self, descriptor: FileDescriptor) -> Option<Arc<File>>;
-    fn add_fd(&self, descriptor: FileDescriptor, f: impl Into<Arc<File>>) -> Option<Arc<File>>;
-    fn remove_fd(&self, descriptor: FileDescriptor) -> Option<Arc<File>>;
-    fn add_next_file(&self, f: impl Into<Arc<File>>) -> FileDescriptor;
+    fn fd(&self, descriptor: FileDescriptor) -> Option<FileHandle>;
+    fn add_fd(&self, descriptor: FileDescriptor, f: impl Into<FileHandle>) -> Option<FileHandle>;
+    fn remove_fd(&self, descriptor: FileDescriptor) -> Option<FileHandle>;
+    fn add_next_file(&self, f: impl Into<FileHandle>) -> FileDescriptor;
     fn next_fd(&self) -> FileDescriptor;
     fn next_addr(&self) -> &AtomicUsize;
     fn ensure_ready(self) -> Result<Self, ThreadingError>;
@@ -273,20 +282,20 @@ impl TaskRepr for Task {
         &self.metadata.kernel_stack_top
     }
 
-    fn fd(&self, descriptor: FileDescriptor) -> Option<Arc<File>> {
+    fn fd(&self, descriptor: FileDescriptor) -> Option<FileHandle> {
         self.core.fd_table.read().get(&descriptor).cloned()
     }
 
     /// inserts a K, V pair into fd table. If K was present, old V is returned in Some
-    fn add_fd(&self, descriptor: FileDescriptor, f: impl Into<Arc<File>>) -> Option<Arc<File>> {
+    fn add_fd(&self, descriptor: FileDescriptor, f: impl Into<FileHandle>) -> Option<FileHandle> {
         self.core.fd_table.write().insert(descriptor, f.into())
     }
 
-    fn remove_fd(&self, descriptor: FileDescriptor) -> Option<Arc<File>> {
+    fn remove_fd(&self, descriptor: FileDescriptor) -> Option<FileHandle> {
         self.core.fd_table.write().remove(&(descriptor as u32))
     }
 
-    fn add_next_file(&self, f: impl Into<Arc<File>>) -> FileDescriptor {
+    fn add_next_file(&self, f: impl Into<FileHandle>) -> FileDescriptor {
         let next_fd = self.next_fd();
         self.add_fd(next_fd, f);
         next_fd
@@ -499,7 +508,7 @@ impl<S> TaskBuilder<Task, S> {
         self
     }
 
-    pub fn with_file(self, fd: FileDescriptor, f: impl Into<Arc<File>>) -> TaskBuilder<Task, S> {
+    pub fn with_file(self, fd: FileDescriptor, f: impl Into<FileHandle>) -> TaskBuilder<Task, S> {
         _ = self.inner.add_fd(fd, f);
         self
     }
@@ -509,7 +518,7 @@ impl<S> TaskBuilder<Task, S> {
         self
     }
 
-    pub fn get_file(&self, fd: FileDescriptor) -> Option<Arc<File>> {
+    pub fn get_file(&self, fd: FileDescriptor) -> Option<FileHandle> {
         self.inner.fd(fd)
     }
 
@@ -554,14 +563,14 @@ impl<S> TaskBuilder<Task, S> {
 
     pub fn override_files(
         self,
-        files: impl Iterator<Item = (FileDescriptor, Arc<File>)>,
+        files: impl Iterator<Item = (FileDescriptor, FileHandle)>,
     ) -> TaskBuilder<Task, S> {
         let mut table = self.inner.core.fd_table.write();
         for (fd, f) in files {
             table
                 .entry(fd)
-                .and_modify(|v| *v = f.clone())
-                .or_insert(f.clone());
+                .and_modify(|v| *v = f.clone().into())
+                .or_insert(f.clone().into());
         }
         drop(table);
         self

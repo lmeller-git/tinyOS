@@ -13,7 +13,7 @@ members = [
 ]
 
 [features]
-default = []
+default = ["test_run"]
 test_run = []
 
 [dependencies]

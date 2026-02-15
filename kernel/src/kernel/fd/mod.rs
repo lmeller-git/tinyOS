@@ -28,7 +28,60 @@ use crate::{
     },
 };
 
-pub type FDMap = BTreeMap<FileDescriptor, Arc<File>>;
+pub type FDMap = BTreeMap<FileDescriptor, FileHandle>;
+
+#[derive(Debug)]
+pub struct FileHandle {
+    f: Arc<File>,
+}
+
+impl<T> AsRef<T> for FileHandle
+where
+    T: ?Sized,
+    <FileHandle as Deref>::Target: AsRef<T>,
+{
+    fn as_ref(&self) -> &T {
+        self.deref().as_ref()
+    }
+}
+
+impl Deref for FileHandle {
+    type Target = File;
+
+    fn deref(&self) -> &Self::Target {
+        self.f.deref()
+    }
+}
+
+impl Clone for FileHandle {
+    fn clone(&self) -> Self {
+        self.f.repr.on_clone(FileMetadata {
+            path: self.f.path.clone(),
+            cursor: self.f.cursor.clone(),
+            perms: self.f.perms.clone(),
+        });
+        Self { f: self.f.clone() }
+    }
+}
+
+impl From<Arc<File>> for FileHandle {
+    fn from(value: Arc<File>) -> Self {
+        Self { f: value }
+    }
+}
+
+impl From<File> for FileHandle {
+    fn from(value: File) -> Self {
+        Self::from(Arc::new(value))
+    }
+}
+
+impl From<Box<File>> for FileHandle {
+    fn from(value: Box<File>) -> Self {
+        let arc = Arc::new(Box::into_inner(value));
+        arc.into()
+    }
+}
 
 pub trait IOCapable: Read + Write {}
 
@@ -52,6 +105,12 @@ pub trait FileRepr: Debug + IOCapable + Send + Sync {
     fn get_waiter(&self) -> Option<QueuTypeCondition> {
         None
     }
+
+    fn on_open(&self, _meta: FileMetadata) {}
+    /// runs when ANY handle around this file clones
+    fn on_clone(&self, _meta: FileMetadata) {}
+    /// runs when ANY handle around this file drops
+    fn on_close(&self, _meta: FileMetadata) {}
 }
 
 pub trait FileReprFactory: Debug + Send + Sync {
@@ -59,6 +118,12 @@ pub trait FileReprFactory: Debug + Send + Sync {
     fn get_file(&self) -> Result<File, FSError> {
         self.get_file_impl().map(File::new)
     }
+}
+
+pub struct FileMetadata {
+    pub path: Option<PathBuf>,
+    pub cursor: FCursor,
+    pub perms: FPerms,
 }
 
 #[macro_export]
@@ -241,6 +306,45 @@ where
 unsafe impl<T> Sync for MaybeOwned<T> where T: Sync + ?Sized {}
 unsafe impl<T> Send for MaybeOwned<T> where T: Send + ?Sized {}
 
+pub struct FileBuilder {
+    inner: File,
+}
+
+impl FileBuilder {
+    pub fn new(repr: impl Into<MaybeOwned<dyn FileRepr>>) -> Self {
+        Self {
+            inner: File::new(repr),
+        }
+    }
+
+    pub fn with_perms<T>(mut self, perms: T) -> Self
+    where
+        FPerms: From<T>,
+    {
+        self.inner = self.inner.with_perms(perms);
+        self
+    }
+
+    pub fn shareable(mut self) -> Self {
+        self.inner.repr = self.inner.repr.into_shared();
+        self
+    }
+
+    pub fn with_path(mut self, path: PathBuf) -> Self {
+        self.inner = self.inner.with_path(path);
+        self
+    }
+
+    pub fn finish(mut self) -> File {
+        self.inner.repr.on_open(FileMetadata {
+            path: self.inner.path.clone(),
+            cursor: self.inner.cursor.clone(),
+            perms: self.inner.perms.clone(),
+        });
+        self.inner
+    }
+}
+
 #[derive(Debug)]
 pub struct File {
     repr: MaybeOwned<dyn FileRepr>,
@@ -250,7 +354,7 @@ pub struct File {
 }
 
 impl File {
-    pub fn new(repr: impl Into<MaybeOwned<dyn FileRepr>>) -> Self {
+    fn new(repr: impl Into<MaybeOwned<dyn FileRepr>>) -> Self {
         Self {
             repr: repr.into(),
             cursor: FCursor::default(),
@@ -259,12 +363,12 @@ impl File {
         }
     }
 
-    pub fn new_shareable(repr: impl Into<MaybeOwned<dyn FileRepr>>) -> Self {
+    fn new_shareable(repr: impl Into<MaybeOwned<dyn FileRepr>>) -> Self {
         let repr: MaybeOwned<_> = repr.into();
         Self::new(repr.into_shared())
     }
 
-    pub fn with_perms<T>(mut self, perms: T) -> Self
+    fn with_perms<T>(mut self, perms: T) -> Self
     where
         FPerms: From<T>,
     {
@@ -279,7 +383,7 @@ impl File {
         self
     }
 
-    pub fn with_path(mut self, path: PathBuf) -> Self {
+    fn with_path(mut self, path: PathBuf) -> Self {
         self.path.replace(path);
         self
     }

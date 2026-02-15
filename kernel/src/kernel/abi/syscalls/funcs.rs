@@ -22,7 +22,7 @@ use crate::{
     kernel::{
         abi::syscalls::utils::{__sys_yield, valid_ptr},
         devices::tty::Pipe,
-        fd::{FPerms, File, FileRepr},
+        fd::{FPerms, File, FileBuilder, FileRepr},
         fs::{
             self,
             Path,
@@ -675,8 +675,12 @@ pub fn pipe(fds: *mut [u32; 2], cap: isize) -> SysCallRes<()> {
         .ok_or(SysErrCode::NoProcess)?;
     let pipe = Arc::new(Pipe::new(cap));
 
-    let reader = File::new(pipe.clone() as Arc<dyn FileRepr>).with_perms(FPerms::READ);
-    let writer = File::new(pipe as Arc<dyn FileRepr>).with_perms(FPerms::WRITE);
+    let reader = FileBuilder::new(pipe.clone() as Arc<dyn FileRepr>)
+        .with_perms(FPerms::READ)
+        .finish();
+    let writer = FileBuilder::new(pipe as Arc<dyn FileRepr>)
+        .with_perms(FPerms::WRITE)
+        .finish();
 
     let read_fd = current_task.next_fd();
     current_task.add_fd(read_fd, reader);

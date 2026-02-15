@@ -1,5 +1,5 @@
 use alloc::{collections::vec_deque::VecDeque, sync::Arc};
-use core::fmt::Debug;
+use core::{fmt::Debug, sync::atomic::AtomicUsize};
 
 use hashbrown::HashMap;
 
@@ -9,7 +9,7 @@ use crate::{
     impl_file_for_wr,
     kernel::{
         devices::Null,
-        fd::{FileRepr, IOCapable},
+        fd::{FPerms, FileMetadata, FileRepr, IOCapable},
         fs::NodeType,
         io::{IOError, IOResult, Read, Write},
         threading::wait::{QueuTypeCondition, QueueType},
@@ -50,6 +50,8 @@ pub struct Pipe {
     buf: Mutex<VecDeque<u8>>,
     cap: usize,
     lock_descriptor: u64,
+    readers: AtomicUsize,
+    writers: AtomicUsize,
 }
 
 impl Pipe {
@@ -59,6 +61,28 @@ impl Pipe {
             buf: Mutex::default(),
             cap: if cap >= 0 { cap as usize } else { usize::MAX },
             lock_descriptor,
+            readers: 0.into(),
+            writers: 0.into(),
+        }
+    }
+
+    fn inc_handles(&self, mode: FPerms) {
+        if mode.contains(FPerms::WRITE) {
+            self.readers
+                .fetch_add(1, core::sync::atomic::Ordering::Release);
+        } else if mode.contains(FPerms::READ) {
+            self.readers
+                .fetch_add(1, core::sync::atomic::Ordering::Release);
+        }
+    }
+
+    fn dec_handles(&self, mode: FPerms) {
+        if mode.contains(FPerms::WRITE) {
+            self.readers
+                .fetch_sub(1, core::sync::atomic::Ordering::Release);
+        } else if mode.contains(FPerms::READ) {
+            self.readers
+                .fetch_sub(1, core::sync::atomic::Ordering::Release);
         }
     }
 }
@@ -98,6 +122,18 @@ impl FileRepr for Pipe {
         Some(QueuTypeCondition::new(QueueType::Lock(
             self.lock_descriptor,
         )))
+    }
+
+    fn on_open(&self, meta: crate::kernel::fd::FileMetadata) {
+        self.inc_handles(meta.perms);
+    }
+
+    fn on_clone(&self, meta: FileMetadata) {
+        self.inc_handles(meta.perms);
+    }
+
+    fn on_close(&self, meta: FileMetadata) {
+        self.dec_handles(meta.perms);
     }
 }
 

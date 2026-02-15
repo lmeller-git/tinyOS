@@ -115,18 +115,21 @@ extern "C" fn kernel_test_runner() -> ProcessReturn {
     let mut tests_failed = false;
     let max_len = tests.iter().map(|t| t.name().len()).max().unwrap_or(0);
     for test in tests {
-        use crate::{arch::x86::current_time, kernel::threading::spawn_fn_with_init};
+        use crate::{
+            arch::x86::current_time,
+            kernel::{fd::FileHandle, threading::spawn_fn_with_init},
+        };
 
         let dots = ".".repeat(max_len - test.name().len() + 3);
         print!("{}{} ", test.name(), dots);
 
-        let Ok(files): Result<Vec<(FileDescriptor, Arc<File>)>, _> =
+        let Ok(files): Result<Vec<(FileDescriptor, FileHandle)>, _> =
             test.config.open_files.iter().try_fold(
                 Vec::with_capacity(test.config.open_files.len()),
                 |mut acc, (fd, path)| {
                     let file = fs::open(Path::new(path), OpenOptions::WRITE)?;
                     acc.push((*fd as FileDescriptor, file.into()));
-                    Ok::<Vec<(FileDescriptor, Arc<File>)>, IOError>(acc)
+                    Ok::<Vec<(FileDescriptor, FileHandle)>, IOError>(acc)
                 },
             )
         else {
