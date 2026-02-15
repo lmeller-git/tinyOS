@@ -68,7 +68,7 @@ impl Pipe {
 
     fn inc_handles(&self, mode: FPerms) {
         if mode.contains(FPerms::WRITE) {
-            self.readers
+            self.writers
                 .fetch_add(1, core::sync::atomic::Ordering::Release);
         } else if mode.contains(FPerms::READ) {
             self.readers
@@ -78,7 +78,7 @@ impl Pipe {
 
     fn dec_handles(&self, mode: FPerms) {
         if mode.contains(FPerms::WRITE) {
-            self.readers
+            self.writers
                 .fetch_sub(1, core::sync::atomic::Ordering::Release);
         } else if mode.contains(FPerms::READ) {
             self.readers
@@ -102,6 +102,10 @@ impl Write for Pipe {
 impl Read for Pipe {
     fn read(&self, buf: &mut [u8], _offset: usize) -> IOResult<usize> {
         let mut internal = self.buf.lock();
+        if internal.is_empty() && self.writers.load(core::sync::atomic::Ordering::Acquire) == 0 {
+            // we do not have any writers, ie we will stay empty forever. just return an err
+            return Err(IOError::simple(crate::kernel::fs::FSErrorKind::TimedOut));
+        }
         let len = buf.len().min(internal.len());
         buf[..len]
             .iter_mut()
@@ -132,7 +136,7 @@ impl FileRepr for Pipe {
         self.inc_handles(meta.perms);
     }
 
-    fn on_close(&self, meta: FileMetadata) {
+    fn on_drop(&self, meta: FileMetadata) {
         self.dec_handles(meta.perms);
     }
 }

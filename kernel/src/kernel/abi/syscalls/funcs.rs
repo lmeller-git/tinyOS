@@ -479,9 +479,10 @@ pub fn spawn_process(
     let bin = fs::open(Path::new(path), OpenOptions::READ).map_err(|_| SysErrCode::NoFile)?;
     let mut buf = Vec::new();
     let bytes = bin.read_to_end(&mut buf, 0).map_err(|_| SysErrCode::IO)?;
+    let is_builtin = bytes == BUILTIN_MARKER.len() && &buf[..bytes] == BUILTIN_MARKER;
 
     // builtin bins (mainly for testing, ...)
-    if bytes == BUILTIN_MARKER.len() && &buf[..bytes] == BUILTIN_MARKER {
+    let mut new = if is_builtin {
         // copy args to heap
         let arg_container = if valid_ptr(arg_data.thin, arg_data.size) {
             let slice = unsafe { core::slice::from_raw_parts(arg_data.thin, arg_data.size) };
@@ -502,27 +503,22 @@ pub fn spawn_process(
             });
         }
 
-        let handle = spawn_fn(
-            execute,
-            args!(
+        TaskBuilder::from_fn(execute)
+            .map_err(|_| SysErrCode::NoChild)?
+            .with_args(args!(
                 Path::new(path).to_owned(),
                 arg_data.size,
                 arg_container,
                 env_data.size,
                 env_container,
-            ),
-        )
-        .map_err(|_| SysErrCode::Cancelled)?;
-        return handle
-            .get_task()
-            .map(|t| t.pid().0)
-            .ok_or(SysErrCode::NoChild);
-    }
-
-    // normal path
-    let mut new = TaskBuilder::from_bytes(&buf[..bytes])
-        .map_err(|_| SysErrCode::BadMsg)?
-        .with_default_files(true);
+            ))
+            .with_default_files(true)
+    } else {
+        // normal path
+        TaskBuilder::from_bytes(&buf[..bytes])
+            .map_err(|_| SysErrCode::BadMsg)?
+            .with_default_files(true)
+    };
 
     if !actions.thin.is_null() {
         let actions = unsafe { &*core::ptr::slice_from_raw_parts(actions.thin, actions.size) };
@@ -541,7 +537,7 @@ pub fn spawn_process(
                     let current = new.get_file(*from).ok_or(SysErrCode::NoFile)?;
                     new = new.with_file(*to, current)
                 }
-                FDAction::Clear => new = new.with_default_files(false),
+                FDAction::Clear => new = new.clear_files(),
                 FDAction::Inherit(parent, child) => {
                     let current = current_task()
                         .map_err(|_| SysErrCode::NoProcess)?
@@ -553,11 +549,14 @@ pub fn spawn_process(
         }
     }
 
-    let new = new
-        .as_usr()
-        .map_err(|_| SysErrCode::Cancelled)?
-        .allocate_arg_env(arg_data.size, arg_data.thin, env_data.size, env_data.thin)
-        .build();
+    let new = if is_builtin {
+        new.as_kernel().map_err(|_| SysErrCode::Cancelled)?.build()
+    } else {
+        new.as_usr()
+            .map_err(|_| SysErrCode::Cancelled)?
+            .allocate_arg_env(arg_data.size, arg_data.thin, env_data.size, env_data.thin)
+            .build()
+    };
 
     let id = new.pid().0;
     add_built_task(new);

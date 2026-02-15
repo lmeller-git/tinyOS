@@ -383,5 +383,8 @@ pub fn task_data<'a>() -> &'a TaskManager {
 }
 
 fn cleanup_task(task: GlobalTaskPtr) {
-    // TODO
+    // TODO free all memory, release stack, ...
+    #[cfg(not(feature = "test_run"))]
+    serial_println!("cleaning up task {}", task.metadata.tid);
+    task.core.fd_table.write().clear();
 }

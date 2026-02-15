@@ -2,7 +2,7 @@
 // they may be executed via execve(path).
 // execve may treat them differntly from 'real' binaries though.
 
-use alloc::{boxed::Box, str};
+use alloc::{boxed::Box, str, vec::Vec};
 
 use os_macros::with_default_args;
 use tinyos_abi::{
@@ -123,12 +123,20 @@ impl Executable for ReadFromFD {
 
         serial_println!("read from {}", fd);
 
-        let contents = current_task()
-            .unwrap()
-            .fd(fd)
-            .unwrap()
-            .read_all_as_str()
-            .unwrap();
+        let mut buf = Vec::new();
+        let mut temp_buf = [0; 64];
+
+        while let Ok(n) =
+            crate::kernel::abi::syscalls::funcs::read(fd, temp_buf.as_mut_ptr(), temp_buf.len(), -1)
+            && n >= 0
+        {
+            let old_len = buf.len();
+            buf.resize(old_len + n as usize, Default::default());
+            buf[old_len..].swap_with_slice(&mut temp_buf[..n as usize]);
+        }
+
+        let contents = str::from_utf8(&buf).unwrap();
+
         println!("read \n{}\n from fd {}", contents, fd);
         serial_println!("read \n{}\n from fd {}", contents, fd);
         0

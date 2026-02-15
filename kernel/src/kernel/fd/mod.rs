@@ -53,6 +53,16 @@ impl Deref for FileHandle {
     }
 }
 
+impl Drop for FileHandle {
+    fn drop(&mut self) {
+        self.f.repr.on_drop(FileMetadata {
+            path: self.f.path.clone(),
+            cursor: self.f.cursor.clone(),
+            perms: self.f.perms.clone(),
+        });
+    }
+}
+
 impl Clone for FileHandle {
     fn clone(&self) -> Self {
         self.f.repr.on_clone(FileMetadata {
@@ -110,6 +120,8 @@ pub trait FileRepr: Debug + IOCapable + Send + Sync {
     /// runs when ANY handle around this file clones
     fn on_clone(&self, _meta: FileMetadata) {}
     /// runs when ANY handle around this file drops
+    fn on_drop(&self, _meta: FileMetadata) {}
+    /// runs when the actual File gets dropped, ie the refcount reaches 0
     fn on_close(&self, _meta: FileMetadata) {}
 }
 
@@ -176,6 +188,12 @@ bitflags! {
     }
 }
 
+impl Default for FPerms {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
 impl From<OpenOptions> for FPerms {
     fn from(value: OpenOptions) -> Self {
         let mut zelf = FPerms::empty();
@@ -225,8 +243,9 @@ impl<T: ?Sized> MaybeOwned<T> {
 
     pub fn make_shared(&mut self) {
         match self {
-            Self::Owned(o) => {
-                todo!()
+            Self::Owned(_) => {
+                let o = unsafe { core::mem::replace(self, core::mem::zeroed()) };
+                *self = o.into_shared();
             }
             Self::Shared(_) => {}
         }
@@ -326,7 +345,7 @@ impl FileBuilder {
     }
 
     pub fn shareable(mut self) -> Self {
-        self.inner.repr = self.inner.repr.into_shared();
+        self.inner.repr.make_shared();
         self
     }
 
@@ -492,6 +511,16 @@ impl fmt::Write for File {
         self.write_all(bytes, 0)
             .map_err(|_| fmt::Error::default())?;
         Ok(())
+    }
+}
+
+impl Drop for File {
+    fn drop(&mut self) {
+        self.repr.on_close(FileMetadata {
+            path: self.path.take(),
+            cursor: core::mem::take(&mut self.cursor),
+            perms: core::mem::take(&mut self.perms),
+        });
     }
 }
 

@@ -561,6 +561,11 @@ impl<S> TaskBuilder<Task, S> {
         }
     }
 
+    pub fn clear_files(self) -> TaskBuilder<Task, S> {
+        self.inner.core.fd_table.write().clear();
+        self
+    }
+
     pub fn override_files(
         self,
         files: impl Iterator<Item = (FileDescriptor, FileHandle)>,
