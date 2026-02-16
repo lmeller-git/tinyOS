@@ -12,15 +12,22 @@ use tinyos_abi::{
 };
 
 use crate::{
+    drivers::wait_manager::{add_queue, remove_queue, wait_self},
     eprintln,
     exit_qemu,
     kernel::{
+        fd::FileRepr,
         fs::{self, Path, PathBuf},
         init::INCLUDED_BINS,
         io::Write,
         threading::{
             schedule::current_task,
             task::{Arg, TaskRepr},
+            tls,
+            wait::{
+                QueueHandle,
+                queues::{GenericWaitQueue, WaitQueue},
+            },
         },
     },
     println,
@@ -122,21 +129,47 @@ impl Executable for ReadFromFD {
         };
 
         serial_println!("read from {}", fd);
+        serial_println!(
+            "file at fd: {:?}",
+            tls::task_data()
+                .current_thread()
+                .unwrap()
+                .core
+                .fd_table
+                .read()
+                .get(&fd)
+        );
 
         let mut buf = Vec::new();
         let mut temp_buf = [0; 64];
 
-        while let Ok(n) =
-            crate::kernel::abi::syscalls::funcs::read(fd, temp_buf.as_mut_ptr(), temp_buf.len(), -1)
+        let f = tls::task_data().current_thread().unwrap().fd(fd).unwrap();
+        let waiter = f.get_waiter();
+        if let Some(waiter) = &waiter {
+            add_queue(
+                QueueHandle::from_owned(Box::new(GenericWaitQueue::new()) as Box<dyn WaitQueue>),
+                waiter.q_type.clone(),
+            );
+        }
+        while let Ok(n) = f.read_continuous(&mut temp_buf)
             && n >= 0
         {
+            if n == 0
+                && let Some(cond) = &waiter
+            {
+                let condition = [cond.clone()];
+                wait_self(&condition).unwrap();
+                continue;
+            }
             let old_len = buf.len();
             buf.resize(old_len + n as usize, Default::default());
             buf[old_len..].swap_with_slice(&mut temp_buf[..n as usize]);
         }
 
         let contents = str::from_utf8(&buf).unwrap();
-
+        if let Some(waiter) = waiter {
+            remove_queue(&waiter.q_type);
+        }
         println!("read \n{}\n from fd {}", contents, fd);
         serial_println!("read \n{}\n from fd {}", contents, fd);
         0

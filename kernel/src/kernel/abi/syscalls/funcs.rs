@@ -128,11 +128,14 @@ pub fn read(fd: FileDescriptor, buf: *mut u8, len: usize, timeout: i64) -> SysCa
             .read_continuous(b)
             .map_err(|_| SysErrCode::IO)?;
 
-        if n == 0 && until > current_time() {
+        if n == 0 && (timeout < 0 || until > current_time()) {
             wait_self(&conditions).ok_or(SysErrCode::WouldBlock)?;
         } else {
             // TODO we do not want to do this for EVERY queue. Some files (like keyboard) may be queried very often.
             // These should persist
+            // further we should ensure that concurrent reads on the same queue do not get disrupted by us destroyuing the queue.
+            // need refcounting here.
+            // TODO add destruction
             // if let Some(path) = current_task.fd(fd).ok_or(SysRetCode::Fail)?.get_path() {
             //     remove_queue(&QueueType::file(path));
             // }
