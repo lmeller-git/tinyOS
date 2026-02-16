@@ -39,16 +39,12 @@ pub type RamFilePtr = Arc<LockedRamFile>;
 
 #[derive(Debug)]
 struct RamFile {
-    stat: FStat,
     node: RamNode,
 }
 
 impl RamFile {
     fn new(node: RamNode) -> Self {
-        Self {
-            stat: FStat::new(),
-            node,
-        }
+        Self { node }
     }
 
     fn is_dir(&self) -> bool {
@@ -185,14 +181,27 @@ impl Display for DirData {
         Ok(())
     }
 }
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct FileData {
     inner: Vec<u8>,
+    fstat: FStat,
+}
+
+impl Default for FileData {
+    fn default() -> Self {
+        Self {
+            inner: Default::default(),
+            fstat: FStat::new(),
+        }
+    }
 }
 
 impl FileRepr for LockedRamFile {
     fn fstat(&self) -> FStat {
-        self.read().stat.clone()
+        match &self.read().node {
+            RamNode::SoftLink(_) | RamNode::Dir(_) => FStat::default(),
+            RamNode::File(f) => f.fstat.clone(),
+        }
     }
 
     fn node_type(&self) -> super::NodeType {
@@ -307,7 +316,7 @@ impl Write for LockedRamFile {
                 // no need to validate offset, as we just resized
                 let len = f.inner.len().sub(offset).min(buf.len());
                 f.inner[offset..offset + len].copy_from_slice(&buf[..len]);
-                writer.stat.size = f.inner.len();
+                f.fstat.size = f.inner.len();
                 Ok(len)
             }
         }
