@@ -98,7 +98,7 @@ pub trait IOCapable: Read + Write {}
 pub trait FileRepr: Debug + IOCapable + Send + Sync {
     fn node_type(&self) -> NodeType;
     fn fstat(&self) -> FStat {
-        FStat::new()
+        FStat::default()
     }
 
     fn clear(&self) -> IOResult<()> {
@@ -173,6 +173,16 @@ impl FStat {
             t_create: now,
             t_mod: now,
             size: 0,
+        }
+    }
+}
+
+impl Default for FStat {
+    fn default() -> Self {
+        Self {
+            t_create: 0,
+            t_mod: 0,
+            size: usize::MAX,
         }
     }
 }
@@ -450,6 +460,10 @@ impl File {
             perms: self.perms.clone(),
             path: self.path.clone(),
         })
+    }
+
+    pub fn is_at_end(&self) -> bool {
+        self.repr.fstat().size <= self.cursor.get()
     }
 }
 

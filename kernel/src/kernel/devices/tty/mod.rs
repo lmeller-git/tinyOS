@@ -1,5 +1,8 @@
 use alloc::{collections::vec_deque::VecDeque, sync::Arc};
-use core::{fmt::Debug, sync::atomic::AtomicUsize};
+use core::{
+    fmt::Debug,
+    sync::atomic::{AtomicU64, AtomicUsize},
+};
 
 use hashbrown::HashMap;
 
@@ -90,10 +93,11 @@ impl Pipe {
 impl Write for Pipe {
     fn write(&self, buf: &[u8], _offset: usize) -> IOResult<usize> {
         let mut q = self.buf.lock();
-        let can_push = self.cap.saturating_sub(q.len()).min(buf.len());
+        let can_push = self.cap.saturating_sub(q.len());
         if can_push == 0 {
             return Err(IOError::simple(crate::kernel::fs::FSErrorKind::StorageFull));
         }
+        let can_push = can_push.min(buf.len());
         q.extend(&buf[..can_push]);
         Ok(can_push)
     }

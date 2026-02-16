@@ -33,15 +33,11 @@ type ProcFilePtr = Arc<ProcFile>;
 #[derive(Debug)]
 struct ProcFile {
     node: ProcNode,
-    stat: RwLock<FStat>,
 }
 
 impl ProcFile {
     pub fn new(node: ProcNode) -> Self {
-        Self {
-            node,
-            stat: RwLock::new(FStat::new()),
-        }
+        Self { node }
     }
 
     fn is_dir(&self) -> bool {
@@ -54,7 +50,7 @@ impl ProcFile {
 
 impl FileRepr for ProcFile {
     fn fstat(&self) -> FStat {
-        self.stat.read().clone()
+        self.node.fstat().unwrap_or_default()
     }
 
     fn node_type(&self) -> super::NodeType {
@@ -140,6 +136,13 @@ impl ProcNode {
         MaybeRefCounted<'static>: From<F>,
     {
         Self::File(file.into())
+    }
+
+    pub fn fstat(&self) -> Option<FStat> {
+        match self {
+            Self::Dir(_) => None,
+            Self::File(f) => Some(f.fstat()),
+        }
     }
 }
 

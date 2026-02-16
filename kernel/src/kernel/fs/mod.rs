@@ -140,6 +140,8 @@ pub enum FSErrorKind {
     OOM,
     #[error("unexpected EOF")]
     UnexpectedEOF,
+    #[error("no remaining content")]
+    EOF,
     #[error("Op is in progress")]
     InProgress,
     #[error("Unspecified")]

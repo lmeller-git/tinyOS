@@ -90,11 +90,14 @@ pub fn read(fd: FileDescriptor, buf: *mut u8, len: usize, timeout: i64) -> SysCa
         .current_thread()
         .ok_or(SysErrCode::NoProcess)?;
     let b = unsafe { &mut *core::ptr::slice_from_raw_parts_mut(buf, len) };
-    let n = current_task
-        .fd(fd)
-        .ok_or(SysErrCode::BadFd)?
-        .read_continuous(b)
-        .map_err(|_| SysErrCode::IO)?;
+
+    let file = current_task.fd(fd).ok_or(SysErrCode::BadFd)?;
+
+    if file.is_at_end() {
+        return Ok(0);
+    }
+
+    let n = file.read_continuous(b).map_err(|_| SysErrCode::IO)?;
     if n > 0 || timeout == 0 {
         return Ok(n as isize);
     }
@@ -122,11 +125,7 @@ pub fn read(fd: FileDescriptor, buf: *mut u8, len: usize, timeout: i64) -> SysCa
     }
 
     loop {
-        let n = current_task
-            .fd(fd)
-            .ok_or(SysErrCode::BadFd)?
-            .read_continuous(b)
-            .map_err(|_| SysErrCode::IO)?;
+        let n = file.read_continuous(b).map_err(|_| SysErrCode::IO)?;
 
         if n == 0 && (timeout < 0 || until > current_time()) {
             wait_self(&conditions).ok_or(SysErrCode::WouldBlock)?;
