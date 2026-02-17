@@ -218,6 +218,10 @@ impl Path {
             .strip_prefix(prefix.as_ref().as_str())
             .map(|postfix| Path::new(postfix))
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty() || (self.inner.len() == 1 && self.inner.starts_with(PATH_SEP))
+    }
 }
 
 impl ToOwned for Path {

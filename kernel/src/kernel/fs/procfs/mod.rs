@@ -17,6 +17,7 @@ use crate::{
         fs::{FS, FSError, FSErrorKind, FSResult, OpenOptions, Path, UnlinkOptions},
         io::{Read, Write},
     },
+    serial_println,
     sync::locks::RwLock,
 };
 
@@ -317,12 +318,14 @@ impl IOCapable for Null {}
 
 impl Read for Null {
     fn read(&self, buf: &mut [u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+        serial_println!("huhu1");
         Err(FSError::simple(FSErrorKind::NotSupported))
     }
 }
 
 impl Write for Null {
     fn write(&self, buf: &[u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+        serial_println!("huhu1");
         Err(FSError::simple(FSErrorKind::NotSupported))
     }
 }

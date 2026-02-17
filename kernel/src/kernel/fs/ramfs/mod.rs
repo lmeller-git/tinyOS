@@ -181,6 +181,7 @@ impl Display for DirData {
         Ok(())
     }
 }
+
 #[derive(Debug)]
 struct FileData {
     inner: Vec<u8>,

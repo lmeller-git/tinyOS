@@ -38,7 +38,7 @@ pub fn init() {
 }
 
 pub fn fs() -> &'static impl FS {
-    vfs::get()
+    vfs::get().as_ref()
 }
 
 pub type FSResult<T> = Result<T, FSError>;

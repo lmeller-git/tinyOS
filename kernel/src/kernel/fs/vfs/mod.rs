@@ -1,24 +1,32 @@
-use alloc::{collections::btree_map::BTreeMap, sync::Arc};
+use alloc::{collections::btree_map::BTreeMap, string::String, sync::Arc};
+use core::fmt::Display;
 
 use conquer_once::spin::OnceCell;
+use hashbrown::DefaultHashBuilder;
+use indexmap::IndexMap;
 use thiserror::Error;
 
 use crate::{
     kernel::{
-        fd::MaybeOwned,
+        fd::{FStat, FileBuilder, FileRepr, IOCapable, MaybeOwned},
         fs::{FS, FSError, FSErrorKind, FSResult, OpenOptions, Path, PathBuf, UnlinkOptions},
+        io::{Read, Write},
     },
-    sync::{BlockingWaiter, locks::GenericRwLock},
+    serial_println,
+    sync::{
+        BlockingWaiter,
+        locks::{GenericRwLock, RwLock},
+    },
 };
 
-pub static VFS: OnceCell<VFS> = OnceCell::uninit();
+pub static VFS: OnceCell<Arc<VFS>> = OnceCell::uninit();
 
 pub fn init() {
-    VFS.init_once(|| VFS::new());
+    VFS.init_once(|| VFS::new().into());
 }
 
-pub fn get() -> &'static VFS {
-    VFS.get_or_init(|| VFS::new())
+pub fn get() -> &'static Arc<VFS> {
+    VFS.get_or_init(|| VFS::new().into())
 }
 
 #[derive(Error, Debug)]
@@ -92,6 +100,11 @@ impl VFS {
 
 impl FS for VFS {
     fn open(&self, path: &Path, options: OpenOptions) -> FSResult<crate::kernel::fd::FileBuilder> {
+        if path == Path::new("/") {
+            return Ok(FileBuilder::new(get().clone() as Arc<dyn FileRepr>)
+                .with_perms(options)
+                .with_path(path.into()));
+        }
         self.deepest_matching_mount(path)
             .and_then(|(mount, path)| mount.open(path, options))
     }
@@ -116,6 +129,103 @@ impl Default for VFS {
         Self {
             mount_table: GenericRwLock::default(),
         }
+    }
+}
+
+impl FileRepr for VFS {
+    fn fstat(&self) -> crate::kernel::fd::FStat {
+        FStat::default()
+    }
+
+    fn node_type(&self) -> super::NodeType {
+        super::NodeType::Mount
+    }
+}
+
+impl IOCapable for VFS {}
+
+impl Read for VFS {
+    fn read(&self, buf: &mut [u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+        let (n_read, read_to_end) = self.buffered_display(buf, offset);
+        if n_read == 0 && read_to_end {
+            Err(FSError::simple(FSErrorKind::UnexpectedEOF))
+        } else {
+            Ok(n_read)
+        }
+    }
+
+    fn read_to_end(
+        &self,
+        buf: &mut alloc::vec::Vec<u8>,
+        mut offset: usize,
+    ) -> crate::kernel::io::IOResult<usize> {
+        let res = alloc::format!("{}", self);
+        let bytes = res.as_bytes();
+        buf.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+}
+
+impl Write for VFS {
+    fn write(&self, buf: &[u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+        Err(FSError::simple(FSErrorKind::NotSupported))
+    }
+}
+
+impl VFS {
+    // writes names for all entries in self into buffer, while buffer has space, separated by '\t'. Writes either a whole name + '\t', or nothing
+    // returns (_, true) if no entries remain
+    pub fn buffered_display(&self, buf: &mut [u8], offset: usize) -> (usize, bool) {
+        let mut written = 0;
+        let mut newly_written = 0;
+        for name in self.mount_table.read().keys() {
+            let bytes = name.as_str().as_bytes();
+            let total_len = bytes.len() + 1;
+            if written < offset {
+                // skip this entry
+                written += total_len;
+                continue;
+            }
+            if total_len + newly_written > buf.len() {
+                // no space in buf
+                return (newly_written, false);
+            }
+
+            // write entry + '\t' into buf
+            assert!(buf.len() > newly_written + total_len - 1);
+            assert!(bytes.len() == total_len - 1);
+            buf[newly_written..newly_written + total_len - 1].copy_from_slice(bytes);
+            buf[newly_written + total_len - 1] = b'\t';
+            newly_written += total_len;
+        }
+        (newly_written, true)
+    }
+}
+
+impl Display for VFS {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("VFS with mounts:\n")?;
+        let mut buf = alloc::vec![0; 10];
+        let mut offset = 0;
+        loop {
+            let (read, is_done) = self.buffered_display(&mut buf, offset);
+            assert!(read <= buf.len());
+            match (read, is_done) {
+                (0, true) => break,
+                (0, false) => buf.resize(buf.len() * 2, 0),
+                (n, true) => {
+                    let name = str::from_utf8(&buf[..n]).expect("malformed entry in dir");
+                    f.write_str(name)?;
+                    break;
+                }
+                (n, false) => {
+                    let name = str::from_utf8(&buf[..n]).expect("malformed entry in dir");
+                    f.write_str(name)?;
+                    offset += n;
+                }
+            }
+        }
+        Ok(())
     }
 }
 
