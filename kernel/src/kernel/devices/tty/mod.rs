@@ -198,7 +198,18 @@ impl TTYSource for Null {
 
 impl_empty_read!(Null);
 impl_empty_write!(Null);
-impl_file_for_wr!(Null: NodeType::Void);
+
+impl FileRepr for Null {
+    fn node_type(&self) -> NodeType {
+        NodeType::Void
+    }
+
+    fn fstat(&self) -> crate::kernel::fd::FStat {
+        crate::kernel::fd::FStat::new()
+    }
+}
+
+impl IOCapable for Null {}
 
 #[macro_export]
 macro_rules! print {

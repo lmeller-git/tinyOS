@@ -301,7 +301,7 @@ impl Display for DirData {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct Null;
 
 impl FileRepr for Null {
@@ -318,14 +318,12 @@ impl IOCapable for Null {}
 
 impl Read for Null {
     fn read(&self, buf: &mut [u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
-        serial_println!("huhu1");
         Err(FSError::simple(FSErrorKind::NotSupported))
     }
 }
 
 impl Write for Null {
     fn write(&self, buf: &[u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
-        serial_println!("huhu1");
         Err(FSError::simple(FSErrorKind::NotSupported))
     }
 }

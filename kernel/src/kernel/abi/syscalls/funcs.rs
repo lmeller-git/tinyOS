@@ -67,10 +67,11 @@ pub fn open(path: *const u8, len: usize, flags: OpenOptions) -> SysCallRes<FileD
     }
     let p = unsafe { str::from_raw_parts(path, len) };
     let p = Path::new(p);
+    let f = fs::open(p, flags).map_err(|_| SysErrCode::NoFile)?;
     Ok(tls::task_data()
         .current_thread()
         .ok_or(SysErrCode::NoProcess)?
-        .add_next_file(fs::open(p, flags).map_err(|_| SysErrCode::NoFile)?))
+        .add_next_file(f))
 }
 
 pub fn close(fd: FileDescriptor) -> SysCallRes<()> {
@@ -94,6 +95,7 @@ pub fn read(fd: FileDescriptor, buf: *mut u8, len: usize, timeout: i64) -> SysCa
     let file = current_task.fd(fd).ok_or(SysErrCode::BadFd)?;
 
     if file.is_at_end() {
+        // serial_println!("early bail");
         return Ok(0);
     }
 
