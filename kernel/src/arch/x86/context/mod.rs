@@ -35,7 +35,7 @@ use crate::{
 
 pub const KSTACK_AREA_START: VirtAddr = VirtAddr::new(0xffff_f000_c000_0000); // random location
 pub const KSTACK_SIZE: usize = 64 * 1024; // 64 KiB //TODO maybe make this dynamic
-pub const MAX_KSTACKS: usize = 512; // random num (this is also max tasks)
+pub const MAX_KSTACKS: usize = 512; // random num (this is also max processes)
 
 pub const USER_STACK_START: VirtAddr = VirtAddr::new(0x0000_0000_1000_0000); // random location
 pub const USER_STACK_SIZE: usize = 1024 * 1000; // 1MiB

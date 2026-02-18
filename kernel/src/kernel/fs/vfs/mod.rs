@@ -100,7 +100,7 @@ impl VFS {
 
 impl FS for VFS {
     fn open(&self, path: &Path, options: OpenOptions) -> FSResult<crate::kernel::fd::FileBuilder> {
-        if path == Path::new("/") {
+        if path.is_empty() {
             return Ok(FileBuilder::new(get().clone() as Arc<dyn FileRepr>)
                 .with_perms(options)
                 .with_path(path.into()));

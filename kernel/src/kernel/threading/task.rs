@@ -781,6 +781,7 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
         }
 
         let _alloc = get_frame_alloc().lock();
+        let mut tbl = PAGETABLE.lock();
 
         unsafe {
             interrupt::disable();
@@ -788,7 +789,7 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
         }
         drop(_alloc);
 
-        copy_ustack_mappings_into(self.inner.pagedir(), &mut *PAGETABLE.lock());
+        copy_ustack_mappings_into(self.inner.pagedir(), &mut *tbl);
 
         let argv_ptr = if !argv.is_null() && argc > 0 {
             serial_println!(
@@ -796,28 +797,35 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
                 argc,
                 current_top.as_u64()
             );
+            // first decrement current_top, as memcpy cpys to target..target+size, but the stack is only mapped to top..top-stack-size
+            current_top -= argc as u64;
+
             let stack_top = current_top.as_mut_ptr();
             unsafe {
                 core::ptr::copy_nonoverlapping(kernel_buf.as_ptr(), stack_top, argc);
             }
-            current_top -= argc as u64;
             stack_top
         } else {
             core::ptr::null()
         };
 
         let env_ptr = if !envp.is_null() && envc > 0 {
+            serial_println!(
+                "setting up env with size {} at {:#x}",
+                envc,
+                current_top.as_u64()
+            );
+            current_top -= envc as u64;
             let stack_top = current_top.as_mut_ptr();
             unsafe {
                 core::ptr::copy_nonoverlapping(kernel_buf[argc..].as_ptr(), stack_top, envc);
             }
-            current_top -= envc as u64;
             stack_top
         } else {
             core::ptr::null()
         };
 
-        unmap_ustack_mappings(&mut PAGETABLE.lock());
+        unmap_ustack_mappings(&mut tbl);
         unsafe {
             Cr3::write(active_table_root, Cr3Flags::empty());
             interrupt::enable();
@@ -846,6 +854,7 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
             get_kernel_pagetbl_root().clone()
         };
         let _alloc = get_frame_alloc().lock();
+        let mut glbl_tbl = PAGETABLE.lock();
 
         unsafe {
             interrupt::disable();
@@ -853,12 +862,12 @@ impl<T: TaskRepr> TaskBuilder<T, Ready<ExtendedUsrTaskInfo<'_>>> {
         }
         drop(_alloc);
 
-        copy_ustack_mappings_into(self.inner.pagedir(), &mut *PAGETABLE.lock());
+        copy_ustack_mappings_into(self.inner.pagedir(), &mut *glbl_tbl);
 
         let next_top =
             unsafe { init_usr_task(&self._marker.inner.info, self.inner.exit_info(), &self.data) };
 
-        unmap_ustack_mappings(&mut PAGETABLE.lock());
+        unmap_ustack_mappings(&mut *glbl_tbl);
 
         unsafe {
             Cr3::write(active_table_root, Cr3Flags::empty());
