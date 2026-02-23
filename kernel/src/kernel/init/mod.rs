@@ -18,6 +18,8 @@ include!(concat!(env!("OUT_DIR"), "/include_bins.rs"));
 pub const KERNEL_DIR: &str = "/kernel";
 pub const INCLUDED_BINS: &str = "/ram/bin";
 
+const ON_STARTUP: &[&str] = &["tinyTerm.out"];
+
 pub fn early_init() {
     mem::init();
 }
@@ -36,10 +38,7 @@ pub fn default_task() -> KernelRes<()> {
     serial_println!("the binaries are {}", binaries);
     let mut bin_data = Vec::new();
 
-    for name in binaries.split('\t').filter(|n| !n.is_empty()) {
-        if name != "tinyTerm.out" {
-            continue;
-        }
+    for &name in ON_STARTUP.iter() {
         bin_path.push(name);
 
         if let Ok(bin) = fs::open(&bin_path, OpenOptions::READ)
@@ -47,7 +46,7 @@ pub fn default_task() -> KernelRes<()> {
                 .read_to_end(&mut bin_data, 0)
                 .inspect_err(|e| eprintln!("binary {} could not be read.\n{}", name, e))
         {
-            serial_println!("spawning term");
+            serial_println!("spawning {}", name);
             let task = TaskBuilder::from_bytes(&bin_data[..n_read])?
                 .with_default_files(true)
                 .with_name(name.into())

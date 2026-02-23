@@ -367,8 +367,7 @@ impl Arg {
 
 impl Default for Arg {
     fn default() -> Self {
-        //TODO this should be null()
-        Self(42)
+        Self(0)
     }
 }
 
