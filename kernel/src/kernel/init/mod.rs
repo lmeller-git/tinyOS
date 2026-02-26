@@ -18,7 +18,7 @@ include!(concat!(env!("OUT_DIR"), "/include_bins.rs"));
 pub const KERNEL_DIR: &str = "/kernel";
 pub const INCLUDED_BINS: &str = "/ram/bin";
 
-const ON_STARTUP: &[&str] = &["tinyTerm.out"];
+const ON_STARTUP: &[&str] = &["tinyTerm"];
 
 pub fn early_init() {
     mem::init();

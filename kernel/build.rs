@@ -85,7 +85,7 @@ fn build_user_programs() {
             let dir = programs_dir.join(program.file_name()).join("a.out");
 
             // copy binaries into OUT_DIR
-            let file_name = format!("{}.out", program.file_name().display());
+            let file_name = format!("{}", program.file_name().display());
             let target = out_dir.join(&file_name);
             fs::copy(dir, &target).expect("could not copy bin into OUT_DIR");
             bins.push(file_name);
