@@ -17,6 +17,7 @@ CARGO_FLAGS ?=
 RUST_PROFILE ?= dev
 KERNEL_BIN ?= kernel
 QEMU_WRAPPER = ./run_qemu.sh
+PASST_DIR ?= "$(CURDIR)/passt"
 
 .PHONY: all
 all: $(IMAGE_NAME).iso
@@ -40,7 +41,7 @@ debug-test:
 run-hdd: run-hdd-$(KARCH)
 
 .PHONY: clean
-clean:
+clean: passt_clean
 	$(MAKE) -C kernel clean
 	rm -rf iso_root $(IMAGE_NAME).iso $(IMAGE_NAME).hdd
 
@@ -57,10 +58,23 @@ test:
 check:
 	$(MAKE) run-$(KARCH) IMAGE_NAME=tiny_os-test-$(KARCH) CARGO_CMD=check CARGO_TARGET_DIR=$(CARGO_TARGET_DIR) KERNEL_BIN=kernel CARGO_FLAGS="$(CARGO_FLAGS)" QEMUFLAGS="$(QEMUFLAGS) -display none"
 
+.PHONY: passt_create
+passt_create: $(PASST_DIR)
+	if [ ! -e "$(PASST_DIR)/passt.socket" ]; then \
+		nohup passt --socket "$(PASST_DIR)/passt.socket" --foreground > "$(PASST_DIR)/passt.log" & echo $$! > "$(PASST_DIR)/passt.pid"; \
+		sleep 1; \
+	fi
+
+.PHONY: passt_clean
+passt_clean:
+	if [ -f "$(PASST_DIR)/passt.pid" ]; then \
+		kill $$(cat "$(PASST_DIR)/passt.pid") && rm "$(PASST_DIR)/passt.socket" "$(PASST_DIR)/passt.pid" "$(PASST_DIR)/passt.log"; \
+	fi
+
 # KERNEL_BIN needs to be kernel, as limine needs to know how its called in limine.conf
 
 .PHONY: run-x86_64
-run-x86_64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).iso
+run-x86_64: $(PASST_DIR)/passt.socket ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).iso
 	$(QEMU_WRAPPER) qemu-system-$(KARCH) \
 		-M q35 \
 		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-$(KARCH).fd,readonly=on \
@@ -68,21 +82,23 @@ run-x86_64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).
  		-cdrom $(IMAGE_NAME).iso \
 		-device isa-debug-exit,iobase=0xf4,iosize=0x04 \
 		-serial stdio \
-		-netdev stream,id=s,server=off,addr.type=unix,addr.path=/home/louis/passt.socket \
+		-netdev stream,id=s,server=off,addr.type=unix,addr.path="$(PASST_DIR)/passt.socket" \
 		-device e1000,netdev=s,bus=pcie.0 \
 		$(QEMUFLAGS)
 
 .PHONY: run-hdd-x86_64
-run-hdd-x86_64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).hdd
+run-hdd-x86_64: $(PASST_DIR)/passt.socket ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).hdd
 	$(QEMU_WRAPPER) qemu-system-$(KARCH) \
 		-M q35 \
 		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-$(KARCH).fd,readonly=on \
 		-drive if=pflash,unit=1,format=raw,file=ovmf/ovmf-vars-$(KARCH).fd \
 		-hda $(IMAGE_NAME).hdd \
+		-netdev stream,id=s,server=off,addr.type=unix,addr.path="$(PASST_DIR)/passt.socket" \
+		-device e1000,netdev=s,bus=pcie.0 \
 		$(QEMUFLAGS)
 
 .PHONY: run-aarch64
-run-aarch64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).iso
+run-aarch64: $(PASST_DIR)/passt.socket ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).iso
 	$(QEMU_WRAPPER) qemu-system-$(KARCH) \
 		-M virt \
 		-cpu cortex-a72 \
@@ -92,11 +108,13 @@ run-aarch64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME)
 		-device usb-mouse \
 		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-$(KARCH).fd,readonly=on \
 		-drive if=pflash,unit=1,format=raw,file=ovmf/ovmf-vars-$(KARCH).fd \
+		-netdev stream,id=s,server=off,addr.type=unix,addr.path="$(PASST_DIR)/passt.socket" \
+		-device e1000,netdev=s,bus=pcie.0 \
 		-cdrom $(IMAGE_NAME).iso \
 		$(QEMUFLAGS)
 
 .PHONY: run-hdd-aarch64
-run-hdd-aarch64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).hdd
+run-hdd-aarch64: $(PASST_DIR)/passt.socket ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).hdd
 	$(QEMU_WRAPPER) qemu-system-$(KARCH) \
 		-M virt \
 		-cpu cortex-a72 \
@@ -106,11 +124,13 @@ run-hdd-aarch64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_N
 		-device usb-mouse \
 		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-$(KARCH).fd,readonly=on \
 		-drive if=pflash,unit=1,format=raw,file=ovmf/ovmf-vars-$(KARCH).fd \
+		-netdev stream,id=s,server=off,addr.type=unix,addr.path="$(PASST_DIR)/passt.socket" \
+		-device e1000,netdev=s,bus=pcie.0 \
 		-hda $(IMAGE_NAME).hdd \
 		$(QEMUFLAGS)
 
 .PHONY: run-riscv64
-run-riscv64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).iso
+run-riscv64: $(PASST_DIR)/passt.socket ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).iso
 	$(QEMU_WRAPPER) qemu-system-$(KARCH) \
 		-M virt \
 		-cpu rv64 \
@@ -120,11 +140,13 @@ run-riscv64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME)
 		-device usb-mouse \
 		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-$(KARCH).fd,readonly=on \
 		-drive if=pflash,unit=1,format=raw,file=ovmf/ovmf-vars-$(KARCH).fd \
+		-netdev stream,id=s,server=off,addr.type=unix,addr.path="$(PASST_DIR)/passt.socket" \
+		-device e1000,netdev=s,bus=pcie.0 \
 		-cdrom $(IMAGE_NAME).iso \
 		$(QEMUFLAGS)
 
 .PHONY: run-hdd-riscv64
-run-hdd-riscv64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).hdd
+run-hdd-riscv64: $(PASST_DIR)/passt.socket ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).hdd
 	$(QEMU_WRAPPER) qemu-system-$(KARCH) \
 		-M virt \
 		-cpu rv64 \
@@ -134,11 +156,13 @@ run-hdd-riscv64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_N
 		-device usb-mouse \
 		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-$(KARCH).fd,readonly=on \
 		-drive if=pflash,unit=1,format=raw,file=ovmf/ovmf-vars-$(KARCH).fd \
+		-netdev stream,id=s,server=off,addr.type=unix,addr.path="$(PASST_DIR)/passt.socket" \
+		-device e1000,netdev=s,bus=pcie.0 \
 		-hda $(IMAGE_NAME).hdd \
 		$(QEMUFLAGS)
 
 .PHONY: run-loongarch64
-run-loongarch64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).iso
+run-loongarch64: $(PASST_DIR)/passt.socket ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).iso
 	$(QEMU_WRAPPER) qemu-system-$(KARCH) \
 		-M virt \
 		-cpu la464 \
@@ -148,11 +172,13 @@ run-loongarch64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_N
 		-device usb-mouse \
 		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-$(KARCH).fd,readonly=on \
 		-drive if=pflash,unit=1,format=raw,file=ovmf/ovmf-vars-$(KARCH).fd \
+		-netdev stream,id=s,server=off,addr.type=unix,addr.path="$(PASST_DIR)/passt.socket" \
+		-device e1000,netdev=s,bus=pcie.0 \
 		-cdrom $(IMAGE_NAME).iso \
 		$(QEMUFLAGS)
 
 .PHONY: run-hdd-loongarch64
-run-hdd-loongarch64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).hdd
+run-hdd-loongarch64: $(PASST_DIR)/passt.socket ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).hdd
 	$(QEMU_WRAPPER) qemu-system-$(KARCH) \
 		-M virt \
 		-cpu la464 \
@@ -162,6 +188,8 @@ run-hdd-loongarch64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMA
 		-device usb-mouse \
 		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-$(KARCH).fd,readonly=on \
 		-drive if=pflash,unit=1,format=raw,file=ovmf/ovmf-vars-$(KARCH).fd \
+		-netdev stream,id=s,server=off,addr.type=unix,addr.path="$(PASST_DIR)/passt.socket" \
+		-device e1000,netdev=s,bus=pcie.0 \
 		-hda $(IMAGE_NAME).hdd \
 		$(QEMUFLAGS)
 
@@ -227,6 +255,11 @@ limine/limine:
 .PHONY: kernel
 kernel:
 	$(MAKE) -C kernel
+
+$(PASST_DIR):
+	mkdir -p $(PASST_DIR)
+
+$(PASST_DIR)/passt.socket: passt_create
 
 $(IMAGE_NAME).iso: limine/limine kernel
 	rm -rf iso_root
