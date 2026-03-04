@@ -4,7 +4,7 @@ use crate::println;
 pub mod gdt;
 pub mod handlers;
 mod idt;
-mod pic;
+pub(super) mod pic;
 use core::arch::asm;
 
 pub use pic::*;

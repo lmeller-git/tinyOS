@@ -2,6 +2,7 @@ use alloc::{string::String, vec::Vec};
 
 use crate::{
     KernelRes,
+    arch,
     eprintln,
     kernel::{
         devices,
@@ -26,6 +27,7 @@ pub fn early_init() {
 
 pub fn late_init() {
     fs::init();
+    arch::post_init();
     devices::init();
     load_init_bins();
     builtin_bins::init();

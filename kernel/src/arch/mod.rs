@@ -19,6 +19,13 @@ pub fn init() {
     compile_error!("arch not supported")
 }
 
+pub fn post_init() {
+    #[cfg(target_arch = "x86_64")]
+    x86::post_init();
+    #[cfg(not(any(target_arch = "x86_64")))]
+    compile_error!("arch not supported")
+}
+
 pub fn hcf() -> ! {
     loop {
         hlt()

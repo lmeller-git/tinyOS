@@ -1,15 +1,31 @@
+use alloc::{format, sync::Arc, vec::Vec};
 use core::{
-    ptr::NonNull,
+    ptr::{NonNull, null_mut},
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use acpi::AcpiTables;
+use acpi::{AcpiTables, PciConfigRegions};
+use conquer_once::spin::OnceCell;
 use lazy_static::lazy_static;
 use spin::Mutex;
 use x86_64::instructions::port::Port;
 
 use super::idt::InterruptIndex;
-use crate::{arch::x86::mem::*, bootinfo, println, serial_println};
+use crate::{
+    arch::x86::mem::*,
+    bootinfo,
+    create_device_file,
+    kernel::{
+        fd::{FileRepr, IOCapable},
+        fs::{Path, PathBuf},
+        io::{IOError, Read, Write},
+        mem::paging::{PAGETABLE, map_region_generic},
+        threading::wait::QueuTypeCondition,
+    },
+    println,
+    register_device_file,
+    serial_println,
+};
 
 lazy_static! {
     pub static ref LAPIC_ADDR: Mutex<LAPICAddress> = Mutex::new(LAPICAddress::new()); // Needs to be initialized
@@ -107,30 +123,6 @@ pub enum APICOffset {
 #[derive(Clone)]
 struct Foo;
 
-// impl AcpiHandler for Foo {
-//     #[allow(unsafe_op_in_unsafe_fn)]
-//     unsafe fn map_physical_region<T>(
-//         &self,
-//         physical_address: usize,
-//         size: usize,
-//     ) -> PhysicalMapping<Self, T> {
-//         let phys_addr = PhysAddr::new(physical_address as u64);
-//         let virt_addr = VirtAddr::new(bootinfo::get_phys_offset() + phys_addr.as_u64());
-
-//         PhysicalMapping::new(
-//             physical_address,
-//             NonNull::new(virt_addr.as_mut_ptr()).expect("Failed to get virtual address"),
-//             size,
-//             size,
-//             self.clone(),
-//         )
-//     }
-
-//     fn unmap_physical_region<T>(_region: &PhysicalMapping<Self, T>) {
-//         // No unmapping necessary as we didn't create any new mappings
-//     }
-// }
-
 impl acpi::AcpiHandler for Foo {
     unsafe fn map_physical_region<T>(
         &self,
@@ -179,6 +171,7 @@ impl acpi::AcpiHandler for Foo {
     }
 
     fn unmap_physical_region<T>(region: &acpi::PhysicalMapping<Self, T>) {
+        // TODO
         return;
         let start = region.physical_start();
         let size = region.mapped_length();
@@ -231,6 +224,47 @@ unsafe fn init_io_apic(
     ioapic_pointer
         .offset(4)
         .write_volatile(InterruptIndex::Keyboard as u32);
+
+    for dev in PCI_DEVICES.get().unwrap() {
+        if let Some(gsi) = dev.gsi {
+            let vec = 0x40 + gsi;
+            serial_println!("Routing PCI GSI {} to IDT Vector {:#X}", gsi, vec);
+
+            unsafe {
+                io_apic_set_routing(virt_addr, gsi, vec);
+            }
+        }
+    }
+}
+
+#[allow(unsafe_op_in_unsafe_fn)]
+unsafe fn io_apic_set_routing(io_apic_addr: VirtAddr, gsi: u8, vector: u8) {
+    let select_ptr = io_apic_addr.as_mut_ptr::<u32>();
+    let window_ptr = (io_apic_addr.as_u64() + 0x10) as *mut u32;
+
+    let low_index = 0x10 + (gsi as u32 * 2);
+    let high_index = low_index + 1;
+
+    let low_bits = (vector as u32) | (1 << 13) | (1 << 15);
+    let high_bits = (0 << 24) as u32;
+
+    serial_println!(
+        "routing gsi {} and vec {:#x} with low idx {}, bits {:#x} high idx {}, bits {:#x} to select {:#x}, window {:#x}",
+        gsi,
+        vector,
+        low_index,
+        low_bits,
+        high_index,
+        high_bits,
+        select_ptr as usize,
+        window_ptr as usize
+    );
+
+    core::ptr::write_volatile(select_ptr, low_index);
+    core::ptr::write_volatile(window_ptr, low_bits);
+
+    core::ptr::write_volatile(select_ptr, high_index);
+    core::ptr::write_volatile(window_ptr, high_bits);
 }
 
 #[allow(unsafe_op_in_unsafe_fn)]
@@ -381,6 +415,421 @@ fn disable_pic() {
     }
 }
 
+// TODO
+// move the pci device stuff into a separate file
+
+static PCI_DEVICES: OnceCell<Vec<PciDevice>> = OnceCell::uninit();
+
+#[derive(Debug, Clone)]
+pub struct PciDevice {
+    pub base: VirtAddr,
+    pub gsi: Option<u8>,
+    pub bus: u8,
+    pub slot: u8,
+    pub func: u8,
+    pub vendor_id: u16,
+    pub device_id: u16,
+    pub class: u8,
+    pub subclass: u8,
+    pub prog_if: u8,
+    pub bars: [PciBar; 6],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PciBar {
+    Memory { address: PhysAddr, size: usize },
+    Io { port: u32, size: usize },
+    None,
+}
+
+const PCI_DEVICE_MAX_OFFSET: usize = 4096;
+
+impl FileRepr for PciDevice {
+    fn node_type(&self) -> crate::kernel::fs::NodeType {
+        crate::kernel::fs::NodeType::File
+    }
+}
+
+impl IOCapable for PciDevice {}
+
+impl Read for PciDevice {
+    fn read(&self, buf: &mut [u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+        if offset > PCI_DEVICE_MAX_OFFSET {
+            return Err(IOError::simple(crate::kernel::fs::FSErrorKind::EOF));
+        }
+        let mut written = 0;
+        for (i, byte) in buf.iter_mut().enumerate() {
+            if offset + written > PCI_DEVICE_MAX_OFFSET {
+                break;
+            }
+            *byte = unsafe { self.base.as_mut_ptr::<u8>().add(offset + i).read_volatile() };
+            written += 1;
+        }
+        Ok(written)
+    }
+}
+
+impl Write for PciDevice {
+    fn write(&self, buf: &[u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+        if offset + buf.len() > PCI_DEVICE_MAX_OFFSET {
+            return Err(IOError::simple(crate::kernel::fs::FSErrorKind::EOF));
+        }
+        for (i, byte) in buf.iter().enumerate() {
+            unsafe {
+                self.base
+                    .as_mut_ptr::<u8>()
+                    .add(offset + i)
+                    .write_volatile(*byte);
+            }
+        }
+        Ok(buf.len())
+    }
+}
+
+#[derive(Debug)]
+pub struct PciDeviceInterruptWaiter {}
+
+impl FileRepr for PciDeviceInterruptWaiter {
+    fn node_type(&self) -> crate::kernel::fs::NodeType {
+        crate::kernel::fs::NodeType::File
+    }
+
+    fn get_waiter(&self) -> Option<crate::kernel::threading::wait::QueuTypeCondition> {
+        todo!()
+    }
+}
+
+impl IOCapable for PciDeviceInterruptWaiter {}
+
+impl Read for PciDeviceInterruptWaiter {
+    fn read(&self, buf: &mut [u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+        todo!()
+    }
+}
+
+impl Write for PciDeviceInterruptWaiter {
+    fn write(&self, buf: &[u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+        todo!()
+    }
+}
+
+#[derive(Debug)]
+pub struct PciDeviceBarFile {
+    inner: PciBar,
+}
+
+impl FileRepr for PciDeviceBarFile {
+    fn node_type(&self) -> crate::kernel::fs::NodeType {
+        crate::kernel::fs::NodeType::File
+    }
+
+    fn as_raw_parts(&self) -> (*mut u8, usize) {
+        match self.inner {
+            PciBar::Memory { address, size } => (
+                (address.as_u64() + bootinfo::get_phys_offset()) as *mut u8,
+                size,
+            ),
+            _ => (null_mut(), 0),
+        }
+    }
+
+    fn on_open(&self, _meta: crate::kernel::fd::FileMetadata) {
+        // map self into mem
+        // already identity mapped, can simply call mmap?
+
+        // match self.inner {
+        //     PciBar::Memory { address, size } => {
+        //         _ = map_region_generic(
+        //             VirtAddr::new(address.as_u64() + bootinfo::get_phys_offset()),
+        //             size,
+        //             PageTableFlags::NO_CACHE | PageTableFlags::WRITABLE | PageTableFlags::PRESENT,
+        //             &mut *PAGETABLE.lock(),
+        //             |idx| PhysFrame::containing_address(address + Size4KiB::SIZE * idx as u64),
+        //         );
+        //     }
+        //     _ => {}
+        // }
+    }
+
+    fn on_close(&self, _meta: crate::kernel::fd::FileMetadata) {
+        // unmap the mapped pages
+        // TODO
+    }
+}
+
+impl IOCapable for PciDeviceBarFile {}
+
+impl Read for PciDeviceBarFile {
+    fn read(&self, buf: &mut [u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+        todo!()
+    }
+}
+
+impl Write for PciDeviceBarFile {
+    fn write(&self, buf: &[u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+        todo!()
+    }
+}
+
+#[derive(Debug)]
+pub struct PciDeviceDMA {}
+
+impl FileRepr for PciDeviceDMA {
+    fn node_type(&self) -> crate::kernel::fs::NodeType {
+        crate::kernel::fs::NodeType::File
+    }
+}
+
+impl IOCapable for PciDeviceDMA {}
+
+impl Read for PciDeviceDMA {
+    fn read(&self, buf: &mut [u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+        todo!()
+    }
+}
+
+impl Write for PciDeviceDMA {
+    fn write(&self, buf: &[u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
+        todo!()
+    }
+}
+
+// TODO
+// for now more or less random
+const DMA_MEMORY_START: usize = 0x0200_0000;
+const DMA_PAGES_PER_DEVICE: usize = 16;
+const DMA_MEMORY_END: usize = 0x0300_0000;
+
+pub fn create_proc_pcie_entry() {
+    // for each device we set up a dir in /proc/pci containing
+    // config -- file which points to mapped status registers, ...
+    //  -> this simply exposes read + write, which reads/writes (validated) at device.base + offset.
+    //  This is already mapped from acpi parsing
+    // bar0-6 for each found bar pointing to the mapped bar
+    //  -> these should be read via mmap (but may expose simple read write for convenience).
+    //  These are NOT mapped prior to opening / mmap
+    // dma points to dma for the device if it exists
+    //  -> should be read via mmap
+    //  -> should be mapped into some contiguous region at startup in kernel addr-space
+    // irq - allows to wait for an interrupt of the device
+    //  -> read will wait the process until the next data arrives
+    let mut mapped_devs = 0;
+    for device in PCI_DEVICES.get().unwrap() {
+        let mut dev_path = Path::new(&format!(
+            "/pci/{:02x}:{:02x}.{}",
+            device.bus, device.slot, device.func
+        ))
+        .to_owned();
+
+        dev_path.push("config");
+        create_device_file!(device, dev_path.as_ref());
+        dev_path.up();
+
+        dev_path.push("irq");
+        create_device_file!(Arc::new(PciDeviceInterruptWaiter {}), dev_path.as_ref());
+        dev_path.up();
+
+        for (i, bar) in device.bars.iter().enumerate() {
+            if *bar == PciBar::None {
+                continue;
+            }
+
+            dev_path.push(format!("bar{i}").as_str());
+            create_device_file!(
+                Arc::new(PciDeviceBarFile { inner: bar.clone() }),
+                dev_path.as_ref()
+            );
+            dev_path.up();
+        }
+
+        // DMA
+        // may not be necessary for all devices?
+        if true
+            && mapped_devs * DMA_PAGES_PER_DEVICE * Size4KiB::SIZE as usize + DMA_MEMORY_START
+                < DMA_MEMORY_END
+        {
+            let mut page_table = crate::kernel::mem::paging::PAGETABLE.lock();
+
+            map_region_generic(
+                VirtAddr::new(
+                    (DMA_MEMORY_START
+                        + mapped_devs * Size4KiB::SIZE as usize * DMA_PAGES_PER_DEVICE)
+                        as u64
+                        + bootinfo::get_phys_offset(),
+                ),
+                DMA_PAGES_PER_DEVICE * Size4KiB::SIZE as usize,
+                PageTableFlags::NO_CACHE
+                    | PageTableFlags::WRITE_THROUGH
+                    | PageTableFlags::PRESENT
+                    | PageTableFlags::WRITABLE,
+                &mut *page_table,
+                |idx| {
+                    PhysFrame::containing_address(PhysAddr::new(
+                        (DMA_MEMORY_START
+                            + idx * Size4KiB::SIZE as usize
+                            + mapped_devs * Size4KiB::SIZE as usize * DMA_PAGES_PER_DEVICE)
+                            as u64,
+                    ))
+                },
+            );
+
+            dev_path.push("dma");
+            create_device_file!(Arc::new(PciDeviceDMA {}), dev_path.as_ref());
+            mapped_devs += 1;
+        }
+    }
+}
+
+fn parse_pci_device(
+    base: VirtAddr,
+    bus: u8,
+    slot: u8,
+    vendor_id: u16,
+    device_id: u16,
+) -> Option<PciDevice> {
+    let ptr = base.as_mut_ptr::<u32>();
+    // [Class (8b)][Subclass (8b)][ProgIF (8b)][Revision (8b)]
+    let class_reg = unsafe { core::ptr::read_volatile(ptr.add(0x08 / 4)) };
+    let class = (class_reg >> 24) as u8;
+    let subclass = (class_reg >> 16) as u8;
+    let prog_if = (class_reg >> 8) as u8;
+
+    let intr_reg = unsafe { core::ptr::read_volatile(ptr.add(0x3C / 4)) };
+    let pin = ((intr_reg >> 8) & 0xFF) as u8;
+    let line = (intr_reg & 0xFF) as u8;
+    let line = if pin != 0 {
+        serial_println!("Device uses Pin {}, GSI Hint: {}", pin, line);
+        Some(line)
+    } else {
+        None
+    };
+
+    // header type
+    let header_reg = unsafe { core::ptr::read_volatile(ptr.add(0x0C / 4)) };
+    let header_type = (header_reg >> 16) as u8 & 0x7F;
+
+    let mut bars = [PciBar::None; 6];
+
+    // read BAR for header 0 type
+    if header_type == 0 {
+        let mut i = 0;
+        while i < 6 {
+            let bar_offset = 0x10 + (i * 4);
+            let bar_low = unsafe { core::ptr::read_volatile(ptr.add(bar_offset / 4)) };
+
+            if bar_low == 0 {
+                i += 1;
+                continue;
+            }
+
+            // 0 = Memory, 1 = IO
+            if (bar_low & 0x1) == 0 {
+                // Memory BAR
+                let is_64bit = (bar_low & 0b110) == 0b100;
+                let mut addr = (bar_low & !0xF) as u64;
+
+                unsafe {
+                    core::ptr::write_volatile(ptr.add(bar_offset / 4), 0xFFFFFFFF);
+                    let size_mask = core::ptr::read_volatile(ptr.add(bar_offset / 4));
+                    core::ptr::write_volatile(ptr.add(bar_offset / 4), bar_low);
+                    let size = (!(size_mask & !0xF)).wrapping_add(1) as usize;
+
+                    if is_64bit && i < 5 {
+                        let bar_high = core::ptr::read_volatile(ptr.add((bar_offset + 4) / 4));
+                        addr |= (bar_high as u64) << 32;
+                        bars[i] = PciBar::Memory {
+                            address: PhysAddr::new(addr),
+                            size,
+                        };
+                        // Skip next BAR as it's part of this 64-bit addr
+                        i += 2;
+                    } else {
+                        bars[i] = PciBar::Memory {
+                            address: PhysAddr::new(addr),
+                            size,
+                        };
+                        i += 1;
+                    }
+                }
+            } else {
+                // IO BAR
+                let port = bar_low & !0x3;
+                // TODO calculate size
+                bars[i] = PciBar::Io { port, size: 0 };
+                i += 1;
+            }
+        }
+    }
+
+    Some(PciDevice {
+        base,
+        gsi: line,
+        bus,
+        slot,
+        func: 0, // TODO
+        vendor_id,
+        device_id,
+        class,
+        subclass,
+        prog_if,
+        bars,
+    })
+}
+
+/// This function will lock mapper and frame alloc
+fn scan_pci_regions(table: &AcpiTables<Foo>) {
+    let pci_regions = PciConfigRegions::new(table).expect("failed to parse pci config regions");
+
+    for region in pci_regions.iter() {
+        serial_println!(
+            "PCI Segment {}: Physical Base {:#X} (Buses {:?})",
+            region.segment_group,
+            region.physical_address,
+            region.bus_range,
+        );
+    }
+
+    let mut devices = Vec::new();
+
+    for bus in 0..=255 {
+        for device in 0..32 {
+            // for now just check function 0
+            // TODO
+            if let Some(phys_addr) = pci_regions.physical_address(0, bus, device, 0) {
+                let mut page_table = crate::kernel::mem::paging::PAGETABLE.lock();
+                let mut frame_allocator = crate::kernel::mem::paging::get_frame_alloc().lock();
+
+                let virt_addr = map_no_cache(phys_addr, &mut *page_table, &mut *frame_allocator);
+
+                drop(page_table);
+                drop(frame_allocator);
+
+                let ptr = virt_addr.as_ptr::<u32>();
+                let id_reg = unsafe { core::ptr::read_volatile(ptr) };
+
+                let vendor = (id_reg & 0xFFFF) as u16;
+                let device_id = (id_reg >> 16) as u16;
+
+                if vendor != 0xFFFF {
+                    serial_println!(
+                        "Found Device at {}:{}:0 - ID {:04x}:{:04x}",
+                        bus,
+                        device,
+                        vendor,
+                        device_id
+                    );
+
+                    if let Some(dev) = parse_pci_device(virt_addr, bus, device, vendor, device_id) {
+                        serial_println!("parsed device {:?}", dev);
+                        devices.push(dev);
+                    }
+                }
+            }
+        }
+    }
+    PCI_DEVICES.init_once(|| devices);
+}
+
 pub(super) fn init_apic() {
     //-> acpi::PhysicalMapping<Foo, Madt> {
     println!("initig");
@@ -388,14 +837,17 @@ pub(super) fn init_apic() {
     let acpi_table = unsafe { AcpiTables::from_rsdp(handler, bootinfo::rdsp_addr()).unwrap() };
     println!("acpi parsed 0");
     let platform_info = acpi_table.platform_info().unwrap();
+
     println!("acpi parsed");
 
     // let phys_apic_base: u32 = acpi_table.find_table::<Madt>().unwrap().local_apic_address;
 
-    let mut page_table = crate::kernel::mem::paging::PAGETABLE.lock();
-    let mut frame_allocator = crate::kernel::mem::paging::get_frame_alloc().lock();
     match platform_info.interrupt_model {
         acpi::InterruptModel::Apic(apic) => {
+            scan_pci_regions(&acpi_table);
+            let mut page_table = crate::kernel::mem::paging::PAGETABLE.lock();
+            let mut frame_allocator = crate::kernel::mem::paging::get_frame_alloc().lock();
+
             let io_apic_addr = apic.io_apics[0].address;
             unsafe {
                 init_io_apic(

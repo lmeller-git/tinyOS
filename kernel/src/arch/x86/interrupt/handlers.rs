@@ -191,6 +191,11 @@ pub(super) extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: In
     end_interrupt();
 }
 
+pub(super) extern "x86-interrupt" fn temp_gsi_11(stack_frame: InterruptStackFrame) {
+    serial_println!("received an interrupt at gsi11");
+    end_interrupt();
+}
+
 pub(super) extern "x86-interrupt" fn page_fault_handler(
     stack_frame: InterruptStackFrame,
     error_code: PageFaultErrorCode,

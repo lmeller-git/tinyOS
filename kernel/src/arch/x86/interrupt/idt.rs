@@ -5,7 +5,7 @@ use super::gdt;
 use crate::arch::{
     interrupt::{
         gdt::get_kernel_selectors,
-        handlers::{syscall_stub, timer_interrupt_stub_local},
+        handlers::{syscall_stub, temp_gsi_11, timer_interrupt_stub_local},
     },
     x86::interrupt::handlers::{
         SPURIOUS_VECTOR,
@@ -43,6 +43,7 @@ lazy_static! {
                 .set_privilege_level(PrivilegeLevel::Ring3)
                 .set_code_selector(get_kernel_selectors().0);
         }
+        idt[0x4B].set_handler_fn(temp_gsi_11);
         idt
     };
 }

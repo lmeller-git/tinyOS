@@ -20,7 +20,7 @@ use crate::{
     kernel::{
         mem::{
             addr::{PhysAddr as paddr, VirtAddr as vaddr},
-            paging::{PAGETABLE, get_frame_alloc, get_hhdm_addr},
+            paging::{PAGETABLE, alloc::LinkedListFrameAllocator, get_frame_alloc, get_hhdm_addr},
         },
         threading::{task::TaskRepr, tls},
     },
@@ -72,8 +72,6 @@ pub fn map_region<M: Mapper<Size4KiB>>(
     let start = Page::containing_address(start);
     let end = Page::containing_address(end_addr);
     let mut alloc = get_frame_alloc().lock();
-    let range = Page::range(start.clone(), end.clone());
-    let n = range.count();
 
     for page in Page::range(start, end) {
         if pagetable.translate_page(page).is_ok() {
@@ -86,6 +84,33 @@ pub fn map_region<M: Mapper<Size4KiB>>(
             .map_err(|_e| "map failed during map_to")?
             .flush();
     }
+    Ok(())
+}
+
+/// maps a region of memory using the provided allocation function
+pub fn map_region_generic<M: Mapper<Size4KiB>, F: Fn(usize) -> PhysFrame>(
+    start: VirtAddr,
+    len: usize,
+    flags: PageTableFlags,
+    pagetable: &mut M,
+    alloc_fn: F,
+) -> Result<(), &str> {
+    let end_addr = (start + len as u64).align_up(Size4KiB::SIZE);
+    let start = Page::containing_address(start);
+    let end = Page::containing_address(end_addr);
+
+    let mut alloc = get_frame_alloc().lock();
+
+    for (i, page) in Page::range(start, end).enumerate() {
+        if pagetable.translate_page(page).is_ok() {
+            return Err("a memory region was already mapped, but we tried to map it again.");
+        }
+        let frame = alloc_fn(i);
+        unsafe { pagetable.map_to(page, frame, flags, &mut *alloc) }
+            .map_err(|_e| "map failed during map_to")?
+            .flush();
+    }
+
     Ok(())
 }
 

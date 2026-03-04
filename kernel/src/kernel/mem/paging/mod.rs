@@ -12,6 +12,7 @@ use lazy_static::lazy_static;
 pub use map::{
     kernel_map_region,
     map_region,
+    map_region_generic,
     map_region_into,
     unmap_region,
     unmap_region_from,

@@ -21,6 +21,10 @@ pub fn init() {
     // vga::WRITER.lock().write_str("hello world");
 }
 
+pub fn post_init() {
+    interrupt::pic::create_proc_pcie_entry();
+}
+
 fn init_xmm() {
     unsafe {
         Cr4::update(|cr4| {

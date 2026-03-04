@@ -68,6 +68,8 @@ run-x86_64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).
  		-cdrom $(IMAGE_NAME).iso \
 		-device isa-debug-exit,iobase=0xf4,iosize=0x04 \
 		-serial stdio \
+		-netdev stream,id=s,server=off,addr.type=unix,addr.path=/home/louis/passt.socket \
+		-device e1000,netdev=s,bus=pcie.0 \
 		$(QEMUFLAGS)
 
 .PHONY: run-hdd-x86_64
