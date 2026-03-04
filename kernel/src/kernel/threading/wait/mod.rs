@@ -8,7 +8,7 @@ use core::{
 
 use conquer_once::spin::OnceCell;
 use hashbrown::HashMap;
-use nblf_queue::{MPMCQueue, PooledStaticQueue, core::slots::TaggedPtr64};
+use nblf_queue::{MPMCQueue, PooledStaticQueue, core::slots::Tagged64};
 
 use crate::{
     arch::interrupt,
@@ -29,9 +29,8 @@ pub mod queues;
 
 pub const MAX_WAIT_EVENTS: usize = 20;
 
-pub static MESSAGE_QUEUE: OnceCell<
-    PooledStaticQueue<WaitEvent<u64>, MAX_WAIT_EVENTS, TaggedPtr64>,
-> = OnceCell::uninit();
+pub static MESSAGE_QUEUE: OnceCell<PooledStaticQueue<WaitEvent<u64>, MAX_WAIT_EVENTS, Tagged64>> =
+    OnceCell::uninit();
 
 pub fn init() {
     MESSAGE_QUEUE.init_once(|| PooledStaticQueue::with_slot());
