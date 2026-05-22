@@ -83,7 +83,7 @@ extern "C" fn idle() -> usize {
     serial_println!("entering idle loop...");
 
     loop {
-        cross_println!("idle, time: {:?}", current_time());
+        serial_println!("idle, time: {:?}", current_time());
         let conditions = &[QueuTypeCondition::with_cond(
             QueueType::Timer,
             WaitCondition::Time(Duration::from_secs(5) + current_time()),
