@@ -34,8 +34,8 @@ use crate::{
 #[derive(Error, Debug)]
 pub enum RamFSError {}
 
-pub type LockedRamFile = RwLock<RamFile>;
-pub type RamFilePtr = Arc<LockedRamFile>;
+type LockedRamFile = RwLock<RamFile>;
+type RamFilePtr = Arc<LockedRamFile>;
 
 #[derive(Debug)]
 struct RamFile {
