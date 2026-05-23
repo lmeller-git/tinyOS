@@ -17,6 +17,7 @@ use os_macros::with_default_args;
 use tiny_os::{
     arch::{
         self,
+        hcf,
         interrupt::{self, enable_threading_interrupts},
         x86::current_time,
     },
@@ -59,15 +60,16 @@ unsafe extern "C" fn kmain() -> ! {
     #[cfg(feature = "test_run")]
     tiny_os::test_main();
 
-    add_named_ktask(idle, "idle".into()).unwrap();
-    serial_println!("idle task started");
+    add_named_ktask(chore, "chore".into()).unwrap();
+    // add_named_ktask(idle, "idle".into()).unwrap();
+    serial_println!("background tasks started");
     enable_threading_interrupts();
     threading::yield_now();
     unreachable!()
 }
 
 #[with_default_args]
-extern "C" fn idle() -> usize {
+extern "C" fn chore() -> usize {
     start_drivers();
     threading::finalize();
     serial_println!("threads finalized");
@@ -84,6 +86,10 @@ extern "C" fn idle() -> usize {
 
     loop {
         serial_println!("idle, time: {:?}", current_time());
+        // cleanup any dead tasks and reschedule active tasks.
+        // TODO We may want to do this more often and at different intervals
+        // tls::task_data().cleanup();
+        // get_scheduler().reschedule();
         let conditions = &[QueuTypeCondition::with_cond(
             QueueType::Timer,
             WaitCondition::Time(Duration::from_secs(5) + current_time()),
@@ -91,6 +97,11 @@ extern "C" fn idle() -> usize {
         wait_manager::add_wait(&tls::task_data().current_tid(), conditions);
         threading::yield_now();
     }
+}
+
+#[with_default_args]
+extern "C" fn idle() -> usize {
+    hcf()
 }
 
 #[panic_handler]

@@ -13,6 +13,7 @@ use crate::{
             mem::PhysAddr,
         },
     },
+    eprintln,
     kernel::{
         mem::{
             align_up,
@@ -23,6 +24,7 @@ use crate::{
                 get_kernel_pagetbl_root,
                 map_region,
                 unmap_region,
+                unmap_region_from,
             },
         },
         threading::{
@@ -38,7 +40,26 @@ pub const KSTACK_SIZE: usize = 64 * 1024; // 64 KiB //TODO maybe make this dynam
 pub const MAX_KSTACKS: usize = 512; // random num (this is also max processes)
 
 pub const USER_STACK_START: VirtAddr = VirtAddr::new(0x0000_0000_1000_0000); // random location
-pub const USER_STACK_SIZE: usize = 1024 * 1000; // 1MiB
+pub const USER_STACK_SIZE: usize = 1024 * 1024; // 1MiB
+
+const _: () = {
+    assert!(
+        KSTACK_AREA_START.as_u64().is_multiple_of(Size4KiB::SIZE),
+        "KSTACK_AREA_START must be page-aligned"
+    );
+    assert!(
+        KSTACK_SIZE.is_multiple_of(Size4KiB::SIZE as usize),
+        "KSTACK_SIZE must be a page multiple"
+    );
+    assert!(
+        USER_STACK_START.as_u64().is_multiple_of(Size4KiB::SIZE),
+        "USER_STACK_START must be page-aligned"
+    );
+    assert!(
+        USER_STACK_SIZE.is_multiple_of(Size4KiB::SIZE as usize),
+        "USER_STACK_SIZE must be a page multiple"
+    );
+};
 
 lazy_static! {
     static ref KSTACKS_IN_USAGE: Mutex<[bool; MAX_KSTACKS]> = Mutex::new([false; MAX_KSTACKS]);
@@ -573,13 +594,8 @@ pub fn allocate_kstack() -> Result<VirtAddr, ThreadingError> {
     let end = (base + KSTACK_SIZE as u64).align_up(Size4KiB::SIZE);
 
     {
-        map_region(
-            start,
-            (end - start) as usize - 1,
-            flags,
-            &mut *PAGETABLE.lock(),
-        )
-        .map_err(|_| ThreadingError::StackNotBuilt)?;
+        map_region(start, (end - start) as usize, flags, &mut *PAGETABLE.lock())
+            .map_err(|_| ThreadingError::StackNotBuilt)?;
     }
     let stack_top = VirtAddr::new((end.as_u64() - 8) & !0xF);
     Ok(stack_top)
@@ -587,16 +603,17 @@ pub fn allocate_kstack() -> Result<VirtAddr, ThreadingError> {
 
 pub fn free_kstack(top: VirtAddr) -> Result<(), ThreadingError> {
     // assuming top is a properly aligned addr in the correct region
-    let start = (top + 1 - KSTACK_SIZE as u64).align_up(Size4KiB::SIZE);
-    let idx = (start - KSTACK_AREA_START) as usize / KSTACK_SIZE;
+    let end = (top + 1).align_up(Size4KiB::SIZE);
+
+    let base = end - KSTACK_SIZE as u64;
+    let start = (base + Size4KiB::SIZE).align_up(Size4KiB::SIZE);
+
+    let idx = (base.as_u64() - KSTACK_AREA_START.as_u64()) as usize / KSTACK_SIZE;
 
     {
-        unmap_region(
-            (start + Size4KiB::SIZE).align_up(Size4KiB::SIZE),
-            (top - start) as usize,
-            &mut *PAGETABLE.lock(),
-        )
-        .map_err(|_| ThreadingError::StackNotFreed)?;
+        unmap_region(start, (end - start) as usize, &mut *PAGETABLE.lock())
+            .inspect_err(|e| eprintln!("{e:?}"))
+            .map_err(|_| ThreadingError::StackNotFreed)?;
     }
     *KSTACKS_IN_USAGE
         .lock()
@@ -621,7 +638,7 @@ pub fn allocate_userstack<M: Mapper<Size4KiB>>(
     let length = align_up(USER_STACK_SIZE, Size4KiB::SIZE as usize);
     let end = base + length as u64;
     {
-        map_region(start, (end - start) as usize - 1, flags, tbl)
+        map_region(start, (end - start) as usize, flags, tbl)
             .map_err(|_| ThreadingError::StackNotBuilt)?;
     }
 
@@ -661,26 +678,22 @@ pub fn unmap_ustack_mappings(tbl: &mut OffsetPageTable) {
     let start = (base + Size4KiB::SIZE).align_up(Size4KiB::SIZE);
     let end = (base + USER_STACK_SIZE as u64).align_up(Size4KiB::SIZE);
 
-    let start_page: Page<Size4KiB> = Page::containing_address(start);
-    let end_page: Page<Size4KiB> = Page::containing_address(end - 1);
-
-    {
-        for page in Page::range_inclusive(start_page, end_page) {
-            let (_frame, flush) = tbl.unmap(page).unwrap();
-            flush.flush();
-            // ignore frame, as the frame is still mapped in the users PageTable
-        }
-    }
+    _ = unmap_region_from(start, (end.as_u64() - start.as_u64()) as usize, &mut *tbl);
 }
 
 pub fn free_user_stack(top: VirtAddr, tbl: &mut TaskPageTable) -> Result<(), ThreadingError> {
     // assuming top is at the very top of the user stack
-    let start = (top + 1 - USER_STACK_SIZE as u64).align_up(Size4KiB::SIZE);
+    let end = (top + 1).align_up(Size4KiB::SIZE);
+
+    let length = align_up(USER_STACK_SIZE, Size4KiB::SIZE as usize) as u64;
+    let base = end - length;
+    let start = (base + Size4KiB::SIZE).align_up(Size4KiB::SIZE);
 
     unmap_region(
-        (start + Size4KiB::SIZE).align_up(Size4KiB::SIZE),
-        (top - start) as usize,
+        start,
+        (end.as_u64() - start.as_u64()) as usize,
         &mut *tbl.table,
     )
+    .inspect_err(|e| eprintln!("{e:?}"))
     .map_err(|_| ThreadingError::StackNotFreed)
 }

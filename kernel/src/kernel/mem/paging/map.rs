@@ -72,8 +72,6 @@ pub fn map_region<M: Mapper<Size4KiB>>(
     let start = Page::containing_address(start);
     let end = Page::containing_address(end_addr);
     let mut alloc = get_frame_alloc().lock();
-    let range = Page::range(start.clone(), end.clone());
-    let n = range.count();
 
     for page in Page::range(start, end) {
         if pagetable.translate_page(page).is_ok() {
@@ -91,6 +89,7 @@ pub fn map_region<M: Mapper<Size4KiB>>(
 
 /// unmaps a region from start..start + len from the provided address space and frees the underlying memory.
 /// len should be in BYTES.
+/// Deallocates the backing memory
 pub fn unmap_region<M: Mapper<Size4KiB>>(
     start: VirtAddr,
     len: usize,
@@ -99,9 +98,9 @@ pub fn unmap_region<M: Mapper<Size4KiB>>(
     let end_addr = (start + len as u64).align_up(Size4KiB::SIZE);
     let start = Page::containing_address(start);
     let end = Page::containing_address(end_addr);
-
     let mut alloc = get_frame_alloc().lock();
-    for page in Page::range_inclusive(start, end) {
+
+    for page in Page::range(start, end) {
         let (frame, flush) = pagetable.unmap(page).map_err(|e| format!("{:?}", e))?;
         flush.flush();
         unsafe { alloc.deallocate_frame(frame) };
@@ -122,11 +121,11 @@ pub fn map_region_into<M: Mapper<Size4KiB>, M2: Mapper<Size4KiB>>(
     from_addr_space: &mut M2,
 ) -> Result<VirtAddr, &'static str> {
     assert!(flags.contains(PageTableFlags::PRESENT));
-    let end_addr = (start + len as u64);
+    let end_addr = (start + len as u64).align_up(Size4KiB::SIZE);
     let start_page = Page::containing_address(start);
     let end = Page::containing_address(end_addr);
     let from_start = Page::containing_address(from);
-    let from_end_addr = (from + len as u64);
+    let from_end_addr = (from + len as u64).align_up(Size4KiB::SIZE);
     let from_end = Page::containing_address(from_end_addr);
     let down_aligned = from.align_down(Size4KiB::SIZE);
     let offset_to_page_start = from - down_aligned;
@@ -217,6 +216,7 @@ pub fn map_region_into<M: Mapper<Size4KiB>, M2: Mapper<Size4KiB>>(
 
 /// unmaps a region from start..start + len from the provided address space. The underlying memory is NOT freed.
 /// len should be in BYTES.
+/// Does NOT deallocate the backing memory
 pub fn unmap_region_from<M: Mapper<Size4KiB>>(
     start: VirtAddr,
     len: usize,
@@ -226,7 +226,7 @@ pub fn unmap_region_from<M: Mapper<Size4KiB>>(
     let start = Page::containing_address(start);
     let end = Page::containing_address(end_addr);
 
-    for page in Page::range_inclusive(start, end) {
+    for page in Page::range(start, end) {
         let (frame, flush) = pagetable.unmap(page).map_err(|e| format!("{:?}", e))?;
         flush.flush();
     }

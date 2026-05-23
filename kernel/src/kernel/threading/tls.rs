@@ -1,4 +1,5 @@
 use alloc::{
+    boxed::Box,
     collections::{btree_map::BTreeMap, vec_deque::VecDeque},
     sync::Arc,
     vec::Vec,
@@ -13,6 +14,8 @@ use hashbrown::HashMap;
 use tinyos_abi::flags::TaskStateChange;
 
 use crate::{
+    arch::context::{free_kstack, free_user_stack},
+    eprintln,
     kernel::{
         fd::MaybeOwned,
         threading::{
@@ -364,7 +367,7 @@ impl TaskManager {
             self.kill(id, 0)?;
         }
         process.set_process_state(TaskState::Zombie);
-        post_event(WaitEvent::with_data(
+        _ = post_event(WaitEvent::with_data(
             QueueType::Process(*pid),
             TaskStateChange::EXIT.bits() as u64,
         ));
@@ -383,8 +386,67 @@ pub fn task_data<'a>() -> &'a TaskManager {
 }
 
 fn cleanup_task(task: GlobalTaskPtr) {
-    // TODO free all memory, release stack, ...
+    // This should
+    // a) clean TaskMetadata
+    // TaskCore should handle its own drop.
+    //
+    // TaskCore is left "alive", becuase Refs to the task may still exist somewhere.
+    // However we can free resources like heap, stack, mmaps, fds, ... in Metadata. Make sure to not double free those
+    // we try
     #[cfg(not(feature = "test_run"))]
     serial_println!("cleaning up task {}", task.metadata.tid);
-    task.core.fd_table.write().clear();
+    // clean user and kernel stack
+    // user stack is mapped in task.address_space. kernel_stack is mapped in this address space
+    cleanup_thread(task.clone());
+
+    if let Some(task) = Arc::into_inner(task)
+        && let Some(owned) = task.core.try_owned()
+    {
+        cleanup_process(owned);
+    }
+}
+
+fn cleanup_thread(task: GlobalTaskPtr) {
+    // TODO maye set stored ptrs to some Tombstone value
+    // clear resources owned by this thread
+    if let Some(stack_top) = task.metadata.user_stack_top
+        && task
+            .metadata
+            .ursp
+            .as_ref()
+            .is_some_and(|rsp| rsp.load(Ordering::Relaxed) != 0xDEAD)
+        && let Some(tbl) = task.pagedir().try_get_owned()
+    {
+        _ = free_user_stack(stack_top, &mut tbl.lock()).inspect_err(|e| {
+            eprintln!(
+                "error while cleaning up tasks {} user stack: {e:?}",
+                task.tid()
+            )
+        });
+        task.metadata
+            .ursp
+            .as_ref()
+            .map(|rsp| rsp.store(0xDEAD as u64, Ordering::Relaxed));
+    }
+    if task.metadata.krsp.load(Ordering::Relaxed) != 0xDEAD {
+        _ = free_kstack(task.metadata.kernel_stack_top).inspect_err(|e| {
+            eprintln!(
+                "error while cleaning up tasks {} kernel stack: {e:?}",
+                task.tid()
+            )
+        });
+
+        task.metadata.krsp.store(0xDEAD as u64, Ordering::Relaxed);
+    }
+}
+
+fn cleanup_process(task: TaskCore) {
+    // clear shared process resources
+    task.fd_table.write().clear();
+    // SAFETY:
+    // we checked that we are the last one holding a ref to this address space.
+    // It is not being used and we are currently in the kernels address space.
+    unsafe {
+        task.pagedir.into_inner().cleanup();
+    }
 }

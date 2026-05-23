@@ -15,7 +15,11 @@ use crate::{
             align_up,
             paging::{PAGETABLE, kernel_map_region, unmap_region, user_map_region},
         },
-        threading::{task::TaskRepr, tls},
+        threading::{
+            schedule::current_task,
+            task::{TaskRepr, ThreadID},
+            tls,
+        },
     },
 };
 
@@ -396,6 +400,11 @@ impl FrameBuffer for GlobalFrameBuffer {
     }
 }
 
+enum MemMapping {
+    Kernel,
+    User(ThreadID),
+}
+
 #[repr(C)]
 pub struct RawFrameBuffer {
     addr: *mut u8,
@@ -403,6 +412,7 @@ pub struct RawFrameBuffer {
     height: usize,
     pitch: usize,
     bpp: u16,
+    mapping: MemMapping,
 }
 
 impl RawFrameBuffer {
@@ -422,6 +432,7 @@ impl RawFrameBuffer {
             height,
             pitch,
             bpp,
+            mapping: MemMapping::User(current_task().map(|task| task.tid()).unwrap_or_default()),
         }
     }
 
@@ -441,6 +452,7 @@ impl RawFrameBuffer {
             height,
             pitch,
             bpp,
+            mapping: MemMapping::Kernel,
         }
     }
 }
@@ -506,17 +518,26 @@ impl FrameBuffer for RawFrameBuffer {
 impl Drop for RawFrameBuffer {
     fn drop(&mut self) {
         let addr = VirtAddr::from_ptr(self.addr);
-        let size = self.height * self.width;
-        if let Some(task) = tls::task_data().current_thread() {
-            unmap_region(addr, size, task.pagedir())
-        } else {
-            unmap_region(addr, size, &mut *PAGETABLE.lock())
+        let size = self.height * self.pitch;
+
+        match self.mapping {
+            MemMapping::Kernel => {
+                _ = unmap_region(addr, size, &mut *PAGETABLE.lock()).inspect_err(|e| {
+                    eprintln!(
+                        "Backing memory of raw framebuffer could not be unmapped {}",
+                        e
+                    )
+                })
+            }
+            MemMapping::User(tid) if let Some(task) = tls::task_data().thread(&tid) => {
+                _ = unmap_region(addr, size, task.pagedir()).inspect_err(|e| {
+                    eprintln!(
+                        "Backing memory of raw framebuffer could not be unmapped {}",
+                        e
+                    )
+                })
+            }
+            _ => {}
         }
-        .inspect_err(|e| {
-            eprintln!(
-                "Backing memory of raw framebuffer could not be unmapped {}",
-                e
-            )
-        });
     }
 }

@@ -253,6 +253,10 @@ pub fn mmap(len: usize, addr: *mut u8, flags: PageTableFlags, fd: i32) -> SysCal
             base_addr,
             from as usize
         );
+        // TODO
+        // this currently maps len.min(true_len) bytes
+        // However unmap unmaps exacty len bytes if true_len < len, we will try to unmap a not-mapped page.
+        // while this error will be recovered, it is not really the expected behaviour. FIX this
         match map_region_into(
             base_addr,
             len.min(true_len),
@@ -263,9 +267,9 @@ pub fn mmap(len: usize, addr: *mut u8, flags: PageTableFlags, fd: i32) -> SysCal
         ) {
             Err(e) => {
                 eprintln!("failed to map file: {}", e);
-                current.next_addr().compare_exchange(
-                    addr as usize,
+                _ = current.next_addr().compare_exchange(
                     align_up(addr as usize, Size4KiB::SIZE as usize) + len,
+                    addr as usize,
                     Ordering::AcqRel,
                     Ordering::Relaxed,
                 );
@@ -291,9 +295,9 @@ pub fn mmap(len: usize, addr: *mut u8, flags: PageTableFlags, fd: i32) -> SysCal
         ) {
             serial_println!("got an err during mmmap: {:?}", e);
             // try to free space in task mmmap space again
-            current.next_addr().compare_exchange(
-                addr as usize,
+            _ = current.next_addr().compare_exchange(
                 align_up(addr as usize, Size4KiB::SIZE as usize) + len,
+                addr as usize,
                 Ordering::AcqRel,
                 Ordering::Relaxed,
             );

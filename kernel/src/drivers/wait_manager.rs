@@ -10,7 +10,7 @@ use crate::{
             QueueHandle,
             QueueType,
             WaitObserver,
-            queues::{KEYBOARDQUEUE, KeyBoardQueue, TIMERQUEUE, TimeWaitQueue, WaitQueue},
+            queues::{KEYBOARDQUEUE, KeyBoardQueue, TIMERQUEUE, TimeWaitQueue},
         },
     },
     sync::locks::RwLock,

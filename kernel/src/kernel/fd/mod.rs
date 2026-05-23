@@ -254,6 +254,7 @@ impl<T: ?Sized> MaybeOwned<T> {
     pub fn make_shared(&mut self) {
         match self {
             Self::Owned(_) => {
+                // TODO: this may not be safe to drop though. Probably remove this
                 let o = unsafe { core::mem::replace(self, core::mem::zeroed()) };
                 *self = o.into_shared();
             }
@@ -272,6 +273,22 @@ impl<T: ?Sized> MaybeOwned<T> {
         match self {
             Self::Owned(owned) => Some(owned),
             Self::Shared(_) => None,
+        }
+    }
+
+    pub fn try_owned(self) -> Option<T>
+    where
+        T: Sized,
+    {
+        match self {
+            Self::Owned(owned) => Some(Box::into_inner(owned)),
+            Self::Shared(shared) => {
+                if Arc::strong_count(&shared) <= 1 {
+                    Arc::into_inner(shared)
+                } else {
+                    None
+                }
+            }
         }
     }
 }

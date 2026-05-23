@@ -121,7 +121,7 @@ impl Debug for TaskPageTable<'_> {
 }
 
 impl TaskPageTable<'_> {
-    /// SAFETY
+    /// # SAFETY
     /// This method must be called from a different address space.
     /// The caller must ensure that no pointers into this address space remain at the point of calling this.
     /// This method may block.
