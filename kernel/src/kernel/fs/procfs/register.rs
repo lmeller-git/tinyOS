@@ -1,10 +1,11 @@
 use conquer_once::spin::OnceCell;
 use hashbrown::HashMap;
 use thiserror::Error;
+use tinyos_abi::{flags::NodeType, types::FStat};
 
 use crate::{
     kernel::{
-        fd::{FStat, FileRepr, IOCapable},
+        fd::{FileRepr, IOCapable, new_fstat},
         fs::{
             FS,
             FSError,
@@ -152,11 +153,9 @@ impl DeviceRegistry {
 
 impl FileRepr for DeviceRegistry {
     fn fstat(&self) -> FStat {
-        FStat::new()
-    }
-
-    fn node_type(&self) -> crate::kernel::fs::NodeType {
-        crate::kernel::fs::NodeType::Dir
+        let mut stat = new_fstat();
+        stat.node_type = NodeType::DIR;
+        stat
     }
 }
 
@@ -175,12 +174,10 @@ impl Write for DeviceRegistry {
 }
 
 impl FileRepr for DeviceEntry {
-    fn fstat(&self) -> crate::kernel::fd::FStat {
-        FStat::new()
-    }
-
-    fn node_type(&self) -> crate::kernel::fs::NodeType {
-        crate::kernel::fs::NodeType::File
+    fn fstat(&self) -> FStat {
+        let mut stat = new_fstat();
+        stat.node_type = NodeType::FILE;
+        stat
     }
 }
 

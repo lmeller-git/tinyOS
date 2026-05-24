@@ -1,10 +1,13 @@
 use alloc::{string::String, vec::Vec};
 
+use tinyos_abi::flags::NodePermissions;
+
 use crate::{
     KernelRes,
     eprintln,
     kernel::{
         devices,
+        fd::FileRepr,
         fs::{self, OpenOptions, Path, PathBuf, UnlinkOptions, builtin_bins},
         io::{Read, Write},
         mem,
@@ -41,7 +44,8 @@ pub fn default_task() -> KernelRes<()> {
     for &name in ON_STARTUP.iter() {
         bin_path.push(name);
 
-        if let Ok(bin) = fs::open(&bin_path, OpenOptions::READ)
+        if let Ok(bin) = fs::open(&bin_path, OpenOptions::READ | OpenOptions::EXECUTE)
+            .inspect_err(|e| eprintln!("binary {} could not be opened.\n{}", name, e))
             && let Ok(n_read) = bin
                 .read_to_end(&mut bin_data, 0)
                 .inspect_err(|e| eprintln!("binary {} could not be read.\n{}", name, e))
@@ -77,6 +81,10 @@ fn load_init_bins() {
                 );
                 fs::rm(&bin_path, UnlinkOptions::empty()).unwrap();
             }
+            file.update_perms(
+                NodePermissions::rx(),
+                crate::kernel::fd::PermUpdateStrategy::OVERWRITE,
+            );
         } else {
             eprintln!("failed to add binary {}", name);
         };

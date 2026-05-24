@@ -3,6 +3,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use conquer_once::spin::OnceCell;
 use crossbeam::queue::ArrayQueue;
+use tinyos_abi::flags::NodeType;
 
 use super::TTYSource;
 use crate::{
@@ -16,7 +17,7 @@ use crate::{
     kernel::{
         devices::tty::TTYSink,
         fd::{FileRepr, FileReprFactory},
-        fs::{FSError, NodeType},
+        fs::FSError,
         threading::{
             task::{ProcessID, TaskRepr},
             tls,
@@ -107,7 +108,7 @@ impl TTYSource for StdInFileFactory {
 
 impl_empty_write!(StdInFileFactory);
 impl_read_for_tty!(StdInFileFactory);
-impl_file_for_wr!(StdInFileFactory: NodeType::File);
+impl_file_for_wr!(StdInFileFactory: NodeType::FILE);
 
 #[derive(Debug)]
 pub struct OwnedStdin {
@@ -182,7 +183,7 @@ impl TTYSource for OwnedStdin {
 
 impl_empty_write!(OwnedStdin);
 impl_read_for_tty!(OwnedStdin);
-impl_file_for_wr!(OwnedStdin: NodeType::File);
+impl_file_for_wr!(OwnedStdin: NodeType::FILE);
 
 impl Default for OwnedStdin {
     fn default() -> Self {
@@ -233,4 +234,4 @@ impl TTYSource for KeyboardBackend {
 
 impl_read_for_tty!(KeyboardBackend);
 impl_empty_write!(KeyboardBackend);
-impl_file_for_wr!(KeyboardBackend: NodeType::File);
+impl_file_for_wr!(KeyboardBackend: NodeType::FILE);

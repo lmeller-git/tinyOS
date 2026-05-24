@@ -17,12 +17,16 @@ pub use tinyos_abi::{
     consts::{STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO},
     types::FileDescriptor,
 };
+use tinyos_abi::{
+    flags::{NodePermissions, NodeType},
+    types::FStat,
+};
 
 use crate::{
     arch::{self, x86::current_time},
     eprintln,
     kernel::{
-        fs::{FSError, FSErrorKind, NodeType, OpenOptions, Path, PathBuf},
+        fs::{FSError, FSErrorKind, OpenOptions, Path, PathBuf},
         io::{IOResult, Read, Write},
         threading::wait::{QueuTypeCondition, QueueType},
     },
@@ -96,10 +100,9 @@ impl From<Box<File>> for FileHandle {
 pub trait IOCapable: Read + Write {}
 
 pub trait FileRepr: Debug + IOCapable + Send + Sync {
-    fn node_type(&self) -> NodeType;
-    fn fstat(&self) -> FStat {
-        FStat::default()
-    }
+    fn fstat(&self) -> FStat;
+
+    fn update_perms(&self, perms: NodePermissions, strategy: PermUpdateStrategy) {}
 
     fn clear(&self) -> IOResult<()> {
         Err(FSError::simple(FSErrorKind::NotSupported))
@@ -142,8 +145,10 @@ pub struct FileMetadata {
 macro_rules!  impl_file_for_wr {
     (@impl [$($impl_generics:tt)*] $name:ty: $node:expr) => {
         impl<$($impl_generics)*> $crate::kernel::fd::FileRepr for $name {
-            fn node_type(&self) -> NodeType {
-                $node
+            fn fstat(&self) -> tinyos_abi::types::FStat {
+                let mut stat = $crate::kernel::fd::new_fstat();
+                stat.node_type = $node;
+                stat
             }
         }
 
@@ -159,31 +164,34 @@ macro_rules!  impl_file_for_wr {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct FStat {
-    pub t_create: u64,
-    pub t_mod: u64,
-    pub size: usize,
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PermUpdateStrategy {
+    AND,
+    OR,
+    #[default]
+    OVERWRITE,
 }
 
-impl FStat {
-    pub fn new() -> Self {
-        let now = current_time().as_secs();
-        Self {
-            t_create: now,
-            t_mod: now,
-            size: 0,
-        }
-    }
-}
+// #[derive(Debug, PartialEq, Eq, Clone)]
+// pub struct FStat {
+//     /// time of creation in secs since startup
+//     pub t_create: u64,
+//     /// time of last modifcation in secs since startup
+//     pub t_mod: u64,
+//     pub size: usize,
+//     pub permissions: NodePermissions,
+//     pub node_type: NodeType,
+// }
 
-impl Default for FStat {
-    fn default() -> Self {
-        Self {
-            t_create: 0,
-            t_mod: 0,
-            size: usize::MAX,
-        }
+pub fn new_fstat() -> FStat {
+    let now = current_time().as_secs();
+    FStat {
+        t_create: now,
+        t_mod: now,
+        size: 0,
+        permissions: NodePermissions::rw(),
+        node_type: NodeType::VOID,
     }
 }
 
@@ -195,6 +203,7 @@ bitflags! {
         const WRITE = 1 << 1;
         const APPEND = 1 << 2;
         const TRUNCATE = 1 << 3;
+        const EXECUTE = 1 << 4;
     }
 }
 
@@ -218,6 +227,9 @@ impl From<OpenOptions> for FPerms {
         }
         if value.contains(OpenOptions::TRUNCATE) {
             zelf |= FPerms::TRUNCATE;
+        }
+        if value.contains(OpenOptions::EXECUTE) {
+            zelf |= FPerms::EXECUTE;
         }
         zelf
     }
@@ -489,8 +501,8 @@ impl FileRepr for File {
         self.repr.fstat()
     }
 
-    fn node_type(&self) -> NodeType {
-        self.repr.node_type()
+    fn update_perms(&self, perms: NodePermissions, strategy: PermUpdateStrategy) {
+        self.repr.update_perms(perms, strategy);
     }
 
     fn as_raw_parts(&self) -> (*mut u8, usize) {

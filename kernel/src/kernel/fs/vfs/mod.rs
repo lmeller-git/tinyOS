@@ -5,10 +5,11 @@ use conquer_once::spin::OnceCell;
 use hashbrown::DefaultHashBuilder;
 use indexmap::IndexMap;
 use thiserror::Error;
+use tinyos_abi::{flags::NodeType, types::FStat};
 
 use crate::{
     kernel::{
-        fd::{FStat, FileBuilder, FileRepr, IOCapable, MaybeOwned},
+        fd::{FileBuilder, FileRepr, IOCapable, MaybeOwned},
         fs::{FS, FSError, FSErrorKind, FSResult, OpenOptions, Path, PathBuf, UnlinkOptions},
         io::{Read, Write},
     },
@@ -133,12 +134,10 @@ impl Default for VFS {
 }
 
 impl FileRepr for VFS {
-    fn fstat(&self) -> crate::kernel::fd::FStat {
-        FStat::default()
-    }
-
-    fn node_type(&self) -> super::NodeType {
-        super::NodeType::Mount
+    fn fstat(&self) -> FStat {
+        let mut stat = FStat::default();
+        stat.node_type = NodeType::MOUNT;
+        stat
     }
 }
 
@@ -238,9 +237,8 @@ mod tests {
 
     use super::*;
     use crate::kernel::{
-        fd::{FStat, FileRepr, IOCapable},
+        fd::{FileRepr, IOCapable, new_fstat},
         fs::{
-            NodeType,
             OpenOptions,
             Path,
             mount,
@@ -301,11 +299,7 @@ mod tests {
 
         impl FileRepr for TestDevice {
             fn fstat(&self) -> FStat {
-                FStat::new()
-            }
-
-            fn node_type(&self) -> NodeType {
-                NodeType::Void
+                new_fstat()
             }
         }
 

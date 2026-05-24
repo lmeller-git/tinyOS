@@ -1,4 +1,4 @@
-use crate::flags::OpenOptions;
+use crate::flags::{NodePermissions, NodeType, OpenOptions};
 
 #[repr(u64)]
 pub enum SysCallDispatch {
@@ -72,7 +72,7 @@ impl TryFrom<u64> for SysErrCode {
         if value > MAX_ERRNO {
             Err(-1)
         } else {
-            Ok(unsafe { core::mem::transmute(value) })
+            Ok(unsafe { core::mem::transmute::<u64, Self>(value) })
         }
     }
 }
@@ -101,15 +101,15 @@ pub type SysCallRes<T> = SysResult<T>;
 
 pub type FileDescriptor = u32;
 
-#[derive(Debug, PartialEq, Eq)]
 #[repr(C)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct FatPtr<T> {
     pub size: usize,
     pub thin: *const T,
 }
 
-#[derive(Debug)]
 #[repr(C)]
+#[derive(Debug)]
 pub enum FDAction {
     Open(FDOpen, FileDescriptor),
     Close(FileDescriptor),
@@ -123,4 +123,28 @@ pub enum FDAction {
 pub struct FDOpen {
     pub path: FatPtr<u8>,
     pub flags: OpenOptions,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FStat {
+    /// time of creation in secs since startup
+    pub t_create: u64,
+    /// time of last modifcation in secs since startup
+    pub t_mod: u64,
+    pub size: usize,
+    pub permissions: NodePermissions,
+    pub node_type: NodeType,
+}
+
+impl Default for FStat {
+    fn default() -> Self {
+        Self {
+            t_create: 0,
+            t_mod: 0,
+            size: usize::MAX,
+            permissions: NodePermissions::default(),
+            node_type: NodeType::VOID,
+        }
+    }
 }

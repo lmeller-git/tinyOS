@@ -1,5 +1,6 @@
 use conquer_once::spin::OnceCell;
 use embedded_graphics::primitives::Rectangle;
+use tinyos_abi::flags::NodeType;
 
 use super::{GLOBAL_FRAMEBUFFER, colors::RGBColor};
 use crate::{
@@ -10,7 +11,6 @@ use crate::{
     impl_empty_read,
     impl_file_for_wr,
     kernel::{
-        fs::NodeType,
         mem::{
             align_up,
             paging::{PAGETABLE, kernel_map_region, unmap_region, user_map_region},
@@ -194,8 +194,10 @@ macro_rules! impl_fb_for_hasfb {
 macro_rules!  impl_file_for_fb {
     (@impl [$($impl_generics:tt)*] $name:ty: $node:expr) => {
         impl<$($impl_generics)*> $crate::kernel::fd::FileRepr for $name {
-            fn node_type(&self) -> NodeType {
-                $node
+            fn fstat(&self) -> tinyos_abi::types::FStat {
+                let mut stat = $crate::kernel::fd::new_fstat();
+                stat.node_type = $node;
+                stat
             }
 
             fn as_raw_parts(&self) -> (*mut u8, usize) {
@@ -236,9 +238,9 @@ impl_dgb!(RawFrameBuffer => "RawFrameBuffer");
 // impl_file_for_wr!(GlobalFrameBuffer: NodeType::File);
 // impl_file_for_wr!(RawFrameBuffer: NodeType::File);
 
-impl_file_for_fb!(LimineFrameBuffer<'_>: NodeType::File);
-impl_file_for_fb!(GlobalFrameBuffer: NodeType::File);
-impl_file_for_fb!(RawFrameBuffer: NodeType::File);
+impl_file_for_fb!(LimineFrameBuffer<'_>: NodeType::FILE);
+impl_file_for_fb!(GlobalFrameBuffer: NodeType::FILE);
+impl_file_for_fb!(RawFrameBuffer: NodeType::FILE);
 
 // #SAFETY
 // The following assume:

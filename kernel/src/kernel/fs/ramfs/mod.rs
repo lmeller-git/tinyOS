@@ -10,10 +10,15 @@ use core::{fmt::Display, ops::Sub};
 use hashbrown::DefaultHashBuilder;
 use indexmap::IndexMap;
 use thiserror::Error;
+use tinyos_abi::{
+    flags::{NodePermissions, NodeType},
+    types::FStat,
+};
 
 use crate::{
+    arch::x86::current_time,
     kernel::{
-        fd::{FStat, File, FileBuilder, FileRepr, IOCapable},
+        fd::{File, FileBuilder, FileRepr, IOCapable, new_fstat},
         fs::{
             self,
             FS,
@@ -28,6 +33,7 @@ use crate::{
         },
         io::{Read, Write},
     },
+    serial_println,
     sync::locks::RwLock,
 };
 
@@ -40,11 +46,19 @@ type RamFilePtr = Arc<LockedRamFile>;
 #[derive(Debug)]
 struct RamFile {
     node: RamNode,
+    stat: FStat,
 }
 
 impl RamFile {
-    fn new(node: RamNode) -> Self {
-        Self { node }
+    fn new(node: RamNode, perms: NodePermissions) -> Self {
+        let mut stat = new_fstat();
+        stat.permissions = perms;
+        match node {
+            RamNode::SoftLink(_) => stat.node_type = NodeType::SYMLINK,
+            RamNode::Dir(_) => stat.node_type = NodeType::DIR,
+            RamNode::File(_) => stat.node_type = NodeType::FILE,
+        }
+        Self { node, stat }
     }
 
     fn is_dir(&self) -> bool {
@@ -77,15 +91,24 @@ impl RamNode {
 }
 
 fn ram_dir() -> RamFilePtr {
-    RamFilePtr::new(LockedRamFile::new(RamFile::new(RamNode::dir())))
+    RamFilePtr::new(LockedRamFile::new(RamFile::new(
+        RamNode::dir(),
+        NodePermissions::rwx(),
+    )))
 }
 
 fn ram_file() -> RamFilePtr {
-    RamFilePtr::new(LockedRamFile::new(RamFile::new(RamNode::file())))
+    RamFilePtr::new(LockedRamFile::new(RamFile::new(
+        RamNode::file(),
+        NodePermissions::rw(),
+    )))
 }
 
 fn ram_link(path: PathBuf) -> RamFilePtr {
-    RamFilePtr::new(LockedRamFile::new(RamFile::new(RamNode::link(path))))
+    RamFilePtr::new(LockedRamFile::new(RamFile::new(
+        RamNode::link(path),
+        NodePermissions::rw(),
+    )))
 }
 
 fn empty_ram_link() -> RamFilePtr {
@@ -100,6 +123,9 @@ fn with_mut_dir<F, R>(parent: RamFilePtr, func: F) -> FSResult<R>
 where
     F: FnOnce(&mut DirData) -> R,
 {
+    if !parent.read().stat.permissions.w() {
+        return Err(FSError::simple(FSErrorKind::PermissionDenied));
+    }
     let RamNode::Dir(ref mut d) = parent.write_arc().node else {
         return Err(FSError::simple(FSErrorKind::InvalidPath));
     };
@@ -185,41 +211,46 @@ impl Display for DirData {
 #[derive(Debug)]
 struct FileData {
     inner: Vec<u8>,
-    fstat: FStat,
 }
 
 impl Default for FileData {
     fn default() -> Self {
         Self {
             inner: Default::default(),
-            fstat: FStat::new(),
         }
     }
 }
 
 impl FileRepr for LockedRamFile {
     fn fstat(&self) -> FStat {
-        match &self.read().node {
-            RamNode::SoftLink(_) | RamNode::Dir(_) => FStat::default(),
-            RamNode::File(f) => f.fstat.clone(),
-        }
+        self.read().stat.clone()
     }
 
-    fn node_type(&self) -> super::NodeType {
-        match self.read().node {
-            RamNode::SoftLink(_) => super::NodeType::SymLink,
-            RamNode::Dir(_) => super::NodeType::Dir,
-            RamNode::File(_) => super::NodeType::File,
+    fn update_perms(
+        &self,
+        perms: NodePermissions,
+        strategy: crate::kernel::fd::PermUpdateStrategy,
+    ) {
+        let mut writer = self.write();
+        match strategy {
+            crate::kernel::fd::PermUpdateStrategy::AND => writer.stat.permissions &= perms,
+            crate::kernel::fd::PermUpdateStrategy::OR => writer.stat.permissions |= perms,
+            crate::kernel::fd::PermUpdateStrategy::OVERWRITE => writer.stat.permissions = perms,
         }
     }
 
     fn clear(&self) -> crate::kernel::io::IOResult<()> {
-        match &mut self.write().node {
+        let mut writer = self.write();
+        let r = match &mut writer.node {
             RamNode::SoftLink(_) | RamNode::Dir(_) => {
                 Err(FSError::simple(FSErrorKind::NotSupported))
             }
             RamNode::File(f) => Ok(f.inner.clear()),
-        }
+        }?;
+
+        writer.stat.t_mod = current_time().as_secs();
+        writer.stat.size = 0;
+        Ok(r)
     }
 }
 
@@ -299,7 +330,7 @@ impl Read for LockedRamFile {
 impl Write for LockedRamFile {
     fn write(&self, buf: &[u8], offset: usize) -> crate::kernel::io::IOResult<usize> {
         let mut writer = self.write();
-        match writer.node {
+        let r = match writer.node {
             RamNode::SoftLink(ref mut l) => {
                 let str_ =
                     str::from_utf8(buf).map_err(|_| FSError::simple(FSErrorKind::InvalidPath))?;
@@ -317,10 +348,24 @@ impl Write for LockedRamFile {
                 // no need to validate offset, as we just resized
                 let len = f.inner.len().sub(offset).min(buf.len());
                 f.inner[offset..offset + len].copy_from_slice(&buf[..len]);
-                f.fstat.size = f.inner.len();
+                writer.stat.size = f.inner.len();
                 Ok(len)
             }
-        }
+        }?;
+
+        writer.stat.t_mod = current_time().as_secs();
+        Ok(r)
+    }
+}
+
+fn chk_perms(options: OpenOptions, perms: NodePermissions) -> Result<(), FSError> {
+    if (options.contains(OpenOptions::READ) && !perms.r())
+        || (options.contains(OpenOptions::WRITE) && !perms.w())
+        || (options.contains(OpenOptions::EXECUTE) && !perms.x())
+    {
+        Err(FSError::simple(FSErrorKind::PermissionDenied))
+    } else {
+        Ok(())
     }
 }
 
@@ -332,11 +377,14 @@ pub struct RamFS {
 impl RamFS {
     pub fn new() -> Self {
         Self {
-            root: RamFilePtr::new(RwLock::new(RamFile::new(RamNode::dir()))),
+            root: RamFilePtr::new(RwLock::new(RamFile::new(
+                RamNode::dir(),
+                NodePermissions::rwx(),
+            ))),
         }
     }
 
-    fn traverse(&self, path: &Path, create: bool) -> FSResult<RamFilePtr> {
+    fn traverse(&self, path: &Path, options: OpenOptions) -> FSResult<RamFilePtr> {
         let mut current_dir = self.root.clone();
         // skip last (target) component
         let Some(parent) = path.parent() else {
@@ -345,7 +393,7 @@ impl RamFS {
 
         // skip root dir
         for component in parent.traverse().skip(1) {
-            let child = if create {
+            let child = if options.contains(OpenOptions::CREATE_ALL) {
                 with_mut_dir(current_dir, |dir| {
                     dir.ensure_entry(component.to_string(), ram_dir)
                 })
@@ -361,10 +409,15 @@ impl RamFS {
             if !child.read().is_dir() {
                 return Err(FSError::simple(FSErrorKind::InvalidPath));
             }
+
+            if !child.read().stat.permissions.x() {
+                return Err(FSError::simple(FSErrorKind::PermissionDenied));
+            }
             current_dir = child;
         }
 
-        if create {
+        // this is the direct parent
+        if options.contains(OpenOptions::CREATE_ALL) {
             with_mut_dir(current_dir, |dir| {
                 dir.ensure_entry(path.file().into(), ram_dir)
             })
@@ -390,24 +443,52 @@ impl FS for RamFS {
             return Ok(as_file(self.root.clone()).with_perms(options));
         };
 
-        let create_all = options.contains(OpenOptions::CREATE_ALL);
+        let parent = self.traverse(parent, options)?;
 
-        let parent = self.traverse(parent, create_all)?;
+        let mut writer = parent.write_arc();
 
-        let RamNode::Dir(ref mut entries) = parent.write_arc().node else {
+        let perms = writer.stat.permissions.clone();
+
+        let RamNode::Dir(ref mut entries) = writer.node else {
             return Err(FSError::simple(FSErrorKind::InvalidPath));
         };
+
+        if !perms.x() {
+            return Err(FSError::simple(FSErrorKind::PermissionDenied));
+        }
+
+        let is_creating = options.intersects(
+            OpenOptions::CREATE_ALL
+                | OpenOptions::CREATE_DIR
+                | OpenOptions::CREATE_LINK
+                | OpenOptions::CREATE,
+        );
+
+        let target_exists = entries.inner.contains_key(path.file());
+        // TODO add some kind of exclusive create here potentially
+        if is_creating && !target_exists && !perms.w() {
+            return Err(FSError::simple(FSErrorKind::PermissionDenied));
+        }
+
         if path.as_str().ends_with('/') {
+            chk_perms(options, perms)?;
+
             Ok(as_file(parent).with_perms(options))
         } else if options.contains(OpenOptions::CREATE_DIR) {
-            Ok(as_file(entries.ensure_entry(path.file().into(), ram_dir)).with_perms(options))
+            let node = entries.ensure_entry(path.file().into(), ram_dir);
+            chk_perms(options, node.read_arc().stat.permissions)?;
+
+            Ok(as_file(node).with_perms(options))
         } else if options.contains(OpenOptions::CREATE_LINK) {
-            Ok(
-                as_file(entries.ensure_entry(path.file().into(), empty_ram_link))
-                    .with_perms(options),
-            )
-        } else if create_all || options.contains(OpenOptions::CREATE) {
-            Ok(as_file(entries.ensure_entry(path.file().into(), ram_file)).with_perms(options))
+            let node = entries.ensure_entry(path.file().into(), empty_ram_link);
+            chk_perms(options, node.read_arc().stat.permissions)?;
+
+            Ok(as_file(node).with_perms(options))
+        } else if options.intersects(OpenOptions::CREATE_ALL | OpenOptions::CREATE) {
+            let node = entries.ensure_entry(path.file().into(), ram_file);
+            chk_perms(options, node.read_arc().stat.permissions)?;
+
+            Ok(as_file(node).with_perms(options))
         } else {
             let entry = entries
                 .inner
@@ -416,8 +497,11 @@ impl FS for RamFS {
             if !options.contains(OpenOptions::NO_FOLLOW_LINK)
                 && let RamNode::SoftLink(ref p) = entry.read_arc().node
             {
+                // chk deferred to symlink target
                 fs::fs().open(p, options).map(|f| f.with_path(p.clone()))
             } else {
+                chk_perms(options, entry.read_arc().stat.permissions)?;
+
                 Ok(as_file(entry.clone()).with_perms(options))
             }
         }
@@ -428,24 +512,24 @@ impl FS for RamFS {
         path: &super::Path,
         options: super::UnlinkOptions,
     ) -> super::FSResult<crate::kernel::fd::FileBuilder> {
-        let parent = if path.as_str().ends_with('/')
-            && let Some(dir) = path.parent()
-            && let Some(parent) = path.parent()
-        {
-            if options.contains(UnlinkOptions::RECURSIVE) {
-                self.traverse(parent, false)
-            } else {
-                Err(FSError::simple(FSErrorKind::PermissionDenied))
-            }
-        } else if let Some(parent) = path.parent() {
-            self.traverse(parent, false)
+        let parent = if let Some(parent_path) = path.parent() {
+            self.traverse(parent_path, OpenOptions::WRITE)?
         } else if options.contains(
             UnlinkOptions::NO_PRESERVE_ROOT | UnlinkOptions::FORCE | UnlinkOptions::RECURSIVE,
         ) {
-            Ok(self.root.clone())
+            self.root.clone()
         } else {
-            Err(FSError::simple(FSErrorKind::PermissionDenied))
-        }?;
+            return Err(FSError::simple(FSErrorKind::PermissionDenied));
+        };
+
+        let parent_perms = parent.read_arc().stat.permissions;
+
+        // TODO maybe overrule this if Force is present.
+        // But thats dangerous, since userspace could then delete anything...
+
+        if !parent_perms.w() || !parent_perms.x() {
+            return Err(FSError::simple(FSErrorKind::PermissionDenied));
+        }
 
         let child = with_dir(parent.clone(), |nodes| {
             nodes
@@ -467,16 +551,22 @@ impl FS for RamFS {
                     })
                     .flatten()
                 } else {
-                    Err(FSError::simple(FSErrorKind::PermissionDenied))
+                    Err(FSError::simple(FSErrorKind::IsADir))
                 }
             }
-            RamNode::SoftLink(_) | RamNode::File(_) => with_mut_dir(parent, |entries| {
-                entries
-                    .inner
-                    .swap_remove(path.file())
-                    .ok_or(FSError::simple(FSErrorKind::NotFound))
-            })
-            .flatten(),
+            RamNode::SoftLink(_) | RamNode::File(_) => {
+                if path.as_str().ends_with('/') {
+                    return Err(FSError::simple(FSErrorKind::NotADir));
+                }
+
+                with_mut_dir(parent, |entries| {
+                    entries
+                        .inner
+                        .swap_remove(path.file())
+                        .ok_or(FSError::simple(FSErrorKind::NotFound))
+                })
+                .flatten()
+            }
         }?;
 
         Ok(as_file(removed))

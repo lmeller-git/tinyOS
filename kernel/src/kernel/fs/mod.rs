@@ -13,6 +13,7 @@ use core::{
 use bitflags::bitflags;
 pub use path::*;
 use thiserror::Error;
+use tinyos_abi::types::SysErrCode;
 mod fs_util;
 pub use fs_util::*;
 pub use tinyos_abi::flags::{OpenOptions, UnlinkOptions};
@@ -49,15 +50,6 @@ pub trait FS: Debug + Send + Sync {
     fn flush(&self, path: &Path) -> FSResult<()>;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NodeType {
-    File,
-    Dir,
-    SymLink,
-    Mount,
-    Void,
-}
-
 #[derive(Error, Debug)]
 #[error(transparent)]
 pub struct FSError {
@@ -88,6 +80,26 @@ impl FSError {
             FSErrRepr::Simple(kind) => kind,
             FSErrRepr::SimpleMessage { msg: _, kind } => kind,
             FSErrRepr::Custom { kind, err: _ } => kind,
+        }
+    }
+}
+
+impl Into<SysErrCode> for FSError {
+    fn into(self) -> SysErrCode {
+        match self.kind() {
+            FSErrorKind::NotFound => SysErrCode::NoFile,
+            FSErrorKind::PermissionDenied => SysErrCode::AccessDenied,
+            FSErrorKind::AlreadyExists => SysErrCode::FileExists,
+            FSErrorKind::WouldBlock => SysErrCode::WouldBlock,
+            FSErrorKind::NotADir => SysErrCode::NoFile,
+            FSErrorKind::IsADir => SysErrCode::NoFile,
+            FSErrorKind::StorageFull => SysErrCode::DiskFull,
+            FSErrorKind::TimedOut => SysErrCode::TimerExp,
+            FSErrorKind::FileTooLarge => SysErrCode::FileTooBig,
+            FSErrorKind::OOM => SysErrCode::OOM,
+            FSErrorKind::InvalidFilename => SysErrCode::InvalidArg,
+            FSErrorKind::InvalidPath => SysErrCode::InvalidArg,
+            _ => SysErrCode::IO,
         }
     }
 }

@@ -67,7 +67,7 @@ pub fn open(path: *const u8, len: usize, flags: OpenOptions) -> SysCallRes<FileD
     }
     let p = unsafe { str::from_raw_parts(path, len) };
     let p = Path::new(p);
-    let f = fs::open(p, flags).map_err(|_| SysErrCode::NoFile)?;
+    let f = fs::open(p, flags).map_err(|e| e.into())?;
     Ok(tls::task_data()
         .current_thread()
         .ok_or(SysErrCode::NoProcess)?
@@ -99,7 +99,7 @@ pub fn read(fd: FileDescriptor, buf: *mut u8, len: usize, timeout: i64) -> SysCa
         return Ok(0);
     }
 
-    let n = file.read_continuous(b).map_err(|_| SysErrCode::IO)?;
+    let n = file.read_continuous(b).map_err(|e| e.into())?;
     if n > 0 || timeout == 0 {
         return Ok(n as isize);
     }
@@ -127,7 +127,7 @@ pub fn read(fd: FileDescriptor, buf: *mut u8, len: usize, timeout: i64) -> SysCa
     }
 
     loop {
-        let n = file.read_continuous(b).map_err(|_| SysErrCode::IO)?;
+        let n = file.read_continuous(b).map_err(|e| e.into())?;
 
         if n == 0 && (timeout < 0 || until > current_time()) {
             wait_self(&conditions).ok_or(SysErrCode::WouldBlock)?;
@@ -156,7 +156,7 @@ pub fn write(fd: FileDescriptor, buf: *const u8, len: usize) -> SysCallRes<isize
         .fd(fd)
         .ok_or(SysErrCode::BadFd)?
         .write_continuous(b)
-        .map_err(|_| SysErrCode::IO)?;
+        .map_err(|e| e.into())?;
     Ok(n as isize)
 }
 
@@ -484,9 +484,10 @@ pub fn spawn_process(
     let actions = unsafe { &*fd_actions };
 
     let path = unsafe { str::from_raw_parts(path, len) };
-    let bin = fs::open(Path::new(path), OpenOptions::READ).map_err(|_| SysErrCode::NoFile)?;
+    let bin = fs::open(Path::new(path), OpenOptions::READ | OpenOptions::EXECUTE)
+        .map_err(|e| e.into())?;
     let mut buf = Vec::new();
-    let bytes = bin.read_to_end(&mut buf, 0).map_err(|_| SysErrCode::IO)?;
+    let bytes = bin.read_to_end(&mut buf, 0).map_err(|e| e.into())?;
     let is_builtin = bytes == BUILTIN_MARKER.len() && &buf[..bytes] == BUILTIN_MARKER;
 
     // builtin bins (mainly for testing, ...)
@@ -537,7 +538,7 @@ pub fn spawn_process(
                     let path = unsafe { str::from_raw_parts(config.path.thin, config.path.size) };
                     new = new.with_file(
                         *fd,
-                        fs::open(Path::new(path), config.flags).map_err(|_| SysErrCode::NoFile)?,
+                        fs::open(Path::new(path), config.flags).map_err(|e| e.into())?,
                     );
                 }
                 FDAction::Close(fd) => new = new.remove_file(*fd),

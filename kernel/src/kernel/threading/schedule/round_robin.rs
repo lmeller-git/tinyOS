@@ -1,4 +1,4 @@
-use alloc::collections::vec_deque::VecDeque;
+use alloc::{collections::vec_deque::VecDeque, vec::Vec};
 use core::fmt::Debug;
 
 use crate::{
@@ -36,17 +36,29 @@ impl Scheduler for LazyRoundRobin {
     fn reschedule(&self) {
         // TODO return if not dirty
         let manager = tls::task_data();
-
         let table = manager.get_table().read();
+
+        let mut extend_with = table
+            .iter()
+            .filter_map(|(_id, task)| {
+                if task.state() == TaskState::Ready || task.state() == TaskState::Running {
+                    Some(task.tid())
+                } else {
+                    None
+                }
+            })
+            .collect::<VecDeque<_>>();
+
+        drop(table);
+
         let mut queue = self.queue.lock();
+        // make sure to not call alloc in irqsave ctx
+        let cur_len = queue.len();
+        queue.reserve(cur_len + extend_with.len());
 
         interrupt::without_interrupts(|| {
             queue.clear();
-            for (id, task) in table.iter() {
-                if task.state() == TaskState::Ready || task.state() == TaskState::Running {
-                    queue.push_back(task.tid());
-                }
-            }
+            queue.append(&mut extend_with);
         })
     }
 

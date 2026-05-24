@@ -5,6 +5,7 @@ use core::{
 };
 
 use hashbrown::HashMap;
+use tinyos_abi::{flags::NodeType, types::FStat};
 
 use crate::{
     impl_empty_read,
@@ -12,8 +13,7 @@ use crate::{
     impl_file_for_wr,
     kernel::{
         devices::Null,
-        fd::{FPerms, FileMetadata, FileRepr, IOCapable},
-        fs::NodeType,
+        fd::{FPerms, FileMetadata, FileRepr, IOCapable, new_fstat},
         io::{IOError, IOResult, Read, Write},
         threading::wait::{QueuTypeCondition, QueueType},
     },
@@ -122,8 +122,10 @@ impl Read for Pipe {
 impl IOCapable for Pipe {}
 
 impl FileRepr for Pipe {
-    fn node_type(&self) -> NodeType {
-        NodeType::Void
+    fn fstat(&self) -> tinyos_abi::types::FStat {
+        let mut stat = new_fstat();
+        stat.node_type = NodeType::FILE;
+        stat
     }
 
     fn get_waiter(&self) -> Option<QueuTypeCondition> {
@@ -200,12 +202,8 @@ impl_empty_read!(Null);
 impl_empty_write!(Null);
 
 impl FileRepr for Null {
-    fn node_type(&self) -> NodeType {
-        NodeType::Void
-    }
-
-    fn fstat(&self) -> crate::kernel::fd::FStat {
-        crate::kernel::fd::FStat::new()
+    fn fstat(&self) -> FStat {
+        FStat::default()
     }
 }
 

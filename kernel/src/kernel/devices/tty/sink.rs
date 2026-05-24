@@ -2,6 +2,7 @@ use alloc::sync::Arc;
 
 use conquer_once::spin::OnceCell;
 use crossbeam::queue::SegQueue;
+use tinyos_abi::flags::NodeType;
 
 use super::TTYSink;
 use crate::{
@@ -10,7 +11,7 @@ use crate::{
     impl_empty_read,
     impl_file_for_wr,
     impl_write_for_tty,
-    kernel::{devices::tty::TTYSource, fs::NodeType},
+    kernel::devices::tty::TTYSource,
     term::_print,
 };
 
@@ -58,7 +59,7 @@ impl TTYSink for SerialBackend {
 
 impl_write_for_tty!(SerialBackend);
 impl_empty_read!(SerialBackend);
-impl_file_for_wr!(SerialBackend: NodeType::File);
+impl_file_for_wr!(SerialBackend: NodeType::FILE);
 
 #[derive(Debug)]
 pub struct FbBackend {
@@ -89,4 +90,4 @@ impl TTYSink for FbBackend {
 
 impl_write_for_tty!(FbBackend);
 impl_empty_read!(FbBackend);
-impl_file_for_wr!(FbBackend: NodeType::File);
+impl_file_for_wr!(FbBackend: NodeType::FILE);

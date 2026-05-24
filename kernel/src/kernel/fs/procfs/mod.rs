@@ -10,10 +10,11 @@ use bitflags::Flags;
 use hashbrown::DefaultHashBuilder;
 use indexmap::IndexMap;
 use thiserror::Error;
+use tinyos_abi::{flags::NodeType, types::FStat};
 
 use crate::{
     kernel::{
-        fd::{FStat, File, FileBuilder, FileRepr, IOCapable},
+        fd::{File, FileBuilder, FileRepr, IOCapable, new_fstat},
         fs::{FS, FSError, FSErrorKind, FSResult, OpenOptions, Path, UnlinkOptions},
         io::{Read, Write},
     },
@@ -51,14 +52,12 @@ impl ProcFile {
 
 impl FileRepr for ProcFile {
     fn fstat(&self) -> FStat {
-        self.node.fstat().unwrap_or_default()
-    }
-
-    fn node_type(&self) -> super::NodeType {
+        let mut stat = self.node.fstat().unwrap_or_default();
         match self.node {
-            ProcNode::Dir(_) => super::NodeType::Dir,
-            ProcNode::File(_) => super::NodeType::File,
+            ProcNode::Dir(_) => stat.node_type = NodeType::DIR,
+            ProcNode::File(_) => stat.node_type = NodeType::FILE,
         }
+        stat
     }
 
     fn as_raw_parts(&self) -> (*mut u8, usize) {
@@ -306,11 +305,7 @@ pub struct Null;
 
 impl FileRepr for Null {
     fn fstat(&self) -> FStat {
-        FStat::new()
-    }
-
-    fn node_type(&self) -> super::NodeType {
-        super::NodeType::Void
+        FStat::default()
     }
 }
 
@@ -510,11 +505,9 @@ impl FS for ProcFS {
 
 impl FileRepr for ProcFS {
     fn fstat(&self) -> FStat {
-        FStat::new()
-    }
-
-    fn node_type(&self) -> super::NodeType {
-        super::NodeType::Mount
+        let mut stat = new_fstat();
+        stat.node_type = NodeType::MOUNT;
+        stat
     }
 }
 
@@ -542,7 +535,6 @@ mod tests {
     use os_macros::kernel_test;
 
     use super::*;
-    use crate::kernel::fs::NodeType;
 
     #[kernel_test]
     fn procfs_basic() {
@@ -612,11 +604,7 @@ mod tests {
 
         impl FileRepr for TestDevice {
             fn fstat(&self) -> FStat {
-                FStat::new()
-            }
-
-            fn node_type(&self) -> NodeType {
-                NodeType::File
+                new_fstat()
             }
         }
 
