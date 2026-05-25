@@ -8,7 +8,7 @@ use os_macros::with_default_args;
 use tinyos_abi::{
     consts::STDIN_FILENO,
     flags::{NodePermissions, OpenOptions, UnlinkOptions},
-    types::FileDescriptor,
+    types::{FileDescriptor, PermUpdateStrategy},
 };
 
 use crate::{
@@ -70,10 +70,7 @@ fn init_fake_bin(path: &Path) {
             );
             fs::rm(path, UnlinkOptions::empty()).unwrap();
         }
-        file.update_perms(
-            NodePermissions::rx(),
-            crate::kernel::fd::PermUpdateStrategy::OVERWRITE,
-        );
+        file.update_perms(NodePermissions::rx(), PermUpdateStrategy::OVERWRITE);
     } else {
         eprintln!("failed to initialize {} binary", path);
     }

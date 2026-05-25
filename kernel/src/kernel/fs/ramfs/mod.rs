@@ -12,7 +12,7 @@ use indexmap::IndexMap;
 use thiserror::Error;
 use tinyos_abi::{
     flags::{NodePermissions, NodeType},
-    types::FStat,
+    types::{FStat, PermUpdateStrategy},
 };
 
 use crate::{
@@ -234,16 +234,12 @@ impl FileRepr for LockedRamFile {
         self.read().stat.clone()
     }
 
-    fn update_perms(
-        &self,
-        perms: NodePermissions,
-        strategy: crate::kernel::fd::PermUpdateStrategy,
-    ) {
+    fn update_perms(&self, perms: NodePermissions, strategy: PermUpdateStrategy) {
         let mut writer = self.write();
         match strategy {
-            crate::kernel::fd::PermUpdateStrategy::AND => writer.stat.permissions &= perms,
-            crate::kernel::fd::PermUpdateStrategy::OR => writer.stat.permissions |= perms,
-            crate::kernel::fd::PermUpdateStrategy::OVERWRITE => writer.stat.permissions = perms,
+            PermUpdateStrategy::AND => writer.stat.permissions &= perms,
+            PermUpdateStrategy::OR => writer.stat.permissions |= perms,
+            PermUpdateStrategy::OVERWRITE => writer.stat.permissions = perms,
         }
     }
 

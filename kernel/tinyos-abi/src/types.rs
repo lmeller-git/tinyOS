@@ -30,40 +30,42 @@ pub enum SysCallDispatch {
     GetPgrID = 26,
     Pipe = 27,
     SpawnProcess = 28,
+    FStat = 29,
+    SetPerm = 30,
 }
 
 #[repr(u64)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SysErrCode {
     NoErr = 0,
-    AccessDenied,
-    OpDenied,
-    AddrInUse,
-    AddrNotAvail,
-    AddrNotValid,
-    BadFd,
-    BadMsg,
-    BadRqstD,
-    Cancelled,
-    NoChild,
-    SendErr,
-    Deadlock,
-    DiskFull,
-    FileExists,
-    FileTooBig,
-    InvalidArg,
-    IO,
-    NoDevice,
-    NoFile,
-    OOM,
-    DirNotEmpty,
-    InvalidSeek,
-    NoProcess,
-    TimerExp,
-    WouldBlock,
+    AccessDenied = 1,
+    OpDenied = 2,
+    AddrInUse = 3,
+    AddrNotAvail = 5,
+    AddrNotValid = 6,
+    BadFd = 7,
+    BadMsg = 8,
+    BadRqstD = 9,
+    Cancelled = 10,
+    NoChild = 11,
+    SendErr = 12,
+    Deadlock = 13,
+    DiskFull = 14,
+    FileExists = 15,
+    FileTooBig = 16,
+    InvalidArg = 17,
+    IO = 18,
+    NoDevice = 19,
+    NoFile = 20,
+    OOM = 21,
+    DirNotEmpty = 22,
+    InvalidSeek = 23,
+    NoProcess = 24,
+    TimerExp = 25,
+    WouldBlock = 26,
 }
 
-const MAX_ERRNO: u64 = 25;
+const MAX_ERRNO: u64 = 26;
 
 impl TryFrom<u64> for SysErrCode {
     type Error = i64;
@@ -146,5 +148,27 @@ impl Default for FStat {
             permissions: NodePermissions::default(),
             node_type: NodeType::VOID,
         }
+    }
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PermUpdateStrategy {
+    AND = 0,
+    OR = 1,
+    #[default]
+    OVERWRITE = 2,
+}
+
+impl TryFrom<u64> for PermUpdateStrategy {
+    type Error = u64;
+
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        Ok(match value {
+            0 => Self::AND,
+            1 => Self::OR,
+            2 => Self::OVERWRITE,
+            _ => Err(value)?,
+        })
     }
 }

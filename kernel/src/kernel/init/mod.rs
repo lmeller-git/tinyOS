@@ -1,6 +1,6 @@
 use alloc::{string::String, vec::Vec};
 
-use tinyos_abi::flags::NodePermissions;
+use tinyos_abi::{flags::NodePermissions, types::PermUpdateStrategy};
 
 use crate::{
     KernelRes,
@@ -81,10 +81,7 @@ fn load_init_bins() {
                 );
                 fs::rm(&bin_path, UnlinkOptions::empty()).unwrap();
             }
-            file.update_perms(
-                NodePermissions::rx(),
-                crate::kernel::fd::PermUpdateStrategy::OVERWRITE,
-            );
+            file.update_perms(NodePermissions::rx(), PermUpdateStrategy::OVERWRITE);
         } else {
             eprintln!("failed to add binary {}", name);
         };

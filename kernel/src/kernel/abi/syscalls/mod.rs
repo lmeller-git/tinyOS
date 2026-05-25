@@ -1,7 +1,7 @@
 use tinyos_abi::{
     consts::MAX_SYSCALL,
-    flags::{OpenOptions, PageTableFlags, TaskWaitOptions, WaitOptions},
-    types::{FDAction, FatPtr, SysCallDispatch, SysErrCode},
+    flags::{NodePermissions, OpenOptions, PageTableFlags, TaskWaitOptions, WaitOptions},
+    types::{FDAction, FStat, FatPtr, FileDescriptor, SysCallDispatch, SysErrCode},
 };
 
 use crate::{
@@ -14,6 +14,7 @@ use crate::{
         execve,
         exit,
         fork,
+        fstat,
         get_pgrid,
         get_pid,
         get_tid,
@@ -25,6 +26,7 @@ use crate::{
         read,
         seek,
         serial,
+        set_perm,
         spawn,
         spawn_process,
         thread_cancel,
@@ -143,6 +145,15 @@ pub extern "C" fn syscall_handler(args: &mut SysCallCtx) {
             args.fourth() as *const FatPtr<u8>,
             args.fifth() as *const FatPtr<FDAction>,
         ),
+        SysCallDispatch::FStat => {
+            fstat(args.first() as FileDescriptor, args.second() as *mut FStat).map(|_| 0)
+        }
+        SysCallDispatch::SetPerm => set_perm(
+            args.first() as FileDescriptor,
+            NodePermissions::from_bits_truncate(args.second() as u8),
+            args.third(),
+        )
+        .map(|_| 0),
     };
 
     // in case of err we return the error value in ret2 and do not touch ret1

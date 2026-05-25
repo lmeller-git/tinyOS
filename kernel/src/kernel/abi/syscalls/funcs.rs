@@ -6,8 +6,15 @@ use alloc::{
 use core::{str, sync::atomic::Ordering, time::Duration};
 
 use tinyos_abi::{
-    flags::{OpenOptions, PageTableFlags, TaskStateChange, TaskWaitOptions, WaitOptions},
-    types::{FDAction, FatPtr, FileDescriptor, SysCallRes, SysErrCode},
+    flags::{
+        NodePermissions,
+        OpenOptions,
+        PageTableFlags,
+        TaskStateChange,
+        TaskWaitOptions,
+        WaitOptions,
+    },
+    types::{FDAction, FStat, FatPtr, FileDescriptor, SysCallRes, SysErrCode},
 };
 
 use crate::{
@@ -699,5 +706,34 @@ pub fn pipe(fds: *mut [u32; 2], cap: isize) -> SysCallRes<()> {
     let arr = unsafe { &mut *fds };
     arr[0] = read_fd;
     arr[1] = write_fd;
+    Ok(())
+}
+
+pub fn fstat(fd: FileDescriptor, buf: *mut FStat) -> SysCallRes<()> {
+    if !valid_ptr(buf, 1) {
+        return Err(SysErrCode::AddrNotValid);
+    }
+
+    let f = tls::task_data()
+        .current_thread()
+        .ok_or(SysErrCode::NoProcess)?
+        .fd(fd)
+        .ok_or(SysErrCode::BadFd)?;
+
+    unsafe { *buf = f.fstat() };
+    Ok(())
+}
+
+pub fn set_perm(fd: FileDescriptor, perms: NodePermissions, strategy: u64) -> SysCallRes<()> {
+    let strategy = strategy.try_into().map_err(|_| SysErrCode::InvalidArg)?;
+
+    let f = tls::task_data()
+        .current_thread()
+        .ok_or(SysErrCode::NoProcess)?
+        .fd(fd)
+        .ok_or(SysErrCode::BadFd)?;
+
+    f.update_perms(perms, strategy);
+
     Ok(())
 }

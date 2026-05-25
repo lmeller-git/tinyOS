@@ -19,7 +19,7 @@ pub use tinyos_abi::{
 };
 use tinyos_abi::{
     flags::{NodePermissions, NodeType},
-    types::FStat,
+    types::{FStat, PermUpdateStrategy},
 };
 
 use crate::{
@@ -162,15 +162,6 @@ macro_rules!  impl_file_for_wr {
     ($name:ty where [$($generics:tt)*]: $node:expr) => {
         impl_file_for_wr!(@impl [$($generics)*] $name: $node);
     }
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum PermUpdateStrategy {
-    AND,
-    OR,
-    #[default]
-    OVERWRITE,
 }
 
 // #[derive(Debug, PartialEq, Eq, Clone)]
