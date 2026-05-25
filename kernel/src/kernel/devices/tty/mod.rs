@@ -123,7 +123,7 @@ impl IOCapable for Pipe {}
 
 impl FileRepr for Pipe {
     fn fstat(&self) -> tinyos_abi::types::FStat {
-        let mut stat = new_fstat();
+        let mut stat = FStat::default();
         stat.node_type = NodeType::FILE;
         stat
     }

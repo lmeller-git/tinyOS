@@ -146,7 +146,7 @@ macro_rules!  impl_file_for_wr {
     (@impl [$($impl_generics:tt)*] $name:ty: $node:expr) => {
         impl<$($impl_generics)*> $crate::kernel::fd::FileRepr for $name {
             fn fstat(&self) -> tinyos_abi::types::FStat {
-                let mut stat = $crate::kernel::fd::new_fstat();
+                let mut stat = tinyos_abi::types::FStat::default();
                 stat.node_type = $node;
                 stat
             }
@@ -184,6 +184,7 @@ pub enum PermUpdateStrategy {
 //     pub node_type: NodeType,
 // }
 
+// size == 0, for size == usize::MAX, use Fstat::default()
 pub fn new_fstat() -> FStat {
     let now = current_time().as_secs();
     FStat {

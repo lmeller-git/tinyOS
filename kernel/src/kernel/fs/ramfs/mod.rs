@@ -53,9 +53,17 @@ impl RamFile {
     fn new(node: RamNode, perms: NodePermissions) -> Self {
         let mut stat = new_fstat();
         stat.permissions = perms;
+        // usize::MAX was set before this refactor
+        // TODO change this to correct size
         match node {
-            RamNode::SoftLink(_) => stat.node_type = NodeType::SYMLINK,
-            RamNode::Dir(_) => stat.node_type = NodeType::DIR,
+            RamNode::SoftLink(_) => {
+                stat.node_type = NodeType::SYMLINK;
+                stat.size = usize::MAX
+            }
+            RamNode::Dir(_) => {
+                stat.node_type = NodeType::DIR;
+                stat.size = usize::MAX
+            }
             RamNode::File(_) => stat.node_type = NodeType::FILE,
         }
         Self { node, stat }

@@ -305,7 +305,9 @@ pub struct Null;
 
 impl FileRepr for Null {
     fn fstat(&self) -> FStat {
-        FStat::default()
+        let mut stat = FStat::default();
+        stat.size = 0;
+        stat
     }
 }
 
