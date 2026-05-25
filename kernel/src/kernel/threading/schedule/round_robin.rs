@@ -54,7 +54,7 @@ impl Scheduler for LazyRoundRobin {
         let mut queue = self.queue.lock();
         // make sure to not call alloc in irqsave ctx
         let cur_len = queue.len();
-        queue.reserve(cur_len + extend_with.len());
+        queue.reserve((extend_with.len() as isize - cur_len as isize).max(0) as usize);
 
         interrupt::without_interrupts(|| {
             queue.clear();
