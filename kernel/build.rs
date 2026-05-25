@@ -106,5 +106,9 @@ fn build_user_programs() {
     includes.push_str("\t]\n}\n");
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    println!(
+        "cargo:warning=stdout Writing included bins to {}/include_bins.rs",
+        out_dir.display()
+    );
     fs::write(out_dir.join("include_bins.rs"), includes).unwrap();
 }
