@@ -1,4 +1,6 @@
-use bitflags::bitflags;
+use core::fmt::Display;
+
+use bitflags::{Flags, bitflags};
 pub use x86_64::structures::paging::PageTableFlags;
 
 bitflags! {
@@ -159,5 +161,20 @@ impl NodePermissions {
 
     pub fn x(&self) -> bool {
         self.contains(Self::X)
+    }
+}
+
+impl Display for NodePermissions {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let r = self.contains(NodePermissions::R);
+        let w = self.contains(NodePermissions::W);
+        let x = self.contains(NodePermissions::X);
+        write!(
+            f,
+            "{}{}{}",
+            if r { "r" } else { "-" },
+            if w { "w" } else { "-" },
+            if x { "x" } else { "-" }
+        )
     }
 }
