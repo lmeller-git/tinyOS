@@ -1,6 +1,6 @@
 use core::fmt::Display;
 
-use bitflags::{Flags, bitflags};
+use bitflags::bitflags;
 pub use x86_64::structures::paging::PageTableFlags;
 
 bitflags! {
@@ -115,6 +115,30 @@ bitflags! {
         const SYMLINK = 1 << 2;
         const MOUNT = 1 << 3;
         const VOID = 1 << 4;
+    }
+}
+
+impl Display for NodeType {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if self.contains(NodeType::FILE) {
+            write!(f, "FILE ")?;
+        }
+        if self.contains(NodeType::DIR) {
+            write!(f, "DIR ")?;
+        }
+        if self.contains(NodeType::SYMLINK) {
+            write!(f, "SYMLINK ")?;
+        }
+        if self.contains(NodeType::MOUNT) {
+            write!(f, "MOUNT ")?;
+        }
+        if self.contains(NodeType::VOID) {
+            write!(f, "VOID ")?;
+        }
+        if self.is_empty() {
+            write!(f, "-")?;
+        }
+        Ok(())
     }
 }
 
