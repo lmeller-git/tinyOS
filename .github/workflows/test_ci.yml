@@ -17,14 +17,13 @@ jobs:
       uses: actions/checkout@v4
       with:
         submodules: recursive
-        fetch-depth: 1
 
     - name: Install Rust Nightly
       run: rustup install nightly
-      
+
     - name: Add Rust Components
       run: |
-        cd ./kernel    
+        cd ./kernel
         rustup component add rust-src llvm-tools-preview
 
     - name: Install target

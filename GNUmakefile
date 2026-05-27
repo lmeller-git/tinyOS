@@ -18,6 +18,8 @@ RUST_PROFILE ?= dev
 KERNEL_BIN ?= kernel
 QEMU_WRAPPER = ./run_qemu.sh
 
+export KARCH IMAGE_NAME CARGO_TARGET_DIR CARGO_FLAGS RUST_PROFILE KERNEL_BIN QEMUFLAGS
+
 .PHONY: all
 all: $(IMAGE_NAME).iso
 
@@ -26,7 +28,7 @@ all-hdd: $(IMAGE_NAME).hdd
 
 .PHONY: run
 run:
-	$(MAKE) run-$(KARCH) IMAGE_NAME=$(IMAGE_NAME) CARGO_TARGET_DIR=$(CARGO_TARGET_DIR) CARGO_FLAGS="$(CARGO_FLAGS)" RUST_PROFILE=$(RUST_PROFILE) KERNEL_BIN=$(KERNEL_BIN)
+	$(MAKE) run-$(KARCH)
 
 .PHONY: debug
 debug:
@@ -35,6 +37,12 @@ debug:
 .PHONY: debug-test
 debug-test:
 	$(MAKE) test QEMUFLAGS="$(QEMUFLAGS) -s -S"
+
+.PHONY: docker
+docker:
+	docker build -t tinyos .
+	echo "\nTo view graphical output, connect to http://localhost:8080/vnc.html\n"
+	docker run -it --rm -p 8080:8080 tinyos
 
 .PHONY: run-hdd
 run-hdd: run-hdd-$(KARCH)
@@ -51,11 +59,11 @@ distclean: clean
 
 .PHONY: test
 test:
-	$(MAKE) run-$(KARCH) IMAGE_NAME=tiny_os-test-$(KARCH) CARGO_TARGET_DIR=$(CARGO_TARGET_DIR)/test KERNEL_BIN=kernel CARGO_FLAGS="$(CARGO_FLAGS) --features test_run" QEMUFLAGS="$(QEMUFLAGS) -display none"
+	$(MAKE) run-$(KARCH) IMAGE_NAME=tiny_os-test-$(KARCH) CARGO_TARGET_DIR=$(CARGO_TARGET_DIR)/test CARGO_FLAGS="$(CARGO_FLAGS) --features test_run" QEMUFLAGS="$(QEMUFLAGS) -display none"
 
 .PHONY: check
 check:
-	$(MAKE) run-$(KARCH) IMAGE_NAME=tiny_os-test-$(KARCH) CARGO_CMD=check CARGO_TARGET_DIR=$(CARGO_TARGET_DIR) KERNEL_BIN=kernel CARGO_FLAGS="$(CARGO_FLAGS)" QEMUFLAGS="$(QEMUFLAGS) -display none"
+	$(MAKE) run-$(KARCH) CARGO_CMD=check QEMUFLAGS="$(QEMUFLAGS) -display none"
 
 # KERNEL_BIN needs to be kernel, as limine needs to know how its called in limine.conf
 
