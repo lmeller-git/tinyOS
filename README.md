@@ -1,16 +1,49 @@
 # TinyOS
 
-yet another OS kernel written for fun  
+> yet another hobby OS written for fun
+
+![Screenshot of TinyOS in QEMU](assets/in_usage.png)
+
+## Overview
+
+TinyOS is a modular monolithic, preemptive, 64-bit hobby OS written from scratch that loosely follows the UNIX philosophy of *"everything is a file"* and shares some core similarities with its ABI.
+
+### Key Characteristics
+* **Architecture:** Modular monolithic design with a preemptive scheduler.
+* **Userspace Environment:** Programs are loaded at compile time from `tinyosprograms` into a custom RamFS.
+* **Ergonomic Development:** Userspace applications can be easily built using standard recipes found in `tinyosprograms/programs/example-*`.
+
+### Ecosystem Libraries
+* `libtinyos`: A custom library providing an ergonomic interface wrap around the `tinyos_abi`.
+* `libtinygraphics`: A graphics library allowing integration with TinyOS's exposed framebuffers, featuring out-of-the-box support for **Ratatui** terminal UIs.
+
+---
 
 ## How to use this?
 
+### Quickstart
+
+Using Docker:
+
+```bash
+docker build -t tinyos .
+docker run -it --rm -p 8080:8080 tinyos
+```
+
+Then open your browser on `http://localhost:8080/vnc.html` and press `Connect`.
+
+Running locally:
+
+```bash
+make run RUST_PROFILE=release
+```
+
 ### Dependencies
 
-Any `make` command depends on GNU make (`gmake`) and is expected to be run using it. This usually means using `make` on most GNU/Linux distros, or `gmake` on other non-GNU systems.
-
-All `make all*` targets depend on Rust.
-
-Additionally, building an ISO with `make all` requires `xorriso`, and building a HDD/USB image with `make all-hdd` requires `sgdisk` (usually from `gdisk` or `gptfdisk` packages) and `mtools`.
+* **Build System:** Any `make` command depends on GNU make (`gmake`) and is expected to be run using it. This usually means using `make` on most GNU/Linux distros, or `gmake` on other non-GNU systems.
+* **Toolchain:** All `make all*` targets require a working **Rust** installation.
+* **Image Generation:** * Building an ISO (`make all`) requires `xorriso`.
+  * Building an HDD/USB image (`make all-hdd`) requires `sgdisk` (usually from `gdisk`/`gptfdisk` packages) and `mtools`.
 
 ### Architectural targets
 
@@ -18,36 +51,36 @@ The `KARCH` make variable determines the target architecture to build the kernel
 
 The default `KARCH` is `x86_64`. Other options include: `aarch64`, `riscv64`, and `loongarch64`.
 
-Other architectures will need to be enabled in kernel/rust-toolchain.toml
+Currently only `x86_64` is supported.
 
 ### Makefile targets
 
-Running `make all` will compile the kernel (from the `kernel/` directory) and then generate a bootable ISO image.
-
-Running `make all-hdd` will compile the kernel and then generate a raw image suitable to be flashed onto a USB stick or hard drive/SSD.
-
-Running `make run` will build the kernel and a bootable ISO (equivalent to make all) and then run it using `qemu` (if installed).
-
-Running `make run-hdd` will build the kernel and a raw HDD image (equivalent to make all-hdd) and then run it using `qemu` (if installed).
-
-Running `make test` will build the kernel with test_run features and run the tests
-
-Running `make debug-test` or `make debug` will run the kernel with -s -S -d int,guest_errors qemu flags and are intended for use with a debugger
+| Target | Description |
+| :--- | :--- |
+| **`make all`** | Compiles the kernel and generates a bootable ISO image. |
+| **`make all-hdd`** | Compiles the kernel and generates a raw image suitable for USB flashing or HDDs. |
+| **`make run`** | Builds the bootable ISO and launches it via QEMU. |
+| **`make run-hdd`** | Builds the raw HDD image and launches it via QEMU. |
+| **`make test`** | Builds the kernel with `test_run` features enabled and executes tests. |
+| **`make debug`** / **`debug-test`** | Launches QEMU with debugging flags (`-s -S -d int,guest_errors`) for attaching a debugger. |
 
 ### Makefile Variables
 
-qemu flags can be passed via QEMUFLAGS  
-cargo flags can be passed via CARGO_FLAGS  
-file names can be changed via CARGO_TARGET_DIR, KERNEL_BIN and IMAGE_NAME  
-the rust profile can be changed with RUST_PROFILE  
+Fine-tune your build by passing variables directly to `make`:
+
+* `QEMUFLAGS`: Append custom flags to the QEMU instance.
+* `CARGO_FLAGS`: Pass extra arguments down to Cargo.
+* `RUST_PROFILE`: Switch profiles (e.g., `dev` vs `release`).
+* `CARGO_TARGET_DIR` / `KERNEL_BIN` / `IMAGE_NAME`: Override default output paths and file names.
 
 ## Supported architectures
 
 x86-64 (default)
 
-currently no real hardware is supported  
+currently no real hardware is supported
 
-## References
+## Acknowledgements
 
-OsDev wiki: https://wiki.osdev.org/  
-Phillip Oppermans blog series: https://os.phil-opp.com/
+Early foundations of TinyOS were inspired and influenced by these excellent community resources:
+* [OSDev Wiki](https://wiki.osdev.org/) - A great wiki, containing all kinds of information for kernel development
+* [Philipp Oppermann's Blog](https://os.phil-opp.com/) - A great guide for getting started with Rust OsDev

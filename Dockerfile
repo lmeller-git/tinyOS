@@ -30,4 +30,4 @@ RUN make all
 
 EXPOSE 8080
 
-ENTRYPOINT ["sh", "-c", "websockify --web /usr/share/novnc 8080 localhost:5900 & make run QEMUFLAGS='-display vnc=:0 -vga std'"]
+ENTRYPOINT ["sh", "-c", "websockify --web /usr/share/novnc 8080 localhost:5900 & make run RUST_PROFILE=release QEMUFLAGS='-display vnc=:0 -vga std'"]
