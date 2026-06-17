@@ -1,3 +1,5 @@
+![CI Test](https://github.com/lmeller-git/tinyOS/actions/workflows/test_ci.yml/badge.svg?branch=main)
+
 # TinyOS
 
 > yet another hobby OS written for fun
